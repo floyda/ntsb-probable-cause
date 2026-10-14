@@ -5,9 +5,11 @@
 // the numbers file (lib/methods.ts); none is typed here.
 import Mark from "../components/Mark.astro";
 import MethodsGroup from "../components/MethodsGroup.astro";
+import SplitDiagram from "../components/SplitDiagram.astro";
 import Base from "../layouts/Base.astro";
 import { exampleCase } from "../lib/example-case";
 import { exportDir, loadExport } from "../lib/export";
+import { GLOSSARY } from "../lib/glossary";
 import { GROUPS } from "../lib/methods";
 import { assertPredictionsAsRead } from "../lib/claims";
 import { entry, list, pointsOn, text, usd, withInterval } from "../lib/numbers";
@@ -89,6 +91,12 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             </li>
             <li>
                 <a href="#limits">Limits</a>
+            </li>
+            <li>
+                <a href="#withheld">How the verdict is withheld</a>
+            </li>
+            <li>
+                <a href="#glossary">Glossary</a>
             </li>
         </ol>
     </nav>
@@ -311,6 +319,27 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         </p>
         <MethodsGroup id="limits" />
     </section>
+
+    <section aria-labelledby="withheld">
+        <h2 id="withheld">How the verdict is withheld</h2>
+        <p>
+            The agent never sees the NTSB's answer, or the investigators' write-ups that lead to it.
+            This is enforced in code, by one function and a guard, not by care.
+        </p>
+        <SplitDiagram />
+    </section>
+
+    <section aria-labelledby="glossary">
+        <h2 id="glossary">Glossary</h2>
+        <dl class="glossary">
+            {GLOSSARY.map((t) => (
+                <div>
+                    <dt>{t.term}</dt>
+                    <dd>{t.means}</dd>
+                </div>
+            ))}
+        </dl>
+    </section>
 </Base>
 
 <style>
@@ -348,6 +377,17 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     .outcome,
     .note {
         color: var(--ink-muted);
+    }
+    .glossary {
+        display: grid;
+        gap: 0.6rem;
+        margin: 0;
+    }
+    .glossary dt {
+        font-weight: 600;
+    }
+    .glossary dd {
+        margin: 0;
     }
     .contents,
     .counts {

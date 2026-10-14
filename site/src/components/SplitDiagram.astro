@@ -1,0 +1,173 @@
+---
+// How the verdict is withheld (spec §9 item 7a): the real mechanism of decisions 0013, 0016 and
+// 0077, drawn in HTML and CSS, without script, top to bottom so it fits a phone. A screen reader
+// reads it as ordered lists. The guard's five checks beneath are worded from
+// records/split.py and records/guard.py, not from the spec's draft (plan step 5, Task 4).
+import { repoUrl } from "../lib/words";
+
+const DECISIONS = "docs/decisions/";
+const d0013 = repoUrl(`${DECISIONS}0013-evidence-synthesis-verdict.md`);
+const d0016 = repoUrl(`${DECISIONS}0016-layered-leakage-guard-and-model-boundary.md`);
+const d0077 = repoUrl(`${DECISIONS}0077-analysis-sentences-in-docket-documents-mark-the-case.md`);
+---
+
+<figure class="split">
+    <ol class="flow" aria-label="How one case reaches the agent">
+        <li class="box">One case: the NTSB's record and its docket</li>
+        <li class="box key">
+            The split: one function, <code>split_record</code>, the only place a record is divided
+        </li>
+        <li>
+            <ol class="routes" aria-label="The three parts">
+                <li>
+                    <ol class="route" aria-label="Evidence">
+                        <li class="box">
+                            <strong>Evidence:</strong> the recorded facts, and every docket document
+                            with readable text
+                        </li>
+                        <li class="box key">The guard: five checks</li>
+                        <li class="box">The agent</li>
+                    </ol>
+                </li>
+                <li>
+                    <ol class="route" aria-label="Synthesis">
+                        <li class="box">
+                            <strong>Synthesis:</strong> the investigators' factual and analysis
+                            write-ups
+                        </li>
+                        <li class="box held">Withheld, always</li>
+                    </ol>
+                </li>
+                <li>
+                    <ol class="route" aria-label="Verdict">
+                        <li class="box">
+                            <strong>Verdict:</strong> the probable cause, and the occurrence and
+                            finding codes
+                        </li>
+                        <li class="box held">
+                            Withheld until the agent has answered, then used for scoring
+                        </li>
+                    </ol>
+                </li>
+            </ol>
+        </li>
+        <li class="box">Scoring: the agent's answer against the verdict, by exact match</li>
+    </ol>
+    <figcaption>
+        Every case passes through one function that divides it into three parts (decision{" "}
+        <a href={d0013}>0013</a>). Only the evidence reaches the agent, and only after the guard.
+    </figcaption>
+</figure>
+
+<h3>The guard's five checks</h3>
+<ol class="checks">
+    <li>
+        <strong>Only declared fields are read.</strong> The evidence comes from a fixed list of
+        places in the record, and from nowhere else.
+    </li>
+    <li>
+        <strong>The evidence has a fixed shape.</strong> Nothing can be added to it on the way.
+    </li>
+    <li>
+        <strong>Nothing comes from a withheld part of the record.</strong> No evidence field may sit
+        inside the write-ups, the probable cause or the coded events and findings. The one named
+        exception is the phase of flight of the defining event, which an open case carries from its
+        first day.
+    </li>
+    <li>
+        <strong>Every value is checked against its source.</strong> A test compares each value the
+        agent would see with the place in the record it is declared to come from.
+    </li>
+    <li>
+        <strong>A last check refuses the case.</strong> If the probable cause or any sentence of it,
+        a whole write-up, or any of the case's codes appears in what the agent would see, the case
+        is not shown to the agent at all. Docket documents and weather reports may repeat sentences
+        of the factual write-up, which quotes them. A sentence shared with the analysis write-up
+        only marks the case, and the mark never reaches the agent (decision <a href={d0077}>0077</a>
+        ).
+    </li>
+</ol>
+<p>
+    No docket document is held back for its title: whether a document is evidence cannot be told
+    from its title, so every readable document goes through the same checks. Tests break the split
+    on purpose, with a value taken from the wrong place or a withheld sentence slipped into the
+    evidence, and each must be caught (decision <a href={d0016}>0016</a>).
+</p>
+
+<style>
+    .split {
+        display: grid;
+        gap: 0.75rem;
+        margin: 0;
+    }
+    ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+    .flow,
+    .route {
+        display: grid;
+        gap: 1.4rem;
+    }
+    .box {
+        position: relative;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid var(--ink-muted);
+        border-radius: 4px;
+        background: var(--ground);
+    }
+    .key {
+        border-width: 2px;
+        border-color: var(--ink);
+    }
+    .held {
+        border-style: dashed;
+        color: var(--ink-muted);
+    }
+    /* The arrow from each box to the next, drawn as a line and a head below it. */
+    .flow > li:not(:last-child)::after,
+    .route > li:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        left: 1.5rem;
+        bottom: -1.4rem;
+        height: 1.4rem;
+        border-left: 2px solid var(--ink-muted);
+    }
+    .flow > li:not(.box):not(:last-child) {
+        position: relative;
+    }
+    /* Each part is its own panel, so on a phone the three stacked routes never read as one chain. */
+    .routes {
+        display: grid;
+        gap: 0.75rem;
+    }
+    .routes > li {
+        padding: 0.75rem;
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+    }
+    @media (min-width: 680px) {
+        .routes {
+            grid-template-columns: repeat(3, 1fr);
+            align-items: start;
+        }
+    }
+    figcaption {
+        color: var(--ink-muted);
+    }
+    .checks {
+        display: grid;
+        gap: 0.5rem;
+        list-style: decimal;
+        padding-left: 1.6rem;
+    }
+    h3 {
+        font-size: 1.05rem;
+        margin: 0.6rem 0 0;
+    }
+    p {
+        margin-block: 0;
+    }
+</style>
