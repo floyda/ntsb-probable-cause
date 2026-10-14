@@ -364,15 +364,17 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     p {
         margin-block: 0;
     }
+    /* Numbered: the page and the claims file call them "prediction 9", "P9". */
     .predictions {
         display: grid;
         gap: 0.9rem;
+        list-style: decimal;
         margin: 0;
         padding-left: 1.6rem;
     }
-    .predictions li {
-        display: grid;
-        gap: 0.2rem;
+    /* A list item, not a grid, so its number shows. */
+    .predictions .outcome {
+        margin-top: 0.2rem;
     }
     .outcome,
     .note {
