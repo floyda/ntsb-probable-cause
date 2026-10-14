@@ -80,8 +80,8 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
 
 ## Task 3: Question 6's sentence
 
-- [ ] **Step 1:** The rule from choice 3 is written into the script's docstring and printed at the top of its output, in a commit before the script first runs.
-- [ ] **Step 2: Failing tests** over a small invented pool: the rule picks the right group; ties are broken by the sentence's sort order; row order does not change the output; held-out rows are refused.
+- [x] **Step 1:** The rule from choice 3 is written into the script's docstring and printed at the top of its output, in a commit before the script first runs.
+- [x] **Step 2: Failing tests** over a small invented pool: the rule picks the right group; ties are broken by the sentence's sort order; row order does not change the output; held-out rows are refused.
 - [ ] **Step 3: The script.** `scripts/exploratory/s5_one_sentence.py` reuses `s3_coding_consistency.py`'s exact-twin grouping over S3's statistics pool. It writes the sentence, the group's size and each first code with its label and count, most common first. Counts only, with no case number.
 - [ ] **Step 4:** Run it (free, offline) to write `docs/results/s5-one-sentence-dev.txt`. Add `q6.sentence` (a text), `q6.group` (a count) and list `q6.codes` to the numbers file.
 - [ ] **Step 5: `FirstCodes.astro`.** The sentence in quotation marks, then one bar per first code, sized by count, with the counts in a table. The page repeats the results file's own caution.
