@@ -7,8 +7,10 @@ import {
     confidenceLabel,
     costLabel,
     documentLine,
+    lookupDetails,
     lookupName,
     trailSteps,
+    verdictView,
 } from "./trail";
 
 const SAMPLE = join(__dirname, "../../../tests/fixtures/board");
@@ -110,5 +112,55 @@ describe("the closest belief", () => {
     });
     it("is left out while the NTSB has not published (case 6)", () => {
         expect(closestLine(kase(6))).toBeNull();
+    });
+});
+
+describe("review fixes (2026-10-14)", () => {
+    it("names an abstained answer as such (case 4)", () => {
+        const last = trailSteps(kase(4)).at(-1);
+        expect(last?.kind === "belief" ? last.name : "").toBe("The answer: the agent abstained");
+    });
+
+    it("never credits an abstained answer as the closest belief", () => {
+        const c = kase(4);
+        const ntsb = c.verdict?.occurrence[0];
+        const answer = c.trail?.beliefs.find((b) => b.kind === "answer");
+        if (ntsb === undefined || answer === undefined) throw new Error("sample changed");
+        answer.first = ntsb; // the abstained answer leaned to the NTSB's own first code
+        expect(closestLine(c)).toBe(
+            "No belief put the NTSB's first code, “Loss of engine power (total)”, first.",
+        );
+    });
+
+    it("writes lookups in plain words, codes by their labels where the case has them", () => {
+        const c = kase(1);
+        const [describe, usage, findings, suggest] = c.trail?.lookups ?? [];
+        if (!describe || !usage || !findings || !suggest) throw new Error("sample changed");
+        expect(lookupDetails(describe, c).asked).toBe(
+            "about the occurrence code Maneuvering-Low-alt flying / Aerodynamic stall/spin",
+        );
+        expect(lookupDetails(usage, c).asked).toBe(
+            "about Maneuvering-Low-alt flying / Aerodynamic stall/spin; Maneuvering-Low-alt flying / Loss of control in flight",
+        );
+        expect(lookupDetails(findings, c).asked).toBe(
+            "after Maneuvering-Low-alt flying / Aerodynamic stall/spin",
+        );
+        expect(lookupDetails(suggest, c).asked).toBe("for the phase Maneuvering");
+        expect(lookupDetails(usage, c).why).toBe("See how often each code is coded first.");
+        expect(lookupDetails(usage, c).note).toBe("Decides which code to put first.");
+    });
+
+    it("shows a verdict's cause even when it has no codes", () => {
+        const c = kase(1);
+        if (c.verdict === null) throw new Error("sample changed");
+        c.verdict.occurrence = [];
+        expect(verdictView(c)).toEqual({ first: null, cause: c.verdict.cause, closest: null });
+        expect(verdictView(kase(6))).toBeNull();
+    });
+
+    it("falls back to the code number when the case holds no label for it", () => {
+        const c = kase(1);
+        const lookup = { tool: "occurrence_usage", cost_usd: 0, arguments: { codes: ["999999"] } };
+        expect(lookupDetails(lookup, c).asked).toBe("about code 999999");
     });
 });

@@ -1,6 +1,13 @@
 // The trail view's steps and words (S5 spec §6), from the export's `trail` alone. Beliefs are the
 // spine; read choices and coding lookups sit between them; cost is the export's own figure.
-import type { Belief, CaseFile, DocumentChoice, Lookup, ReadChoice } from "./board-case-types";
+import type {
+    Belief,
+    CaseFile,
+    Code,
+    DocumentChoice,
+    Lookup,
+    ReadChoice,
+} from "./board-case-types";
 import { eventOf } from "./words";
 
 export type TrailStep =
@@ -24,6 +31,10 @@ const CHOICE_NAMES: Record<ReadChoice["step"], string> = {
 // that moved the agent to a checkpoint; it is never invented (plan Review Focus 1).
 const AFTER: Record<ReadChoice["step"], Belief["kind"]> = { choice1: "h1", choice2: "h2" };
 
+function isAbstained(c: CaseFile): boolean {
+    return c.grade === "abstained" || c.answer?.abstained === true;
+}
+
 export function beliefName(kind: Belief["kind"]): string {
     return BELIEF_NAMES[kind];
 }
@@ -34,6 +45,7 @@ export function trailSteps(c: CaseFile): TrailStep[] {
     if (trail === null) return [];
     const byKind = new Map(trail.beliefs.map((b) => [b.kind, b]));
     const steps: TrailStep[] = [];
+    const abstained = isAbstained(c);
     const pushBelief = (kind: Belief["kind"]): void => {
         const belief = byKind.get(kind);
         if (belief === undefined) return;
@@ -41,7 +53,11 @@ export function trailSteps(c: CaseFile): TrailStep[] {
         steps.push({
             kind: "belief",
             belief,
-            name: beliefName(kind),
+            // Said as plainly as the opened case says it (review, 2026-10-14).
+            name:
+                kind === "answer" && abstained
+                    ? "The answer: the agent abstained"
+                    : beliefName(kind),
             changed: first ? null : belief.changed ? "first code changed" : "first code unchanged",
         });
     };
@@ -114,10 +130,92 @@ export function closestLine(c: CaseFile): string | null {
     const ntsbFirst = c.verdict?.occurrence[0];
     if (ntsbFirst === undefined || c.trail === null) return null;
     const event = `“${eventOf(ntsbFirst.label)}”`;
+    const abstained = isAbstained(c);
     for (const step of trailSteps(c)) {
-        if (step.kind === "belief" && step.belief.first.code === ntsbFirst.code) {
+        // An abstention is not an answer, so it is never credited as closest.
+        if (step.kind !== "belief" || (abstained && step.belief.kind === "answer")) continue;
+        if (step.belief.first.code === ntsbFirst.code) {
             return `Closest to the NTSB: ${step.name.toLowerCase()}, the first belief to put ${event} first.`;
         }
     }
     return `No belief put the NTSB's first code, ${event}, first.`;
+}
+
+/** Every label the case itself holds for a code, so a lookup can name codes in words. */
+function labelsOf(c: CaseFile): Map<string, string> {
+    const codes: Code[] = [
+        ...(c.answer?.occurrence ?? []),
+        ...(c.answer?.findings ?? []),
+        ...(c.verdict?.occurrence ?? []),
+        ...(c.verdict?.findings ?? []),
+        ...(c.trail?.beliefs.map((b) => b.first) ?? []),
+    ];
+    return new Map(codes.map((code) => [code.code, code.label]));
+}
+
+function text(value: unknown): string | null {
+    return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+function codeList(value: unknown): string[] {
+    if (typeof value === "string") return [value];
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+const KIND_WORDS: Record<string, [string, string]> = {
+    occurrence: ["the occurrence code", "the occurrence codes"],
+    finding: ["the finding", "the findings"],
+    finding_category: ["the finding category", "the finding categories"],
+};
+
+/** A coding lookup in plain words (§12 item 4): what it asked about, why, and the agent's note. */
+export function lookupDetails(
+    lookup: Lookup,
+    c: CaseFile,
+): { asked: string | null; why: string | null; note: string | null } {
+    const labels = labelsOf(c);
+    const args = lookup.arguments;
+    const named = (codes: string[]): string | null => {
+        if (codes.length === 0) return null;
+        const words = codes.map((code) => labels.get(code));
+        if (words.every((w) => w === undefined)) {
+            return codes.length === 1 ? `code ${codes[0] ?? ""}` : `codes ${codes.join(", ")}`;
+        }
+        return codes.map((code, i) => words[i] ?? `code ${code}`).join("; ");
+    };
+    const parts: string[] = [];
+    const codes = named(codeList(args["codes"]));
+    const kind = text(args["kind"]);
+    if (codes !== null) {
+        const words = kind === null ? undefined : KIND_WORDS[kind];
+        const n = codeList(args["codes"]).length;
+        parts.push(
+            words === undefined
+                ? `about ${codes}`
+                : `about ${n === 1 ? words[0] : words[1]} ${codes}`,
+        );
+    } else if (kind !== null) {
+        parts.push(`about ${KIND_WORDS[kind]?.[1] ?? kind.replaceAll("_", " ")}`);
+    }
+    const after = named(codeList(args["occurrence"]));
+    if (after !== null) parts.push(`after ${after}`);
+    const phase = text(args["phase_group"]);
+    if (phase !== null) parts.push(`for the phase ${phase}`);
+    return {
+        asked: parts.length === 0 ? null : parts.join(", "),
+        why: text(args["reason"]),
+        note: text(args["expected_effect"]),
+    };
+}
+
+/** What the verdict section shows: null while the NTSB has not published. */
+export function verdictView(
+    c: CaseFile,
+): { first: Code | null; cause: string | null; closest: string | null } | null {
+    if (c.verdict === null) return null;
+    return {
+        first: c.verdict.occurrence[0] ?? null,
+        cause: c.verdict.cause,
+        closest: closestLine(c),
+    };
 }

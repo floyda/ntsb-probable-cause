@@ -169,3 +169,23 @@ describe.skipIf(!built)("the trail pages (needs `pnpm run build` first)", () => 
         },
     );
 });
+
+describe.skipIf(!built)("scrolling frames (review, 2026-10-14)", () => {
+    it.each(
+        htmlFiles()
+            .map((p) => relative(DIST, p).split(sep).join("/"))
+            .filter((p) => readFileSync(join(DIST, p), "utf8").includes('class="frame'))
+            .concat(["index.html"]),
+    )("%s: every sideways-scrolling frame is a labelled, focusable region (WCAG 2.1.1)", (page) => {
+        const html = readFileSync(join(DIST, page), "utf8");
+        const frames = [...html.matchAll(/<div[^>]*class="(?:board-frame|frame)[^"]*"[^>]*>/g)].map(
+            (m) => m[0],
+        );
+        expect(frames.length).toBeGreaterThan(0);
+        for (const frame of frames) {
+            expect(frame).toMatch(/tabindex="0"/);
+            expect(frame).toMatch(/role="region"/);
+            expect(frame).toMatch(/aria-label(?:ledby)?="[^"]+"/);
+        }
+    });
+});

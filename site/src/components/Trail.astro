@@ -3,12 +3,13 @@
 // the spine; the read choices and coding lookups sit between them; the NTSB's verdict is last.
 import type { CaseFile } from "../lib/board-case-types";
 import {
-    closestLine,
     confidenceLabel,
     costLabel,
     documentLine,
+    lookupDetails,
     lookupName,
     trailSteps,
+    verdictView,
 } from "../lib/trail";
 import { eventOf } from "../lib/words";
 
@@ -19,18 +20,7 @@ interface Props {
 const { kase } = Astro.props;
 const steps = trailSteps(kase);
 const total = kase.trail === null ? null : costLabel(kase.trail.total_usd);
-const ntsbFirst = kase.verdict?.occurrence[0];
-const closest = closestLine(kase);
-
-/** A lookup's argument as text, or null when it has none of that name. */
-function arg(args: Record<string, unknown>, key: string): string | null {
-    const value = args[key];
-    if (typeof value === "string" && value.trim() !== "") return value;
-    if (Array.isArray(value) && value.length > 0) return value.map(String).join(", ");
-    return null;
-}
-
-const ABOUT_KEYS = ["kind", "occurrence", "phase_group"] as const;
+const verdict = verdictView(kase);
 ---
 
 <div class="trail">
@@ -67,9 +57,14 @@ const ABOUT_KEYS = ["kind", "occurrence", "phase_group"] as const;
                             <span class="cost">{costLabel(step.choice.cost_usd)}</span>
                         </header>
                         <p>{step.choice.reason}</p>
-                        <div class="frame">
+                        <div
+                            class="frame"
+                            tabindex="0"
+                            role="region"
+                            aria-labelledby={`docs-${step.choice.step}`}
+                        >
                             <table>
-                                <caption class="vh">
+                                <caption class="vh" id={`docs-${step.choice.step}`}>
                                     Documents at the {step.name.toLowerCase()}
                                 </caption>
                                 <thead>
@@ -110,18 +105,12 @@ const ABOUT_KEYS = ["kind", "occurrence", "phase_group"] as const;
                         </header>
                         <ul class="lookups">
                             {step.lookups.map((lookup) => {
-                                const codes = arg(lookup.arguments, "codes");
-                                const about = ABOUT_KEYS.map((k) =>
-                                    arg(lookup.arguments, k),
-                                ).filter((v): v is string => v !== null);
-                                const why = arg(lookup.arguments, "reason");
-                                const note = arg(lookup.arguments, "expected_effect");
+                                const { asked, why, note } = lookupDetails(lookup, kase);
                                 return (
                                     <li>
                                         <p class="lookup-name">
                                             {lookupName(lookup.tool)}
-                                            {codes !== null && <> · codes {codes}</>}
-                                            {about.length > 0 && <> · about {about.join(", ")}</>}
+                                            {asked !== null && <> · {asked}</>}
                                             <span class="cost">{costLabel(lookup.cost_usd)}</span>
                                         </p>
                                         {why !== null && <p>Why: {why}</p>}
@@ -138,16 +127,18 @@ const ABOUT_KEYS = ["kind", "occurrence", "phase_group"] as const;
 
     <section class="verdict" aria-labelledby="verdict-heading">
         <h2 id="verdict-heading">The NTSB's verdict</h2>
-        {kase.verdict === null || ntsbFirst === undefined ? (
+        {verdict === null ? (
             <p>The NTSB has not published its codes yet.</p>
         ) : (
             <>
-                <p class="first">
-                    First code: <strong>{eventOf(ntsbFirst.label)}</strong>
-                    <span class="term"> · {ntsbFirst.label}</span>
-                </p>
-                {kase.verdict.cause !== null && <p>{kase.verdict.cause}</p>}
-                {closest !== null && <p class="closest">{closest}</p>}
+                {verdict.first !== null && (
+                    <p class="first">
+                        First code: <strong>{eventOf(verdict.first.label)}</strong>
+                        <span class="term"> · {verdict.first.label}</span>
+                    </p>
+                )}
+                {verdict.cause !== null && <p>{verdict.cause}</p>}
+                {verdict.closest !== null && <p class="closest">{verdict.closest}</p>}
             </>
         )}
     </section>
@@ -202,6 +193,16 @@ const ABOUT_KEYS = ["kind", "occurrence", "phase_group"] as const;
     }
     .frame {
         overflow-x: auto;
+    }
+    .frame:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+    /* On a phone the table keeps a readable width and scrolls in its own frame. */
+    @media (max-width: 640px) {
+        table {
+            min-width: 34rem;
+        }
     }
     table {
         border-collapse: collapse;

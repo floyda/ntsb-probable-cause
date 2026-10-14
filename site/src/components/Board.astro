@@ -40,9 +40,9 @@ function ntsbCell(row: BoardRow): string {
 ---
 
 <figure class="board">
-    <div class="board-frame">
+    <div class="board-frame" tabindex="0" role="region" aria-labelledby="board-caption">
         <table>
-            <caption>Recently closed cases</caption>
+            <caption id="board-caption">Recently closed cases</caption>
             <thead>
                 <tr>
                     <th scope="col">Closed</th>
