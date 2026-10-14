@@ -133,6 +133,11 @@ export function points(key: string): string {
     return `${signed(e.value)} points [${signed(low)}, ${signed(high)}]`;
 }
 
+/** "−9.5 points [−14.0, −5.2] on 400 cases": a paired difference with its cases (§12 item 9). */
+export function pointsOn(key: string): string {
+    return `${points(key)} on ${caseCount(key)} cases`;
+}
+
 /** "$2.06" */
 export function usd(key: string): string {
     return `$${ofUnit(key, "usd").value.toFixed(2)}`;

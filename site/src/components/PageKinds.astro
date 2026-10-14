@@ -26,10 +26,15 @@ if (sum !== total) throw new Error(`page kinds add to ${String(sum)}, not ${Stri
         {parts.map((p) => (
             <rect class={p.kind.cls} x={p.x} y="0" width={p.w} height="6" />
         ))}
+        {/* A ground-coloured gap between parts, so two near shades are never adjacent (review). */}
+        {parts.slice(1).map((p) => (
+            <line class="gap" x1={p.x} x2={p.x} y1="0" y2="6" vector-effect="non-scaling-stroke" />
+        ))}
     </svg>
     <table>
         <caption>
-            Pages in the development sample's dockets, by kind ({count("q4.pages.total")})
+            Pages in the development sample's dockets, by kind ({count("q4.pages.total")};
+            photo-only entries, counted apart, left out)
         </caption>
         <tbody>
             {KINDS.map((k) => (
@@ -74,6 +79,10 @@ if (sum !== total) throw new Error(`page kinds add to ${String(sum)}, not ${Stri
         background: var(--ground);
         stroke: var(--rule);
         stroke-width: 0.2;
+    }
+    .gap {
+        stroke: var(--ground);
+        stroke-width: 3;
     }
     table {
         border-collapse: collapse;

@@ -79,3 +79,23 @@ def test_check_names_the_first_stale_key(tmp_path: Path) -> None:
     assert site_numbers.first_difference(path, site_numbers.build(_RESULTS)) == (
         "entries.q3.docket_gain"
     )
+
+
+def test_a_missing_overall_block_is_not_read_from_the_fatal_block(tmp_path: Path) -> None:
+    # Review, 2026-10-14: the section must not run on into the fatal block's own top-1 line.
+    _copy_results(tmp_path)
+    target = tmp_path / "s26-armB-v2-dev.txt"
+    lines = target.read_text().splitlines()
+    start = next(i for i, x in enumerate(lines) if x.startswith("evidence-version comparison"))
+    del lines[start + 1 : start + 5]  # the overall "paired difference" line and its three rows
+    target.write_text("\n".join(lines) + "\n")
+    with pytest.raises(site_numbers.ExtractError, match=r"q4\.v2_gain.*no line"):
+        site_numbers.build(tmp_path)
+
+
+def test_ties_at_the_cut_off_are_all_shown() -> None:
+    pairs = site_numbers.build(_RESULTS).lists["q5.pairs"]
+    counts = [int(p["count"]) for p in pairs]
+    assert counts == sorted(counts, reverse=True)
+    assert len(pairs) >= 5
+    assert counts[-1] == counts[4]

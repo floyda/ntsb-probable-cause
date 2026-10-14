@@ -4,6 +4,7 @@
 // A visually hidden table carries the same figures for a screen reader (§12 item 8). No colour
 // marks a step good or bad (§11): a lit step is darker, a dimmed one lighter, and that is all.
 import { LADDER, ladderLayout } from "../lib/ladder";
+import { claimHolds } from "../lib/claims";
 import { entry, pct, usd, withInterval } from "../lib/numbers";
 
 interface Props {
@@ -22,10 +23,15 @@ const drawings = [
 ];
 const loop = "ladder.loop.top1";
 const fixed = "ladder.fixed.top1";
+const lower = entry(loop).value < entry(fixed).value;
+// The bill's wording depends on S3.2's registered band (claims.ts), never on a typed judgement.
+const sameBill = claimHolds("q7.same_bill");
+// The label says what the caption says, so a screen reader is never told more (review).
 const summary =
     LADDER.map((s) => `${s.label.replace(/^\d+\. /, "")}: ${pct(s.rate)}`).join("; ") +
-    `. The loop matched less often than the fixed pipeline.`;
-const lower = entry(loop).value < entry(fixed).value;
+    (lower
+        ? ". The loop matched less often than the fixed pipeline."
+        : ". The loop matched no less often than the fixed pipeline.");
 ---
 
 <figure class="ladder" aria-labelledby={`${id}-caption`}>
@@ -105,8 +111,8 @@ const lower = entry(loop).value < entry(fixed).value;
             <>
                 A step up in machinery is not a step up in result: the loop matched the
                 investigator's first code less often than the fixed pipeline ({pct(loop)} against{" "}
-                {pct(fixed)}), at about the same bill ({usd("ladder.loop.billed")} against{" "}
-                {usd("ladder.fixed.billed")}).
+                {pct(fixed)}), {sameBill ? "at about the same bill" : "billed"} (
+                {usd("ladder.loop.billed")} against {usd("ladder.fixed.billed")}).
             </>
         ) : (
             <>

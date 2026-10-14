@@ -80,7 +80,7 @@
     },
     "q3.docket_gain": {
       "high": 19.3,
-      "label": "reading the docket (arm B) against the one-shot ceiling: occurrence top-1, paired",
+      "label": "S2.4's fixed pipeline, before its coding tools, against S2.4's one-shot ceiling: occurrence top-1, paired",
       "low": 9.2,
       "model": "openai/gpt-6-luna",
       "n": 336,
@@ -301,6 +301,11 @@
         "agent": "Collision with terr/obj (non-CFIT)",
         "count": 7,
         "ntsb": "Low altitude operations"
+      },
+      {
+        "agent": "Control flight into terr/obj",
+        "count": 7,
+        "ntsb": "Loss of control in flight"
       }
     ]
   }

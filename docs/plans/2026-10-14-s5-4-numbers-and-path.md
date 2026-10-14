@@ -262,7 +262,7 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - each question's answer and decision as worded;
   - question 4's page-kind bar, question 5's pairs table, and question 8's strip;
   - the "What could come next" list.
-- [ ] **Step 3:** Record his answers; run the final review and its fix pass; push.
+- [x] **Step 3:** Record his answers; run the final review and its fix pass; push.
 
 ---
 
@@ -325,3 +325,20 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - Q5's column reads "The fixed pipeline put first", since the counts are S2.6's arm B, not Ellery's. The rerun on S3's runs moves to step 4b.
   - Q8's counts line shows each result's mark beside its count, so it doubles as the strip's key.
 - **Task 6, choice 6:** Andy kept "What could come next" as built. The plainer wording proposed for each item was declined.
+- **Final review (2026-10-14, one fresh reviewer), and its fix pass.** No critical finding. Every numbers-file entry was checked against its source line.
+  - **Important, fixed:**
+    - Question 3's +14.3 points is S2.4's fixed pipeline before its coding tools, against S2.4's ceiling, not the 33.0% step its ladder lights. The answer now names the run: "first measured in S2.4, with the fixed pipeline's first version, before its coding tools…". The entry's label says so too.
+    - Three paired figures had no case count (§12 item 9). `pointsOn` ("… on 400 cases") now prints every paired figure, and the dist test requires it for every points entry.
+    - The ladder's `aria-label` always said the loop matched less often. It now follows the same condition as the caption.
+  - **Minor, fixed:**
+    - Every worded claim on the page is now a guard in `lib/claims.ts`, run when the page builds. Each claim is tested to fail when its figures move.
+      - Q2: "no better than guessing".
+      - Q4: "an interval that includes zero".
+      - Q7: "worse", "still mattered", "about the same" (S3.2's registered ±10% band, decision 0145) and "most of the lead came from the tools step".
+      - The ladder's caption says "at about the same bill" only while that claim holds.
+    - Q5's pairs keep every pair tied with the fifth, so six are shown: 7 and 7 cases.
+    - The section reader no longer lets another block's header line ("fatal: …:") open a section. A missing overall block now fails instead of being read from the fatal block, and a test pins this.
+    - Q4's caption says photo-only entries are counted apart and left out of the 16,790. A ground-coloured gap separates the bar's parts.
+  - **Minor, logged:**
+    - Q8's counts line reads "Since launch:", not "Since 23 Sep 2026:". It keeps the board's own words (`totalsLine`, step 2), and the date may mislead once the board launches.
+    - The dimmed ladder bars (`--bar-dim`) sit below 3:1 against the ground (WCAG 1.4.11). Dimming is the intent, and every figure is printed as text and in the hidden table. This goes to Andy's accessibility pass (step 7), not changed here.

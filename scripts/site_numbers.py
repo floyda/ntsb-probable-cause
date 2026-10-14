@@ -48,9 +48,13 @@ _PCT_CI = rf"{_V}% \[{_L}%, {_H}%\], n={_N}"
 _PTS_CI = rf"{_V} points \[{_L}, {_H}\], n={_N}"
 # The eval report's paired line: "+14.3% [+9.2%, +19.3%] on n=336 cases" (points, not a rate)
 _PAIRED = rf"^- occurrence top-1: {_V}% \[{_L}%, {_H}%\] on n={_N} cases$"
-# A section ends at a blank line, a "[name]" block, a heading, or the next block's own header
-# line ("fatal: paired difference ... cases:"), once it holds a line.
-_SECTION_END = re.compile(r"^$|^\[|^#|^[^-].*:$")
+# A section ends at a blank line, a "[name]" block or a heading once it holds a line. Another
+# block's header line ("fatal: paired difference ... cases:") ends it at once: only the section's
+# own "paired difference ...:" line may open it, so a missing overall block is never read from
+# the fatal block beneath (review, 2026-10-14).
+_SECTION_END = re.compile(r"^$|^\[|^#")
+_BLOCK_HEADER = re.compile(r"^[^-].*:$")
+_OPENING = re.compile(r"^paired difference ")
 
 _LUNA = "openai/gpt-6-luna"
 _EVAL = "apps/eval"
@@ -129,7 +133,8 @@ def _lines(results_dir: Path, source: _Source, key: str) -> list[str]:
         raise ExtractError(key, source.file, source.section, len(starts))
     body: list[str] = []
     for line in lines[starts[0] + 1 :]:
-        if _SECTION_END.search(line) and body:
+        opening = not body and _OPENING.search(line)
+        if (_BLOCK_HEADER.search(line) and not opening) or (_SECTION_END.search(line) and body):
             break
         body.append(line)
     return body
@@ -273,7 +278,8 @@ _SPECS: tuple[_Spec, ...] = (
         "heldout-400",
         _LUNA,
         f"{_EVAL} (ntsb-eval report)",
-        "reading the docket (arm B) against the one-shot ceiling: occurrence top-1, paired",
+        "S2.4's fixed pipeline, before its coding tools, against S2.4's one-shot ceiling: "
+        "occurrence top-1, paired",
     ),
     _Spec(
         "q4.v2_gain",
@@ -388,9 +394,12 @@ def _pairs(results_dir: Path) -> list[dict[str, str | int]]:
     rows = [m for line in _lines(results_dir, source, key) if (m := re.search(_PAIR_LINE, line))]
     if len(rows) < _PAIRS_SHOWN:
         raise ExtractError(key, source.file, _PAIR_LINE, len(rows))
+    # A pair tied with the fifth is shown too, so file order never decides which (review).
+    cut = int(rows[_PAIRS_SHOWN - 1].group("count"))
     return [
         {"count": int(m.group("count")), "ntsb": m.group("ntsb"), "agent": m.group("agent")}
-        for m in rows[:_PAIRS_SHOWN]
+        for m in rows
+        if int(m.group("count")) >= cut
     ]
 
 

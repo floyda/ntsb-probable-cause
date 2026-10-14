@@ -1,0 +1,78 @@
+// The Path page's worded claims (spec §7.2), each tied to the figures it rests on. A page that
+// says "no better than guessing" or "about the same bill" must stop building when a re-run
+// makes that untrue, rather than print it (plan Review Focus 5; review, 2026-10-14).
+import { entry, NumbersError, type Entry } from "./numbers";
+
+/** How far two bills may differ and still be "about the same": S3.2's registered band (0145). */
+export const SAME_BILL_BAND = 0.1;
+
+export interface Claim {
+    id: string;
+    says: string;
+    holds: boolean;
+}
+
+function within(e: Entry, x: number): boolean {
+    return e.low !== null && e.high !== null && e.low <= x && x <= e.high;
+}
+
+function below(e: Entry, x: number): boolean {
+    return e.high !== null && e.high < x;
+}
+
+/** Every claim, judged on the entries `get` returns (the numbers file, unless a test passes one). */
+export function pathClaims(get: (key: string) => Entry = entry): Claim[] {
+    const loopBill = get("ladder.loop.billed").value;
+    const fixedBill = get("ladder.fixed.billed").value;
+    const vsFixed = get("q7.loop_vs_fixed").value;
+    const vsAnswer = get("q7.loop_vs_answer").value;
+    return [
+        {
+            id: "q2.no_better_than_guessing",
+            says: "the case record alone did no better than guessing",
+            holds: within(get("ladder.no_docket.top1"), get("ladder.baseline.top1").value),
+        },
+        {
+            id: "q4.not_shown_to_help",
+            says: "transcription's interval includes zero",
+            holds: within(get("q4.v2_gain"), 0),
+        },
+        {
+            id: "q7.loop_worse",
+            says: "the loop was worse than the fixed pipeline on the first code",
+            holds: below(get("q7.loop_vs_fixed"), 0),
+        },
+        {
+            id: "q7.docket_mattered",
+            says: "without the docket the loop did worse",
+            holds: below(get("q7.no_docket_loss"), 0),
+        },
+        {
+            id: "q7.same_bill",
+            says: "the loop's bill was about the same as the pipeline's",
+            holds: Math.abs(loopBill / fixedBill - 1) <= SAME_BILL_BAND,
+        },
+        {
+            id: "q7.lead_from_tools",
+            says: "most of the pipeline's lead came after its first answer",
+            holds: vsFixed < 0 && Math.abs(vsAnswer) < Math.abs(vsFixed) / 2,
+        },
+    ];
+}
+
+/** Throws, naming every claim that no longer holds. */
+export function assertPathClaims(get: (key: string) => Entry = entry): void {
+    const broken = pathClaims(get).filter((c) => !c.holds);
+    if (broken.length > 0) {
+        throw new NumbersError(
+            `the Path page's wording no longer fits its figures: ${broken.map((c) => `${c.id} (${c.says})`).join("; ")}`,
+        );
+    }
+}
+
+/** Whether one claim holds, for a component whose wording depends on it. */
+export function claimHolds(id: string, get: (key: string) => Entry = entry): boolean {
+    const claim = pathClaims(get).find((c) => c.id === id);
+    if (claim === undefined) throw new NumbersError(`no claim ${id}`);
+    return claim.holds;
+}

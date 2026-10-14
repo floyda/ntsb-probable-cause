@@ -4,7 +4,7 @@ import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exportDir, loadExport } from "../src/lib/export";
 import { LADDER } from "../src/lib/ladder";
-import { count, countOf, numbers, points, usd, withInterval } from "../src/lib/numbers";
+import { count, countOf, numbers, pointsOn, usd, withInterval } from "../src/lib/numbers";
 import { costLabel } from "../src/lib/trail";
 import { differenceSentence } from "../src/lib/words";
 
@@ -229,7 +229,7 @@ describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
             e.unit === "percent"
                 ? withInterval(key)
                 : e.unit === "points"
-                  ? points(key)
+                  ? pointsOn(key) // a paired figure always with its cases (§12 item 9)
                   : e.unit === "usd"
                     ? usd(key)
                     : e.n === null

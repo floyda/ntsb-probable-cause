@@ -8,16 +8,17 @@ import PageKinds from "../components/PageKinds.astro";
 import PathStop from "../components/PathStop.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
-import { caseCount, containsValue, countOf, list, points, usd, withInterval } from "../lib/numbers";
+import { assertPathClaims } from "../lib/claims";
+import { countOf, list, pointsOn, usd, withInterval } from "../lib/numbers";
 import { repoUrl } from "../lib/words";
 
 const { index } = loadExport(exportDir());
 
 // Question 2 says "no better than guessing" only while the no-docket interval holds the
 // baseline's rate (plan Review Focus 5); a re-run that breaks this stops the build.
-if (!containsValue("ladder.no_docket.top1", "ladder.baseline.top1")) {
-    throw new Error("question 2: the case record alone is no longer level with guessing");
-}
+// Each worded claim (question 2's "no better than guessing", question 4's interval, question
+// 7's "worse" and "about the same") stops the build when its figures no longer fit it.
+assertPathClaims();
 
 const R = "docs/results/";
 const pairs = list("q5.pairs");
@@ -83,9 +84,10 @@ const pairs = list("q5.pairs");
         scripts={["apps/eval/"]}
     >
         <p>
-            Yes. It is the largest gain on the ladder. Against the one-shot ceiling on the same{" "}
-            {caseCount("q3.docket_gain")} cases, reading the docket raised the first-code match by{" "}
-            {points("q3.docket_gain")}.
+            Yes. It is the largest gain on the ladder. It was first measured in S2.4, with the fixed
+            pipeline's first version, before its coding tools: against the one-shot ceiling, the
+            same model answering from the case record alone, reading the docket raised the
+            first-code match by {pointsOn("q3.docket_gain")}.
         </p>
         <Ladder id="ladder-q3" lit={["fixed"]} sentence={false} slot="figure" />
     </PathStop>
@@ -100,9 +102,8 @@ const pairs = list("q5.pairs");
     >
         <p>
             On development cases it was not shown to help. Adding the words read from page images
-            changed the first-code match by {points("q4.v2_gain")} on {caseCount("q4.v2_gain")}{" "}
-            cases, an interval that includes zero, and transcribing the pages cost far more than
-            answering (decision{" "}
+            changed the first-code match by {pointsOn("q4.v2_gain")}, an interval that includes
+            zero, and transcribing the pages cost far more than answering (decision{" "}
             <a
                 href={repoUrl(
                     "docs/decisions/0120-qwen-stays-and-transcription-is-off-by-default.md",
@@ -194,27 +195,27 @@ const pairs = list("q5.pairs");
         <p>
             No. On held-out cases the loop was worse on the first code, the top three and the
             findings. Against the fixed pipeline its first-code match was{" "}
-            {points("q7.loop_vs_fixed")} on {caseCount("q7.loop_vs_fixed")} cases.
+            {pointsOn("q7.loop_vs_fixed")}.
         </p>
         <p>
             Its bill was about the same: {usd("ladder.loop.billed")} against the pipeline's{" "}
             {usd("ladder.fixed.billed")}.
         </p>
         <p>
-            Reading the docket still mattered: the same loop without it was{" "}
-            {points("q7.no_docket_loss")} on the first code. The loop read every offered document in{" "}
+            Reading the docket still mattered: on the first code, the same loop without it was{" "}
+            {pointsOn("q7.no_docket_loss")}. The loop read every offered document in{" "}
             {countOf("q7.read_all")} cases that had documents on offer, and skipped most often on
             large fatal dockets.
         </p>
         <p>
             Most of the pipeline's lead came from its coding-tools step. Against the pipeline's
-            first answer alone, before that step, the loop was {points("q7.loop_vs_answer")}{" "}
+            first answer alone, before that step, the loop was {pointsOn("q7.loop_vs_answer")}{" "}
             (exploratory).
         </p>
         <p class="band">
             How far the same agent moves when run again: two identical runs on development cases
-            differed by {points("q7.noise_band")}. This was measured on development cases, so it is
-            not drawn on the ladder.
+            differed by {pointsOn("q7.noise_band")}. This was measured on development cases, so it
+            is not drawn on the ladder.
         </p>
     </PathStop>
 
