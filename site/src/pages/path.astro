@@ -47,7 +47,7 @@ const pairs = list("q5.pairs");
         id="answer-key"
         n={1}
         question="Is there an answer key nobody had to write?"
-        decision="Score every answer against the NTSB's own codes, exactly, so the headline needs no judge."
+        decision="Score every answer by exact match against the NTSB's own codes, with no person or model grading it."
         results={[`${R}s1-bars.txt`]}
         scripts={["apps/eval/"]}
     >
@@ -222,7 +222,7 @@ const pairs = list("q5.pairs");
         id="newly-closed"
         n={8}
         question="Does it hold on newly closed cases?"
-        decision="Each case the NTSB closes is coded once, at closure, by version 1, and set beside the NTSB's codes, counted and never scored as a percentage."
+        decision="Code each newly closed case once, at closure, and show it beside the NTSB's codes as counts, never a percentage."
     >
         <p>The board answers this in public.</p>
         <ClosuresStrip rows={index.rows} slot="figure" />

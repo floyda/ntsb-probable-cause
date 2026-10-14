@@ -313,3 +313,8 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - The ladder's cost line reads "billed $2.06". Step 1 reads "no model cost". Step 2 reads "bill not recorded", because S3.2's claims file holds only its list price.
   - Question 7 drops the list-price figures and the clause "only through the provider's discount on cached prompts", which needs them. It reads "Its bill was about the same: $2.06 against the pipeline's $2.13."
   - The spec's §7.1 has a dated note.
+- **Task 6, choice 2:** the sentence under the ladder is kept as built ("keep for now"). A shorter wording that uses "the NTSB's" stays an option for the polish pass.
+- **Task 6, choice 3:** Andy approved the decisions for questions 1, 6 and 8.
+  - Q1: "Score every answer by exact match against the NTSB's own codes, with no person or model grading it."
+  - Q6: unchanged.
+  - Q8: "Code each newly closed case once, at closure, and show it beside the NTSB's codes as counts, never a percentage."
