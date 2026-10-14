@@ -156,3 +156,7 @@ Built to choice 4's answer. The first option is described here; the second adds 
   - The figure is three bars, one per checkpoint, each of all 394 cases with the right ones dark, and each step's fixed and broken counts between them. Hidden tables carry the same counts.
 - **Task 5:** built along the way in Tasks 1 to 4, as each figure's checks went in with it: question 1's cause word for word, no other case number, question 6's sentence and codes, and every new entry on the page in its format.
 - **Task 6, names check (Andy, 2026-10-14):** question 1's cause and question 6's sentence are clear of names.
+- **Task 6, preview choices (Andy, 2026-10-14):**
+  1. Question 1 stays exact: the NTSB's finding labels as published (A).
+  2. Question 5 keeps both tables, S3's nine rows included; it may be shortened later (A).
+  3. Question 6 shows "the top 50%": the commonest first codes until they cover at least half the sentence's cases, keeping any code tied with the last one shown. That is 5 codes, covering 17 of 33 cases. The other 13 codes, covering 16 cases, sit behind a disclosure, "And 13 more codes, across the other 16 cases", so nothing is removed from the page. The rule is `lib/first-codes.ts`, tested, and both tables are `FirstCodesTable.astro` on one scale.

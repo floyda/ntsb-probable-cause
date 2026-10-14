@@ -1,0 +1,84 @@
+---
+// One table of question 6's first codes, each with a bar for its cases (FirstCodes.astro).
+interface Props {
+    id: string;
+    caption: string;
+    rows: { count: number; label: string }[];
+    /** The largest count of the whole list, so both tables share one scale. */
+    most: number;
+}
+
+const { id, caption, rows, most } = Astro.props;
+---
+
+<div class="frame" tabindex="0" role="region" aria-labelledby={id}>
+    <table>
+        <caption id={id} class="vh">
+            {caption}
+        </caption>
+        <thead>
+            <tr>
+                <th scope="col">Cases</th>
+                <th scope="col">
+                    First code <span class="term">· phase / event</span>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows.map((c) => (
+                <tr>
+                    <td class="n">
+                        <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
+                            <rect x="0" y="0" width={(c.count / most) * 100} height="10" />
+                        </svg>
+                        {c.count}
+                    </td>
+                    <td>{c.label}</td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+</div>
+
+<style>
+    .frame {
+        overflow-x: auto;
+    }
+    .frame:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+    table {
+        border-collapse: collapse;
+        font-size: 0.93rem;
+        width: 100%;
+    }
+    th,
+    td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.25rem 0.6rem 0.25rem 0;
+        border-bottom: 1px solid var(--rule);
+    }
+    th {
+        color: var(--ink-muted);
+    }
+    .n {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        width: 6rem;
+    }
+    .n svg {
+        display: inline-block;
+        width: 3.5rem;
+        height: 0.7rem;
+        margin-right: 0.4rem;
+        vertical-align: baseline;
+    }
+    rect {
+        fill: var(--bar);
+    }
+    .term {
+        font-weight: 400;
+    }
+</style>
