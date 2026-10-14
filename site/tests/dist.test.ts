@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { exampleCase } from "../src/lib/example-case";
 import { exportDir, loadExport } from "../src/lib/export";
 import { LADDER } from "../src/lib/ladder";
 import { count, countOf, numbers, pointsOn, usd, withInterval } from "../src/lib/numbers";
@@ -250,6 +251,20 @@ describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
             expect(existsSync(target), path).toBe(true);
             expect(statSync(target).isDirectory(), path).toBe(kind === "tree");
         }
+    });
+
+    it("shows question 1's case word for word, and no other case number but the strip's", () => {
+        const example = exampleCase();
+        const text = visibleText(html());
+        expect(text).toContain(example.cause ?? "missing");
+        for (const code of example.occurrence) expect(text).toContain(code.label);
+        for (const f of example.findings) expect(text).toContain(f.label);
+        // Case numbers on the page: question 1's, and the board's own closed cases in the strip.
+        const { index } = loadExport(exportDir());
+        const allowed = new Set([example.case_number, ...index.rows.map((r) => r.case_number)]);
+        const found = text.match(/\b[A-Z]{3}\d{2}[A-Z]{2}\d{3}[A-Z]?\b/g) ?? [];
+        expect(found).toContain(example.case_number);
+        for (const n of found) expect(allowed.has(n), n).toBe(true);
     });
 
     it("gives the ladder's data table all four steps", () => {

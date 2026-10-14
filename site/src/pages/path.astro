@@ -3,6 +3,7 @@
 // questions, each with its measured answer, the decision taken and its sources, then what could
 // come next. Every figure is read from the numbers file by key; none is typed here.
 import ClosuresStrip from "../components/ClosuresStrip.astro";
+import ExampleCase from "../components/ExampleCase.astro";
 import Ladder from "../components/Ladder.astro";
 import PageKinds from "../components/PageKinds.astro";
 import PathStop from "../components/PathStop.astro";
@@ -50,12 +51,13 @@ const pairs = list("q5.pairs");
         question="Is there an answer key nobody had to write?"
         decision="Score every answer by exact match against the NTSB's own codes, with no person or model grading it."
         results={[`${R}s1-bars.txt`]}
-        scripts={["apps/eval/"]}
+        scripts={["apps/eval/", "scripts/site_example_case.py"]}
     >
         <p>
             Yes. The NTSB codes every closed case: occurrence codes for what happened, in order,
             finding codes for why, and a one- or two-sentence probable cause.
         </p>
+        <ExampleCase slot="figure" />
     </PathStop>
 
     <PathStop

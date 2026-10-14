@@ -62,15 +62,15 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
 
 ## Task 1: Question 1's case
 
-- [ ] **Step 1: Failing tests** in `tests/test_site_example_case.py`:
+- [x] **Step 1: Failing tests** in `tests/test_site_example_case.py`:
   - the written file holds the fixture's probable cause word for word, its event date, and its occurrence codes in the NTSB's order, each with its table label;
   - its findings are listed with whether each is in the probable cause;
   - the case is development split and non-fatal, or the script refuses it;
   - the names check: no capitalised word outside a sentence start and the allow list;
   - the committed `site/data/example-case.json` is current.
-- [ ] **Step 2: The script.** `scripts/site_example_case.py --case <number>` reads `tests/fixtures/records/<number>.json` through the project's record parsing (never a second assembler, rule 1), labels codes from the code tables, and writes `site/data/example-case.json`. Status paragraph (decision 0059): free, offline, reads one committed fixture.
-- [ ] **Step 3: `ExampleCase.astro`.** The case number linked to its NTSB final report (`caseReportUrl`), the date, "no injuries", the cause, the occurrence codes in order (event words first, the full label in small type, as on the board), and the findings in two groups: in the probable cause, and other findings.
-- [ ] **Step 4:** `make check`; commit `S5 step 4b Task 1: question 1's case, from a committed fixture`.
+- [x] **Step 2: The script.** `scripts/site_example_case.py --case <number>` reads `tests/fixtures/records/<number>.json` through the project's record parsing (never a second assembler, rule 1), labels codes from the code tables, and writes `site/data/example-case.json`. Status paragraph (decision 0059): free, offline, reads one committed fixture.
+- [x] **Step 3: `ExampleCase.astro`.** The case number linked to its NTSB final report (`caseReportUrl`), the date, "no injuries", the cause, the occurrence codes in order (event words first, the full label in small type, as on the board), and the findings in two groups: in the probable cause, and other findings.
+- [x] **Step 4:** `make check`; commit `S5 step 4b Task 1: question 1's case, from a committed fixture`.
 
 ## Task 2: Question 5's rerun
 
@@ -132,3 +132,8 @@ Built to choice 4's answer. The first option is described here; the second adds 
 - **First code:** the NTSB's first occurrence code for a case, its defining event; the one the headline scores.
 - **Fixed / broken:** a case whose first code went from not matching the NTSB's to matching it (fixed), or the other way round (broken), between two of the agent's beliefs.
 - **Derived run:** a run folder made by a post-pass over an earlier run (`-tools`, `-check-luna`); S3's full fixed pipeline is the run ending `-tools-check-luna`.
+- **Task 1 (2026-10-14):**
+  - Labels follow S4's board rule (`live/board.py` on S4's branch, not yet merged): an occurrence is "phase / event" and a finding "item - modifier", so question 1 reads like the board. The rule is repeated in the script, with a comment pointing to S4's code.
+  - The names check allows only "NTSB", "FAA", "VFR", "IFR", "VMC" and "IMC" mid-sentence. The plan's "aircraft and part names from the code tables" was not needed for this cause.
+  - `make site-example-case` regenerates the file.
+  - The dist test also checks that the page names no case number except question 1's and the board's own closed cases in question 8's strip.

@@ -1,0 +1,102 @@
+---
+// Question 1's figure (spec §7.4): one closed, non-fatal development case as the NTSB
+// published it, its probable cause and its codes, word for word from a redacted fixture.
+import { exampleCase, injuryWords } from "../lib/example-case";
+import { caseReportUrl, closedLong } from "../lib/words";
+
+const c = exampleCase();
+const report = caseReportUrl(c.mkey);
+const inCause = c.findings.filter((f) => f.in_cause);
+const other = c.findings.filter((f) => !f.in_cause);
+---
+
+<figure class="example" aria-labelledby="example-caption">
+    <figcaption id="example-caption">
+        One closed case as the NTSB published it:{" "}
+        {report === null ? c.case_number : <a href={report}>{c.case_number}</a>},{" "}
+        {closedLong(c.event_date)}. {injuryWords(c)}.
+    </figcaption>
+    <section>
+        <h3>The probable cause</h3>
+        {c.cause === null ? <p>Not published.</p> : <blockquote>{c.cause}</blockquote>}
+    </section>
+    <section>
+        <h3>
+            What happened <span class="term">· NTSB occurrence codes, in order</span>
+        </h3>
+        <ol>
+            {c.occurrence.map((code) => (
+                <li>{code.label}</li>
+            ))}
+        </ol>
+    </section>
+    <section>
+        <h3>
+            Why it happened <span class="term">· NTSB findings</span>
+        </h3>
+        <h4>In the probable cause</h4>
+        {inCause.length > 0 ? (
+            <ul>
+                {inCause.map((f) => (
+                    <li>{f.label}</li>
+                ))}
+            </ul>
+        ) : (
+            <p>None.</p>
+        )}
+        {other.length > 0 && (
+            <>
+                <h4>Other findings</h4>
+                <ul>
+                    {other.map((f) => (
+                        <li>{f.label}</li>
+                    ))}
+                </ul>
+            </>
+        )}
+    </section>
+</figure>
+
+<style>
+    .example {
+        margin: 0;
+        display: grid;
+        gap: 0.75rem;
+        padding: 1rem;
+        border: 1px solid var(--rule);
+    }
+    figcaption {
+        color: var(--ink-muted);
+    }
+    section {
+        display: grid;
+        gap: 0.35rem;
+    }
+    h3 {
+        font-size: 1rem;
+        margin: 0;
+    }
+    h4 {
+        font-size: 0.95rem;
+        margin: 0.25rem 0 0;
+        color: var(--ink-muted);
+    }
+    blockquote {
+        margin: 0;
+        padding-left: 0.75rem;
+        border-left: 3px solid var(--rule);
+    }
+    ol,
+    ul {
+        margin: 0;
+        padding-left: 1.2rem;
+    }
+    p {
+        margin: 0;
+    }
+    .term {
+        color: var(--ink-muted);
+        font-size: 0.92em;
+        font-weight: 400;
+    }
+</style>
