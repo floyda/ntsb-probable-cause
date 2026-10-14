@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exportDir, loadExport } from "../src/lib/export";
+import { costLabel } from "../src/lib/trail";
 import { differenceSentence } from "../src/lib/words";
 
 const DIST = join(process.cwd(), "dist");
@@ -127,6 +128,44 @@ describe.skipIf(!built)("checks over every built page (needs `pnpm run build` fi
                 .map((m) => m[0])
                 .filter((m) => (m.match(/[0-9]/g) ?? []).length >= 2);
             expect(found).toEqual([]);
+        },
+    );
+});
+
+describe.skipIf(!built)("the trail pages (needs `pnpm run build` first)", () => {
+    const { cases } = loadExport(exportDir());
+    const withTrail = [...cases.values()].filter((k) => k.trail !== null);
+    const trailText = (n: string): string =>
+        visibleText(readFileSync(join(DIST, "case", n, "trail", "index.html"), "utf8"));
+
+    it("exist exactly for the cases that have a trail", () => {
+        const expected = withTrail.map((k) => k.case_number).sort();
+        const found = [...cases.keys()]
+            .filter((n) => existsSync(join(DIST, "case", n, "trail", "index.html")))
+            .sort();
+        expect(found).toEqual(expected);
+        const caseDir = join(DIST, "case");
+        const stray = readdirSync(caseDir).filter(
+            (n) => existsSync(join(caseDir, n, "trail")) && !expected.includes(n),
+        );
+        expect(stray).toEqual([]);
+    });
+
+    it.each(withTrail.map((k) => k.case_number))(
+        "%s shows every belief's cause and the total cost",
+        (n) => {
+            const kase = cases.get(n);
+            if (kase?.trail == null) throw new Error(`no trail for ${n}`);
+            const text = trailText(n);
+            for (const belief of kase.trail.beliefs) expect(text).toContain(belief.cause);
+            expect(text).toContain(costLabel(kase.trail.total_usd));
+        },
+    );
+
+    it.each(withTrail.map((k) => k.case_number))(
+        "%s never calls the agent's notes predictions (spec §6)",
+        (n) => {
+            expect(trailText(n).toLowerCase()).not.toContain("predict");
         },
     );
 });
