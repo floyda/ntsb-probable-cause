@@ -44,10 +44,9 @@ const verdict = verdictView(kase);
                             {confidenceLabel(step.belief.confidence)}
                             {step.changed !== null && <> · {step.changed}</>}
                         </p>
-                        <details>
-                            <summary>Ellery's account of the evidence at this point</summary>
-                            <p>{step.belief.account}</p>
-                        </details>
+                        {/* Ellery's account of the evidence (belief.account) is not shown: S4's names
+                            step replaces only owner, operator and registration in prose, so a
+                            passenger's or witness's name could pass through (Andy, 2026-10-14). */}
                     </section>
                 )}
                 {step.kind === "read" && (
@@ -230,12 +229,5 @@ const verdict = verdictView(kase);
         display: flex;
         flex-wrap: wrap;
         gap: 0.25rem;
-    }
-    details summary {
-        cursor: pointer;
-        color: var(--ink-muted);
-    }
-    details p {
-        margin-top: 0.4rem;
     }
 </style>

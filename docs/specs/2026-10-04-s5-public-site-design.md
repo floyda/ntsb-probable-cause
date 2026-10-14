@@ -262,6 +262,11 @@ answers from wrong ones, so the trail shows the number plainly and makes no clai
 **The NTSB's verdict comes last**, after the agent's answer, with a line saying which belief was
 closest to it.
 
+*Note, 2026-10-14 (step 3):* S4's export also carries each belief's account of the evidence
+(`evidence_narrative`). It is **not shown** (Andy, 2026-10-14): S4's names step replaces only the
+case's owner, operator and registration in prose, so a passenger's or witness's name from a
+document could reach the page (§11). It can return behind a measured names check of its own.
+
 What the loop already records (`agent/trail.py`, `scoring/hypothesis.py`,
 `agent/schemas.py`): every belief in full (codes with probabilities, a cause statement, an
 explanation written for a non-expert, confidence, the abstain flag); for every offered document

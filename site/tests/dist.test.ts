@@ -163,6 +163,16 @@ describe.skipIf(!built)("the trail pages (needs `pnpm run build` first)", () => 
     );
 
     it.each(withTrail.map((k) => k.case_number))(
+        "%s shows no account of the evidence (Andy, 2026-10-14: not until a names check)",
+        (n) => {
+            const kase = cases.get(n);
+            if (kase?.trail == null) throw new Error(`no trail for ${n}`);
+            const text = trailText(n);
+            for (const belief of kase.trail.beliefs) expect(text).not.toContain(belief.account);
+        },
+    );
+
+    it.each(withTrail.map((k) => k.case_number))(
         "%s never calls the agent's notes predictions (spec §6)",
         (n) => {
             expect(trailText(n).toLowerCase()).not.toContain("predict");
