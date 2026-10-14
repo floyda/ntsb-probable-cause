@@ -171,16 +171,16 @@ Run: `uv run pytest tests/test_site_numbers.py --no-cov -q` — Expected: FAIL (
 
 **Interfaces — Produces:** `numbers()` (reads and checks `site/data/numbers.json`, throwing on a missing or malformed file); `entry(key): Entry` (throws on an unknown key, so a typo fails the build); `pct(key)` "23.5%"; `withInterval(key)` "23.5% [19.2%, 27.5%], 400 cases"; `points(key)` "−9.5 points [−14.0, −5.2]"; `usd(key)` "$2.06"; `oneIn(key)` "one case in four" (the nearest of one in two to one in ten); `containsValue(rangeKey, valueKey): boolean`.
 
-- [ ] **Step 1: Failing tests** for each formatter on the real file, and:
+- [x] **Step 1: Failing tests** for each formatter on the real file, and:
   - **The caveat** (Review Focus 3): `oneIn("ladder.loop.top1") === "one case in four"` and `oneIn("ladder.fixed.top1") === "one case in three"`.
   - **Question 2** (Review Focus 5): `containsValue("ladder.no_docket.top1", "ladder.baseline.top1") === true`.
   - **No typed numbers:** no file under `site/src/pages` or `site/src/components` matches `/\d%|\$\d/`.
 
   Run them and watch them fail.
-- [ ] **Step 2: Implement** `numbers.ts`. Signs use the true minus sign (−) and a plus for gains. Percentages keep one decimal, as the results files do.
-- [ ] **Step 3: The caveat.** In `index.astro`, "On {entry n} accidents it had never seen, its first code matched the investigator's in about {oneIn(loop)}. The fixed method matched in about {oneIn(fixed)}." The rest of §3.1's wording is unchanged. The step 2 deviation that typed these numbers is closed.
-- [ ] **Step 4: Run** — `pnpm --dir site run test && pnpm --dir site run build && pnpm --dir site run lint && pnpm --dir site run check`.
-- [ ] **Step 5: Commit** — `S5 step 4 Task 2: numbers on the site by key; the caveat from the numbers file`.
+- [x] **Step 2: Implement** `numbers.ts`. Signs use the true minus sign (−) and a plus for gains. Percentages keep one decimal, as the results files do.
+- [x] **Step 3: The caveat.** In `index.astro`, "On {entry n} accidents it had never seen, its first code matched the investigator's in about {oneIn(loop)}. The fixed method matched in about {oneIn(fixed)}." The rest of §3.1's wording is unchanged. The step 2 deviation that typed these numbers is closed.
+- [x] **Step 4: Run** — `pnpm --dir site run test && pnpm --dir site run build && pnpm --dir site run lint && pnpm --dir site run check`.
+- [x] **Step 5: Commit** — `S5 step 4 Task 2: numbers on the site by key; the caveat from the numbers file`.
 
 ---
 
@@ -278,3 +278,7 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - `q7.no_docket_loss` is `no-docket - loop, top-1: -8.5 points [-13.0, -3.8], n=400`, which is without minus with.
   - `run` is filled only where the file names exactly one run behind the figure. A paired figure, arm B's three-part cost and the pool counts carry `null`.
 - **Task 1: two tests beyond the plan's five.** A line matched twice fails. `first_difference`, behind `--check`, names the first stale key.
+- **Task 2 (2026-10-14): more formatters, and a refusal.**
+  - `count` ("16,790"), `countOf` ("88 of 399"), `caseCount` (an entry's `n`, for the caveat's "400 accidents", which was also typed) and `list` (question 5's pairs) are added to the plan's set.
+  - `oneIn` refuses a rate more than a fifth away from the nearest "one in N", so a re-run that moves the rate to, say, 41% fails the build instead of printing "about one case in three". This is Review Focus 3, stated as a rule rather than as today's two values only.
+  - The no-typed-number test also reads `src/layouts`, and it strips `<style>` blocks, where `width: 100%` is not a figure.
