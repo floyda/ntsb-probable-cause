@@ -24,6 +24,7 @@ describe("the Path page's claims", () => {
         ["q7.same_bill", moved("ladder.loop.billed", { value: 2.5 })],
         ["q7.lead_from_tools", moved("q7.loop_vs_answer", { value: -6.0 })],
         ["q7.path_adds_up", moved("q7.path.after", { value: 83 })],
+        ["q7.path_improves", moved("q7.path.before", { value: 90 })],
         ["q7.path_adds_up", moved("q7.path.coding.stayed_wrong", { value: 291 })],
     ])("%s fails when its figures move", (id, get) => {
         expect(claimHolds(id, get)).toBe(false);

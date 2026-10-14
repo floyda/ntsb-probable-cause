@@ -3,7 +3,7 @@
 // reading and at the answer, against the NTSB's first code, on the held-out cases it answered.
 // Each checkpoint is one bar of every case, the right ones drawn dark; between the bars, how many
 // cases each step fixed and broke. Counts only, from the numbers file; it can go either way.
-import { count, entry } from "../lib/numbers";
+import { count, entry, pointsOn } from "../lib/numbers";
 
 const value = (key: string): number => entry(`q7.path.${key}`).value;
 const cases = value("cases");
@@ -58,6 +58,12 @@ const moves: Record<string, { key: string; name: string }> = {
         {count("q7.path.no_belief_after")} cases recorded no belief after a read choice; for them,
         after reading is the same as before.
     </p>
+    {/* So the climbing bars are never read as the loop beating the pipeline (Andy, 2026-10-14);
+        "improving" is the guarded claim q7.path_improves. */}
+    <p class="compare">
+        This shows the loop improving as it works. It does not compare the loop with the fixed
+        pipeline: against that, the loop was {pointsOn("q7.loop_vs_fixed")}, as above.
+    </p>
     <div class="vh">
         <table>
             <caption>The loop's first code against the NTSB's, at three points</caption>
@@ -109,6 +115,10 @@ const moves: Record<string, { key: string; name: string }> = {
         margin: 0;
         display: grid;
         gap: 0.6rem;
+    }
+    .compare {
+        margin: 0;
+        font-weight: 700;
     }
     figcaption,
     .note {

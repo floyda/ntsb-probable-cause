@@ -68,6 +68,11 @@ export function pathClaims(get: (key: string) => Entry = entry): Claim[] {
             holds: carries("reading", "before", "after") && carries("coding", "after", "answer"),
         },
         {
+            id: "q7.path_improves",
+            says: "question 7's figure: the loop improves from each point to the next",
+            holds: n("before") < n("after") && n("after") < n("answer"),
+        },
+        {
             id: "q7.lead_from_tools",
             says: "most of the pipeline's lead came after its first answer",
             holds: vsFixed < 0 && Math.abs(vsAnswer) < Math.abs(vsFixed) / 2,

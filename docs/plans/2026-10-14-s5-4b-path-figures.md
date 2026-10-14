@@ -105,7 +105,7 @@ Built to choice 4's answer. The first option is described here; the second adds 
 ## Task 6: Preview (Controller)
 
 - [x] **Step 1:** Andy reads question 1's cause and question 6's sentence for names before anything is pushed.
-- [ ] **Step 2:** Phone and desktop screenshots, light and dark, with the choices for his eye.
+- [x] **Step 2:** Phone and desktop screenshots, light and dark, with the choices for his eye.
 - [ ] **Step 3:** Record his answers; run the final review and its fix pass; push.
 
 ---
@@ -160,3 +160,4 @@ Built to choice 4's answer. The first option is described here; the second adds 
   1. Question 1 stays exact: the NTSB's finding labels as published (A).
   2. Question 5 keeps both tables, S3's nine rows included; it may be shortened later (A).
   3. Question 6 shows "the top 50%": the commonest first codes until they cover at least half the sentence's cases, keeping any code tied with the last one shown. That is 5 codes, covering 17 of 33 cases. The other 13 codes, covering 16 cases, sit behind a disclosure, "And 13 more codes, across the other 16 cases", so nothing is removed from the page. The rule is `lib/first-codes.ts`, tested, and both tables are `FirstCodesTable.astro` on one scale.
+  4. Question 7 keeps its figure and adds one line (A): "This shows the loop improving as it works. It does not compare the loop with the fixed pipeline: against that, the loop was −9.5 points [−14.0, −5.2] on 400 cases, as above." "Improving" is the guarded claim `q7.path_improves` (before < after < the answer), tested to fail.
