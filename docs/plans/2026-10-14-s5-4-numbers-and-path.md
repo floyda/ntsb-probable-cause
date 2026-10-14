@@ -255,8 +255,8 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
 
 ## Task 6: Preview (Controller)
 
-- [ ] **Step 1:** Screenshots of `/path/` at 390 × 844 and 1280 × 900, in light and dark, and of the first page's caveat. Look at each.
-- [ ] **Step 2:** Send them to Andy with the choices for his eye:
+- [x] **Step 1:** Screenshots of `/path/` at 390 × 844 and 1280 × 900, in light and dark, and of the first page's caveat. Look at each.
+- [x] **Step 2:** Send them to Andy with the choices for his eye:
   - the ladder's drawing and its cost labels;
   - the sentence under the ladder;
   - each question's answer and decision as worded;
@@ -324,3 +324,4 @@ The four steps, in order (§7.1): "1. No model · always guess the commonest cod
   - Q4's labels are now "image only: no text to read", since the count cannot tell a scan from a photograph, and "text and image: text readable".
   - Q5's column reads "The fixed pipeline put first", since the counts are S2.6's arm B, not Ellery's. The rerun on S3's runs moves to step 4b.
   - Q8's counts line shows each result's mark beside its count, so it doubles as the strip's key.
+- **Task 6, choice 6:** Andy kept "What could come next" as built. The plainer wording proposed for each item was declined.
