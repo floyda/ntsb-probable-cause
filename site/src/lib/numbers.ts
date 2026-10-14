@@ -17,16 +17,20 @@ export interface Entry {
     sample: string;
     model: string;
     run: string | null;
+    /** The commit in the run's name, which the run started from (format 3). */
+    run_commit: string | null;
     results_file: string;
+    /** The commit that last changed the results file (format 3). */
+    recorded_in: string;
     script: string;
     label: string;
 }
 
 export interface Numbers {
-    format: "site-numbers/2";
+    format: "site-numbers/3";
     entries: Record<string, Entry>;
     lists: Record<string, Record<string, string | number>[]>;
-    /** A figure's words read from a results file (format 2): question 6's one sentence. */
+    /** A figure's words read from a results file (format 2 on): question 6's one sentence. */
     texts: Record<string, string>;
 }
 
@@ -48,10 +52,11 @@ function checkEntry(key: string, raw: unknown): Entry {
         isNumberOrNull(e["n"]) &&
         typeof e["unit"] === "string" &&
         UNITS.includes(e["unit"]) &&
-        ["sample", "model", "results_file", "script", "label"].every(
+        ["sample", "model", "results_file", "recorded_in", "script", "label"].every(
             (f) => typeof e[f] === "string",
         ) &&
-        isStringOrNull(e["run"]);
+        isStringOrNull(e["run"]) &&
+        isStringOrNull(e["run_commit"]);
     if (!ok) throw new NumbersError(`numbers.json: entry ${key} is malformed`);
     return raw as Entry;
 }
@@ -59,8 +64,8 @@ function checkEntry(key: string, raw: unknown): Entry {
 /** Checks a parsed numbers file; throws NumbersError on another format or a malformed entry. */
 export function parseNumbers(raw: unknown): Numbers {
     const file = raw as Record<string, unknown> | null;
-    if (file === null || typeof file !== "object" || file["format"] !== "site-numbers/2") {
-        throw new NumbersError("numbers.json: not a site-numbers/2 file");
+    if (file === null || typeof file !== "object" || file["format"] !== "site-numbers/3") {
+        throw new NumbersError("numbers.json: not a site-numbers/3 file");
     }
     const parts = [file["entries"], file["lists"], file["texts"]];
     if (parts.some((p) => p === null || typeof p !== "object")) {

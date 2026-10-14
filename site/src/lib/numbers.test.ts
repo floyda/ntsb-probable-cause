@@ -70,18 +70,31 @@ describe("the file's shape", () => {
         ).toThrow(NumbersError);
         expect(() =>
             parseNumbers({
-                format: "site-numbers/2",
+                format: "site-numbers/3",
                 entries: { a: { value: "1" } },
                 lists: {},
                 texts: {},
             }),
         ).toThrow(/a/);
-        expect(() => parseNumbers({ format: "site-numbers/2", entries: {}, lists: {} })).toThrow(
+        expect(() => parseNumbers({ format: "site-numbers/3", entries: {}, lists: {} })).toThrow(
             /texts/,
         );
         expect(() =>
-            parseNumbers({ format: "site-numbers/2", entries: {}, lists: {}, texts: { t: 1 } }),
+            parseNumbers({ format: "site-numbers/3", entries: {}, lists: {}, texts: { t: 1 } }),
         ).toThrow(/text t/);
+    });
+    it("carries each entry's commits (format 3)", () => {
+        expect(entry("ladder.loop.top1").run_commit).toBe("e0dc881");
+        expect(entry("q6.twins").run_commit).toBeNull();
+        expect(entry("q6.twins").recorded_in).toMatch(/^[0-9a-f]{40}$/);
+        const loop = structuredClone(entry("ladder.loop.top1")) as unknown as Record<
+            string,
+            unknown
+        >;
+        delete loop["recorded_in"];
+        expect(() =>
+            parseNumbers({ format: "site-numbers/3", entries: { l: loop }, lists: {}, texts: {} }),
+        ).toThrow(/entry l/);
     });
 });
 

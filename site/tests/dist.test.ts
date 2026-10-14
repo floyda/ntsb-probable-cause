@@ -221,9 +221,11 @@ describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
     });
 
     // Every entry in the numbers file is on the page, formatted as numbers.ts formats it, so a
-    // figure cannot be dropped or retyped without this failing (spec §17.3).
+    // figure cannot be dropped or retyped without this failing (spec §17.3). The history and
+    // limits entries are the Methods page's alone (spec §9 items 6 and 7; S5 step 5).
     const { entries } = numbers();
-    it.each(Object.keys(entries))("shows %s as the numbers file has it", (key) => {
+    const onPath = Object.keys(entries).filter((k) => !/^(history|limits)\./.test(k));
+    it.each(onPath)("shows %s as the numbers file has it", (key) => {
         const e = entries[key];
         if (e === undefined) throw new Error(key);
         const shown =

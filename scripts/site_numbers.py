@@ -14,9 +14,17 @@ Why
     costs only: the list price is a budgeting estimate, and what was charged is what the site
     reports (Andy, 2026-10-14).
 
+Commits (S5 step 5; Andy, 2026-10-14, plan choice 2)
+    Each entry names ``recorded_in``, the commit that last changed its results file, so the
+    Methods page can link the file as it was; and, when it has a run, ``run_commit``, the
+    commit in the run's name, which the run started from. A results file with uncommitted
+    changes is refused (``UncommittedError``): every commit named must exist.
+
 Failures
     A pattern that matches no line, or more than one, raises ``ExtractError`` naming the
-    entry and the file, and nothing is written.
+    entry and the file, and nothing is written. A file that prints one block twice (S2.4's
+    bars print arm B's report twice) is read through a source marked ``repeated``, which
+    accepts several matches only when they read the same.
 
 Usage
     uv run python -m scripts.site_numbers           # writes site/data/numbers.json
@@ -24,10 +32,12 @@ Usage
 """
 
 import argparse
+import functools
 import json
 import re
+import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
@@ -36,6 +46,7 @@ from pydantic import BaseModel, ConfigDict
 
 _REPO = Path(__file__).resolve().parents[1]
 _RESULTS = _REPO / "docs/results"
+_REGISTRATION = _REPO / "docs/rounds/s3-registration.md"
 _OUT = _REPO / "site/data/numbers.json"
 
 _NUM = r"[+-]?\d+(?:\.\d+)?"
@@ -78,7 +89,9 @@ class Entry(BaseModel):
     sample: str
     model: str
     run: str | None
+    run_commit: str | None
     results_file: str
+    recorded_in: str
     script: str
     label: str
 
@@ -87,12 +100,12 @@ class Numbers(BaseModel):
     """The numbers file: entries by key, short lists, and texts (question 6's one sentence).
 
     Format 2 added ``texts`` (S5 step 4b): a figure's words read from a results file, never
-    typed into a page.
+    typed into a page. Format 3 (step 5) added each entry's ``run_commit`` and ``recorded_in``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    format: Literal["site-numbers/2"] = "site-numbers/2"
+    format: Literal["site-numbers/3"] = "site-numbers/3"
     entries: dict[str, Entry]
     lists: dict[str, list[dict[str, str | int]]]
     texts: dict[str, str]
@@ -106,12 +119,49 @@ class ExtractError(Exception):
         super().__init__(f"{key}: {lines} in {file} match {pattern!r}")
 
 
+class UncommittedError(Exception):
+    """A results file has uncommitted changes, or was never committed."""
+
+    def __init__(self, path: str) -> None:
+        super().__init__(f"{path} is not committed as it stands: commit it, then rebuild")
+
+
+def recorded_in(path: str) -> str:
+    """The commit that last changed ``path`` (repository-relative); refuses an uncommitted file."""
+
+    def git(*args: str) -> str:
+        return subprocess.run(  # noqa: S603 -- fixed argv, no shell
+            ["git", *args],  # noqa: S607 -- git from PATH
+            cwd=_REPO,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    if git("status", "--porcelain", "--", path):
+        raise UncommittedError(path)
+    sha = git("log", "-1", "--format=%H", "--", path)
+    if not sha:
+        raise UncommittedError(path)
+    return sha
+
+
+_RUN_COMMIT = re.compile(r"^\d{8}T\d{6}-(?P<sha>[0-9a-f]{7})-")
+
+
 @dataclass(frozen=True)
 class _Source:
-    """Where in a results file a line is looked for: the whole file, or one section."""
+    """Where in a results file a line is looked for: the whole file, or one section.
+
+    ``until`` ends the section at a matching line instead of the default rule (blank lines then
+    stay inside it); ``repeated`` accepts a section, or a line, found more than once when every
+    copy reads the same.
+    """
 
     file: str
     section: str | None = None
+    until: str | None = None
+    repeated: bool = False
 
 
 @dataclass(frozen=True)
@@ -134,20 +184,34 @@ def _lines(results_dir: Path, source: _Source, key: str) -> list[str]:
     if source.section is None:
         return lines
     starts = [i for i, line in enumerate(lines) if re.search(source.section, line)]
-    if len(starts) != 1:
+    bodies = [_body(lines[i + 1 :], source.until) for i in starts]
+    if len(starts) != 1 and not (source.repeated and starts and _same(bodies)):
         raise ExtractError(key, source.file, source.section, len(starts))
+    return bodies[0]
+
+
+def _same(copies: Sequence[object]) -> bool:
+    return all(copy == copies[0] for copy in copies)
+
+
+def _body(lines: Sequence[str], until: str | None) -> list[str]:
     body: list[str] = []
-    for line in lines[starts[0] + 1 :]:
-        opening = not body and _OPENING.search(line)
-        if (_BLOCK_HEADER.search(line) and not opening) or (_SECTION_END.search(line) and body):
-            break
+    for line in lines:
+        if until is not None:
+            if re.search(until, line):
+                break
+        else:
+            opening = not body and _OPENING.search(line)
+            ended = _SECTION_END.search(line) and body
+            if (_BLOCK_HEADER.search(line) and not opening) or ended:
+                break
         body.append(line)
     return body
 
 
 def _one(results_dir: Path, source: _Source, pattern: str, key: str) -> re.Match[str]:
     found = [m for line in _lines(results_dir, source, key) if (m := re.search(pattern, line))]
-    if len(found) != 1:
+    if len(found) != 1 and not (source.repeated and found and _same([m.string for m in found])):
         raise ExtractError(key, source.file, pattern, len(found))
     return found[0]
 
@@ -157,7 +221,7 @@ def _float(m: re.Match[str], group: str) -> float | None:
     return None if text is None else float(text)
 
 
-def _entry(results_dir: Path, spec: _Spec) -> Entry:
+def _entry(results_dir: Path, spec: _Spec, recorded: Callable[[str], str]) -> Entry:
     m = _one(results_dir, spec.source, spec.pattern, spec.key)
     value = _float(m, "value")
     if value is None:  # pragma: no cover -- every pattern names the group "value"
@@ -168,6 +232,10 @@ def _entry(results_dir: Path, spec: _Spec) -> Entry:
         if spec.run is None
         else _one(results_dir, spec.run_source or spec.source, spec.run, spec.key).group("run")
     )
+    run_commit = None if run is None else _RUN_COMMIT.search(run)
+    if run is not None and run_commit is None:
+        raise ExtractError(spec.key, spec.source.file, _RUN_COMMIT.pattern, 0)
+    results_file = f"docs/results/{spec.source.file}"
     return Entry(
         value=value,
         low=_float(m, "low"),
@@ -177,7 +245,9 @@ def _entry(results_dir: Path, spec: _Spec) -> Entry:
         sample=spec.sample,
         model=spec.model,
         run=run,
-        results_file=f"docs/results/{spec.source.file}",
+        run_commit=None if run_commit is None else run_commit.group("sha"),
+        results_file=results_file,
+        recorded_in=recorded(results_file),
         script=spec.script,
         label=spec.label,
     )
@@ -197,6 +267,16 @@ _PATH_SCRIPT = "scripts/exploratory/s5_belief_path.py"
 _PATH_RUN = r"^the loop: (?P<run>\S+)$"
 
 _RUN_LINE = r"^run (?P<run>\S+) \[complete\]$"
+# The harness report's table row for all cases: its count, then occurrence top-1.
+_ALL_ROW = rf"^\| all \| {_N} \| {_V}% \[{_L}%, {_H}%\] \|"
+_S24_UNTIL = r"^(run |against |paired |model comparison )"
+_S24_FIXED = _Source(
+    "s24-bars.txt", r"^run \S+-heldout-400-B \[complete\]$", until=_S24_UNTIL, repeated=True
+)
+_S24_CEILING = _Source(
+    "s24-bars.txt", r"^run \S+-heldout-400-ceiling \[complete\]$", until=_S24_UNTIL
+)
+_NOISE_FILE = _Source("s3-noise-floor-dev.txt", repeated=True)
 
 
 def _page_kind(slug: str, words: str) -> _Spec:
@@ -467,6 +547,92 @@ _SPECS: tuple[_Spec, ...] = (
         "scripts/s3_noise_floor.py",
         "the loop run twice, identically: occurrence top-1, paired",
     ),
+    # History (spec §9 item 6): the bars the ladder replaced.
+    _Spec(
+        "history.s1_ceiling.top1",
+        _Source("s1-bars.txt"),
+        _ALL_ROW,
+        "percent",
+        "heldout-400",
+        "openai/gpt-5.6-luna",
+        f"{_EVAL} (ntsb-eval report)",
+        "S1's one-shot ceiling, on an earlier model and stack: occurrence top-1",
+        run=_RUN_LINE,
+    ),
+    _Spec(
+        "history.s24_fixed.top1",
+        _S24_FIXED,
+        _ALL_ROW,
+        "percent",
+        "heldout-400",
+        _LUNA,
+        f"{_EVAL} (ntsb-eval report)",
+        "S2.4's fixed pipeline, reading the docket, before coding tools: occurrence top-1",
+        run=r"^run (?P<run>\S+-heldout-400-B) \[complete\]$",
+        run_source=_Source("s24-bars.txt", repeated=True),
+    ),
+    _Spec(
+        "history.s24_ceiling.top1",
+        _S24_CEILING,
+        _ALL_ROW,
+        "percent",
+        "heldout-400",
+        _LUNA,
+        f"{_EVAL} (ntsb-eval report)",
+        "S2.4's one-shot ceiling, no docket: occurrence top-1",
+        run=r"^run (?P<run>\S+-heldout-400-ceiling) \[complete\]$",
+        run_source=_Source("s24-bars.txt"),
+    ),
+    # Limits (spec §9 item 7): the cost cap and the failure counts.
+    _Spec(
+        "limits.cap",
+        _Source("s32-cap-check-dev.txt"),
+        rf"-> the \${_V} cap stands",
+        "usd",
+        "every S3.2 run",
+        "none",
+        "scripts/s32_cap_check.py",
+        "the cost cap per case, the same for every arm and part (decision 0144)",
+    ),
+    _Spec(
+        "limits.loop.failed",
+        _CLAIMS_FILE,
+        rf"^- the loop: {_V} of {_N} failed:",
+        "count",
+        "heldout-400",
+        _LUNA,
+        _CLAIMS,
+        "the loop's cases that failed, for any reason, counted as wrong",
+        run=_RUN_LINE,
+        run_source=_LOOP_BLOCK,
+    ),
+    _Spec(
+        "limits.loop.format",
+        _CLAIMS_FILE,
+        rf"^format gate, run loop: PASS -- {_V} of {_N} cases failed for format or tool reasons",
+        "count",
+        "heldout-400",
+        _LUNA,
+        _CLAIMS,
+        "the loop's cases that failed for format or tool reasons (prediction 9)",
+        run=_RUN_LINE,
+        run_source=_LOOP_BLOCK,
+    ),
+    *(
+        _Spec(
+            f"limits.noise_{run}.format",
+            _NOISE_FILE,
+            rf"^format gate, run {run}: PASS -- {_V} of {_N} cases failed for format or tool",
+            "count",
+            "dev-400",
+            _LUNA,
+            "scripts/s3_noise_floor.py",
+            f"the loop's noise-floor run {run}: cases that failed for format or tool reasons",
+            run=rf"^run {run} = (?P<run>\S+)$",
+            run_source=_Source("s3-noise-floor-dev.txt"),
+        )
+        for run in ("a", "b")
+    ),
 )
 
 _PAIR_LINE = r"^- (?P<count>\d+)  (?P<ntsb>.+?) -> (?P<agent>.+)$"
@@ -502,13 +668,80 @@ def _one_sentence_codes(results_dir: Path) -> list[dict[str, str | int]]:
     ]
 
 
-def build(results_dir: Path) -> Numbers:
-    """Read every entry from the results files under ``results_dir``."""
-    entries = {spec.key: _entry(results_dir, spec) for spec in _SPECS}
+_PREDICTIONS: Final = "s32.predictions"
+# The registration's items: "1. **Top-1** (held-out): the loop ...", wrapped onto lines indented
+# three spaces. Item 8 has no colon after its scope.
+_ITEM = re.compile(
+    r"^(?P<number>\d+)\. \*\*(?P<title>[^*]+)\*\* \((?P<scope>[^)]+)\):? (?P<text>.+)$"
+)
+_OUTCOME = re.compile(r"^P(?P<number>\d+): (?P<outcome>met|not met) -- (?P<result>.+)$")
+
+
+def _plain(markdown: str) -> str:
+    """The words of a markdown line: emphasis and code marks removed, spaces collapsed."""
+    return " ".join(markdown.replace("*", "").replace("`", "").split())
+
+
+def _predictions(results_dir: Path, registration: Path) -> list[dict[str, str | int]]:
+    """S3.2's nine predictions as registered, each with its outcome (plan step 5 choice 3).
+
+    The words are the registration's, copied, never retyped; the outcome and the line of what
+    was measured are ``s32-claims-heldout.txt``'s. Both must hold items 1 to 9.
+    """
+    lines = registration.read_text().splitlines()
+    start = lines.index("## The predictions")
+    items: list[list[str]] = []
+    for line in lines[start + 1 :]:
+        if line.startswith(("## ", "Not predicted")):
+            break
+        if re.match(r"^\d+\. ", line):
+            items.append([line])
+        elif line.startswith("   ") and items:
+            items[-1].append(line.strip())
+    parsed = [m for item in items if (m := _ITEM.match(" ".join(item)))]
+    claims = _lines(
+        results_dir, _Source(_CLAIMS_FILE.file, r"^## 8\. The predictions"), _PREDICTIONS
+    )
+    outcomes = {m["number"]: m for line in claims if (m := _OUTCOME.match(line))}
+    nine = [str(n) for n in range(1, 10)]
+    if [m["number"] for m in parsed] != nine or len(parsed) != len(items):
+        raise ExtractError(_PREDICTIONS, registration.name, _ITEM.pattern, len(parsed))
+    if sorted(outcomes, key=int) != nine:
+        raise ExtractError(_PREDICTIONS, _CLAIMS_FILE.file, _OUTCOME.pattern, len(outcomes))
+    return [
+        {
+            "number": int(m["number"]),
+            "title": _plain(m["title"]),
+            "scope": _plain(m["scope"]),
+            "text": _plain(m["text"]),
+            "outcome": outcomes[m["number"]]["outcome"],
+            "result": outcomes[m["number"]]["result"],
+        }
+        for m in parsed
+    ]
+
+
+def build(
+    results_dir: Path,
+    *,
+    recorded: Callable[[str], str] = recorded_in,
+    registration: Path = _REGISTRATION,
+) -> Numbers:
+    """Read every entry from the results files under ``results_dir``.
+
+    Args:
+        results_dir: where the results files are read from.
+        recorded: the commit that last changed a repository-relative path; ``recorded_in``
+            unless a test reads copies outside the repository.
+        registration: S3.2's registration, the predictions' words.
+    """
+    once = functools.cache(recorded)  # one git lookup per results file, not per entry
+    entries = {spec.key: _entry(results_dir, spec, once) for spec in _SPECS}
     lists = {
         "q5.pairs": _pairs(results_dir, "q5.pairs", _MISS_FILE),
         "q5.s3.pairs": _pairs(results_dir, "q5.s3.pairs", _MISS_S3_FILE),
         "q6.one.codes": _one_sentence_codes(results_dir),
+        _PREDICTIONS: _predictions(results_dir, registration),
     }
     sentence = _one(results_dir, _ONE_FILE, r"^sentence: (?P<text>.+)$", "q6.one.sentence")
     texts = {"q6.one.sentence": sentence.group("text")}

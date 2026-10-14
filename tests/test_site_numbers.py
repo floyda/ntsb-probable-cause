@@ -1,6 +1,8 @@
 """The site's numbers file (S5 spec §17.3): every number from a committed results file."""
 
 import json
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -51,14 +53,17 @@ def test_a_missing_line_fails_loudly_naming_entry_and_file(tmp_path: Path) -> No
     with pytest.raises(
         site_numbers.ExtractError, match=r"ladder\.loop\.top1.*s32-heldout-diagnosis"
     ):
-        site_numbers.build(tmp_path)
+        site_numbers.build(tmp_path, recorded=_fake_recorded)
 
 
 def test_a_changed_number_is_read_as_changed(tmp_path: Path) -> None:
     _copy_results(tmp_path)
     target = tmp_path / "s32-heldout-diagnosis.txt"
     target.write_text(target.read_text().replace("the loop top-1: 23.5%", "the loop top-1: 24.0%"))
-    assert site_numbers.build(tmp_path).entries["ladder.loop.top1"].value == 24.0
+    assert (
+        site_numbers.build(tmp_path, recorded=_fake_recorded).entries["ladder.loop.top1"].value
+        == 24.0
+    )
 
 
 def test_a_line_matched_twice_fails(tmp_path: Path) -> None:
@@ -68,7 +73,7 @@ def test_a_line_matched_twice_fails(tmp_path: Path) -> None:
     line = next(x for x in target.read_text().splitlines() if x.startswith("the loop top-1:"))
     target.write_text(target.read_text() + line + "\n")
     with pytest.raises(site_numbers.ExtractError, match=r"ladder\.loop\.top1.*2 lines"):
-        site_numbers.build(tmp_path)
+        site_numbers.build(tmp_path, recorded=_fake_recorded)
 
 
 def test_check_names_the_first_stale_key(tmp_path: Path) -> None:
@@ -90,7 +95,7 @@ def test_a_missing_overall_block_is_not_read_from_the_fatal_block(tmp_path: Path
     del lines[start + 1 : start + 5]  # the overall "paired difference" line and its three rows
     target.write_text("\n".join(lines) + "\n")
     with pytest.raises(site_numbers.ExtractError, match=r"q4\.v2_gain.*no line"):
-        site_numbers.build(tmp_path)
+        site_numbers.build(tmp_path, recorded=_fake_recorded)
 
 
 def test_ties_at_the_cut_off_are_all_shown() -> None:
@@ -138,7 +143,7 @@ def test_question_6s_counts_must_add_up(tmp_path: Path) -> None:
     target = tmp_path / "s5-one-sentence-dev.txt"
     target.write_text(target.read_text().replace("cases: 33", "cases: 34"))
     with pytest.raises(site_numbers.ExtractError, match=r"q6\.one\.codes"):
-        site_numbers.build(tmp_path)
+        site_numbers.build(tmp_path, recorded=_fake_recorded)
 
 
 def test_question_7s_belief_path_is_read_from_decision_0186s_reading() -> None:
@@ -161,3 +166,124 @@ def test_question_7s_belief_path_is_read_from_decision_0186s_reading() -> None:
     }
     assert e["q7.path.before"].run == "20261004T140804-e0dc881-heldout-400-C"
     assert e["q7.path.before"].sample == "heldout-400"
+
+
+# Step 5 (the Methods page): commits, history, limits and the predictions.
+
+_FAKE_SHA = "0" * 40
+
+
+def _fake_recorded(_path: str) -> str:
+    return _FAKE_SHA
+
+
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 -- fixed argv, no shell
+        ["git", *args],  # noqa: S607 -- git from PATH
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_every_entry_names_the_commit_that_recorded_its_file() -> None:
+    # Andy, 2026-10-14, plan step 5 choice 2: both commits, where both exist.
+    for key, entry in site_numbers.build(_RESULTS).entries.items():
+        assert re.fullmatch(r"[0-9a-f]{40}", entry.recorded_in), key
+        log = _git("log", "-1", "--format=%H", "--", entry.results_file).stdout.strip()
+        assert entry.recorded_in == log, key
+
+
+def test_a_run_entry_names_the_commit_in_its_run() -> None:
+    entries = site_numbers.build(_RESULTS).entries
+    assert entries["ladder.loop.top1"].run_commit == "e0dc881"
+    assert entries["ladder.fixed.top1"].run_commit == "dd64854"
+    assert entries["q6.twins"].run_commit is None
+    for key, entry in entries.items():
+        assert (entry.run is None) == (entry.run_commit is None), key
+
+
+# S1 (pull request 5) was squash-merged before decision 0033, so its ceiling run's commit is not
+# in main's history. GitHub keeps it through the pull request's refs (checked 2026-10-14), and
+# the Methods page says so beside the entry.
+SQUASHED_BEFORE_0033 = frozenset({"c717ab5"})
+
+
+def test_every_commit_named_is_in_the_branch_history() -> None:
+    # A commit outside main's history would be a dead link on GitHub after the merge (0033).
+    for key, entry in site_numbers.build(_RESULTS).entries.items():
+        for sha in (entry.recorded_in, entry.run_commit):
+            if sha is not None and sha not in SQUASHED_BEFORE_0033:
+                assert _git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0, key
+
+
+def test_a_results_file_with_uncommitted_changes_is_refused() -> None:
+    def dirty(path: str) -> str:
+        raise site_numbers.UncommittedError(path)
+
+    with pytest.raises(site_numbers.UncommittedError, match=r"docs/results/\S+\.txt"):
+        site_numbers.build(_RESULTS, recorded=dirty)
+
+
+def test_the_history_entries() -> None:
+    # Spec §9 item 6: the bars the ladder replaced.
+    e = site_numbers.build(_RESULTS).entries
+    s1 = e["history.s1_ceiling.top1"]
+    assert (s1.value, s1.low, s1.high, s1.n) == (10.8, 8.1, 14.2, 399)
+    assert s1.model == "openai/gpt-5.6-luna"
+    assert s1.run == "20260917T061527-c717ab5-heldout-400-ceiling"
+    fixed = e["history.s24_fixed.top1"]
+    assert (fixed.value, fixed.low, fixed.high, fixed.n) == (26.5, 22.1, 31.5, 336)
+    assert fixed.run == "20260924T185800-7071800-heldout-400-B"
+    ceiling = e["history.s24_ceiling.top1"]
+    assert (ceiling.value, ceiling.low, ceiling.high, ceiling.n) == (10.5, 7.9, 13.9, 399)
+    assert ceiling.run == "20260924T070202-05c5c5b-heldout-400-ceiling"
+
+
+def test_a_block_printed_twice_must_read_the_same_both_times(tmp_path: Path) -> None:
+    # s24-bars.txt prints arm B's report twice; a difference between the two copies is refused.
+    _copy_results(tmp_path)
+    target = tmp_path / "s24-bars.txt"
+    text = target.read_text()
+    last = text.rindex("| all | 336 | 26.5%")
+    target.write_text(text[:last] + text[last:].replace("26.5%", "26.6%", 1))
+    with pytest.raises(site_numbers.ExtractError, match=r"history\.s24_fixed\.top1"):
+        site_numbers.build(tmp_path, recorded=_fake_recorded)
+
+
+def test_the_limits_entries() -> None:
+    e = site_numbers.build(_RESULTS).entries
+    assert (e["limits.cap"].value, e["limits.cap"].unit) == (0.30, "usd")
+    assert (e["limits.loop.failed"].value, e["limits.loop.failed"].n) == (6, 400)
+    assert (e["limits.loop.format"].value, e["limits.loop.format"].n) == (4, 400)
+    assert (e["limits.noise_a.format"].value, e["limits.noise_a.format"].n) == (5, 401)
+    assert (e["limits.noise_b.format"].value, e["limits.noise_b.format"].n) == (8, 401)
+    assert e["limits.noise_a.format"].sample == "dev-400"
+
+
+def test_the_nine_predictions_are_the_registrations_words() -> None:
+    # Andy, 2026-10-14, plan step 5 choice 3: as written, copied, never retyped.
+    items = site_numbers.build(_RESULTS).lists["s32.predictions"]
+    assert [p["number"] for p in items] == list(range(1, 10))
+    registration = " ".join((_REPO / "docs/rounds/s3-registration.md").read_text().split())
+    for p in items:
+        assert str(p["text"]) in registration.replace("*", "").replace("`", ""), p["number"]
+    first = items[0]
+    assert first["title"] == "Top-1"
+    assert first["scope"] == "held-out"
+    assert str(first["text"]).startswith("the loop matches but does not beat arm B")
+    assert first["outcome"] == "not met"
+    assert str(first["result"]).startswith("top-1: the loop matches but does not beat arm B")
+    met = [p["number"] for p in items if p["outcome"] == "met"]
+    assert met == [3, 7, 8, 9]
+
+
+def test_predictions_must_be_nine_on_both_sides(tmp_path: Path) -> None:
+    _copy_results(tmp_path)
+    target = tmp_path / "s32-claims-heldout.txt"
+    target.write_text(
+        "\n".join(x for x in target.read_text().splitlines() if not x.startswith("P9:")) + "\n"
+    )
+    with pytest.raises(site_numbers.ExtractError, match=r"s32\.predictions"):
+        site_numbers.build(tmp_path, recorded=_fake_recorded)
