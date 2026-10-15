@@ -332,7 +332,7 @@ development spend rows, so a new kind does not reach it.
 
 They take numbers from the block S4 agreed on 2026-10-14, **numbers 200 to 209**, so that no record
 collides when the branches merge (S4's branch holds the records numbered 168 to 199, S5's 186
-to 189). Written 2026-10-14:
+to 189). Written 2026-10-14 (0205 to 0207 added 2026-10-15):
 
 1. [0200](../decisions/0200-a-model-may-read-development-verdicts-to-learn-coding-lessons.md):
    a model may read development verdicts to learn coding lessons, under the reading table in §5.
@@ -342,9 +342,16 @@ to 189). Written 2026-10-14:
 3. [0202](../decisions/0202-the-claude-api-for-learning-calls-paid-from-plan-credits.md): the
    Claude API, paid from plan credits, for learning calls only; Sonnet 5.5 and Haiku 5.5.
 4. [0203](../decisions/0203-the-steering-slice-and-statistics-without-it.md): the steering slice
-   `pool-steer-400`, and the statistics rebuilt without it.
+   `dev-steer-400`, and the statistics rebuilt without it. (0203 named it `pool-steer-400`;
+   [0206](../decisions/0206-the-steering-slice-is-named-dev-steer-400.md) renamed it, so that the
+   existing name guards cover it.)
 5. [0204](../decisions/0204-the-coding-test-and-the-pilots-stop-rule.md): the coding test, the
    agreement check and the pilot's stop rule.
+6. [0205](../decisions/0205-the-coding-tests-payload-is-a-declared-exception-to-the-request-boundary.md):
+   the coding test's payload is a declared exception to the request boundary.
+7. [0206](../decisions/0206-the-steering-slice-is-named-dev-steer-400.md): the steering slice is
+   named `dev-steer-400`.
+8. [0207](../decisions/0207-the-pilots-money-and-tooling.md): the pilot's money and tooling.
 
 ## 11. Open questions for Andy
 
