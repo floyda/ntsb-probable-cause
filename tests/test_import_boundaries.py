@@ -11,6 +11,7 @@ the "nothing imports the agent" contract names every top-level library module, s
 added later cannot slip past it.
 """
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -174,3 +175,58 @@ def test_nothing_else_imports_the_live_package() -> None:
     assert contract["type"] == "forbidden"
     assert set(contract["forbidden_modules"]) == {f"{_ROOT}.live", "apps.live"}  # type: ignore[call-overload]
     assert "ignore_imports" not in contract
+
+
+def test_nothing_in_the_library_imports_the_memory_package() -> None:
+    """Decisions 0200, 0201: every other top-level module, ``live`` and ``apps`` are sources."""
+    contract = _contract("Nothing in the library imports the memory package (decisions 0200, 0201)")
+    graph = grimp.build_graph(_ROOT)
+    children = set(graph.find_children(_ROOT)) - {f"{_ROOT}.memory"}
+    assert set(contract["source_modules"]) == children | {"apps"}  # type: ignore[call-overload]
+    assert contract["type"] == "forbidden"
+    assert contract["forbidden_modules"] == [f"{_ROOT}.memory"]
+    assert "ignore_imports" not in contract
+
+
+def test_the_memory_package_imports_neither_the_agent_nor_live() -> None:
+    graph = grimp.build_graph(_ROOT)
+    memory = graph.find_descendants(f"{_ROOT}.memory") | {f"{_ROOT}.memory"}
+    for forbidden in ("agent", "live"):
+        target = f"{_ROOT}.{forbidden}"
+        imported = {
+            module
+            for importer in memory
+            for module in graph.find_modules_directly_imported_by(importer)
+        }
+        assert not {m for m in imported if m == target or m.startswith(f"{target}.")}
+
+
+# Decision 0207 item 1 (ruling R1): only ``memory.claude`` imports the Anthropic SDK.
+_CLAUDE_MODULE = f"{_ROOT}.memory.claude"
+_REPO = _PYPROJECT.parent
+_ANTHROPIC_IMPORT = re.compile(r"^\s*(import anthropic|from anthropic\b)", re.MULTILINE)
+
+
+def test_only_memory_claude_imports_anthropic_in_the_library() -> None:
+    graph = grimp.build_graph(_ROOT, include_external_packages=True)
+    # Absent from the graph until the SDK is a dependency (Task 10): the check passes vacuously.
+    importers = (
+        graph.find_modules_that_directly_import("anthropic")
+        if "anthropic" in graph.modules
+        else set()
+    )
+    assert importers <= {_CLAUDE_MODULE}, (
+        f"importing anthropic: {sorted(importers - {_CLAUDE_MODULE})}"
+    )
+
+
+def test_only_memory_claude_imports_anthropic_in_src_apps_and_scripts() -> None:
+    allowed = _REPO / "src" / "ntsb_probable_cause" / "memory" / "claude.py"
+    files = [p for root in ("src", "apps", "scripts") for p in (_REPO / root).rglob("*.py")]
+    assert files, "the scan roots held no Python files"
+    offenders = [
+        str(p.relative_to(_REPO))
+        for p in files
+        if p != allowed and _ANTHROPIC_IMPORT.search(p.read_text())
+    ]
+    assert offenders == []

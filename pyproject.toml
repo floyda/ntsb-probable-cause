@@ -127,6 +127,7 @@ source_modules = [
     "ntsb_probable_cause.records.evidence",
     "ntsb_probable_cause.records.guard",
     "ntsb_probable_cause.records.marks",
+    "ntsb_probable_cause.memory",
     "ntsb_probable_cause.model",
     "ntsb_probable_cause.scoring.baseline",
     "ntsb_probable_cause.scoring.codes",
@@ -173,6 +174,7 @@ source_modules = [
     "ntsb_probable_cause.errors",
     "ntsb_probable_cause.fields",
     "ntsb_probable_cause.gitinfo",
+    "ntsb_probable_cause.memory",
     "ntsb_probable_cause.model",
     "ntsb_probable_cause.paths",
     "ntsb_probable_cause.recorder",
@@ -222,6 +224,7 @@ source_modules = [
     "ntsb_probable_cause.errors",
     "ntsb_probable_cause.fields",
     "ntsb_probable_cause.gitinfo",
+    "ntsb_probable_cause.memory",
     "ntsb_probable_cause.model",
     "ntsb_probable_cause.paths",
     "ntsb_probable_cause.recorder",
@@ -236,6 +239,32 @@ source_modules = [
     "apps.ingest",
 ]
 forbidden_modules = ["ntsb_probable_cause.live", "apps.live"]
+
+# Decisions 0200, 0201: the coding memory is a declared experiment beside Ellery version 1.
+# Nothing else imports it; committed scripts drive it.
+[[tool.importlinter.contracts]]
+name = "Nothing in the library imports the memory package (decisions 0200, 0201)"
+type = "forbidden"
+source_modules = [
+    "ntsb_probable_cause.agent",
+    "ntsb_probable_cause.data",
+    "ntsb_probable_cause.docket",
+    "ntsb_probable_cause.errors",
+    "ntsb_probable_cause.fields",
+    "ntsb_probable_cause.gitinfo",
+    "ntsb_probable_cause.live",
+    "ntsb_probable_cause.model",
+    "ntsb_probable_cause.paths",
+    "ntsb_probable_cause.recorder",
+    "ntsb_probable_cause.records",
+    "ntsb_probable_cause.scoring",
+    "ntsb_probable_cause.settings",
+    "ntsb_probable_cause.sources",
+    "ntsb_probable_cause.splits",
+    "ntsb_probable_cause.store",
+    "apps",
+]
+forbidden_modules = ["ntsb_probable_cause.memory"]
 
 [tool.deptry]
 # `recorder_stack` (infra/app.py's plain, unqualified `from recorder_stack import ...`) is this

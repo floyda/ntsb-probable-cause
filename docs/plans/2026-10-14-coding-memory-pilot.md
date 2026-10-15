@@ -539,7 +539,7 @@ git commit -m "Coding memory: the coding test's payload, a declared door (decisi
   - `Memory(BaseModel)`: `name: str`, `periods: tuple[int, ...]`, `cap_tokens: int = 6000`, `lessons: tuple[Lesson, ...] = ()`, `pushed_out: tuple[Lesson, ...] = ()`
   - `CAP_TOKENS: Final = 6000`; `estimated_tokens(text: str) -> int`; `render_lesson(lesson: Lesson, tables: CodeTables) -> str`; `render_memory(memory: Memory, tables: CodeTables) -> str`; `render_for_apply(memory: Memory) -> str`
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 """The coding memory's lesson format (decision 0201). Offline; made-up lessons."""
@@ -609,12 +609,12 @@ def test_the_apply_view_names_ids_statements_and_scopes_but_no_codes() -> None:
 
 Replace `"010101"` with any category code present in `TABLES.categories` (read one from `load_tables().categories` when writing the test), and `"500240"` with a phase code that composes with event `240` in the tables.
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_memory_lessons.py -v`
 Expected: FAIL (`ModuleNotFoundError: ntsb_probable_cause.memory`).
 
-- [ ] **Step 3: Implement `memory/__init__.py`.**
+- [x] **Step 3: Implement `memory/__init__.py`.**
 
 ```python
 """The coding memory: written lessons learned from development verdicts (decisions 0200-0207).
@@ -625,7 +625,7 @@ committed scripts drive it.
 """
 ```
 
-- [ ] **Step 4: Implement `memory/lessons.py`.**
+- [x] **Step 4: Implement `memory/lessons.py`.**
 
 ```python
 """Lessons, snapshots of them, and the text a model reads (decision 0201).
@@ -751,12 +751,12 @@ def render_for_apply(memory: Memory) -> str:
     )
 ```
 
-- [ ] **Step 5: Run the tests.**
+- [x] **Step 5: Run the tests.**
 
 Run: `uv run pytest tests/test_memory_lessons.py -v`
 Expected: PASS.
 
-- [ ] **Step 6: Add the import contracts.** In `pyproject.toml`:
+- [x] **Step 6: Add the import contracts.** In `pyproject.toml`:
   - add `"ntsb_probable_cause.memory"` to the source list of "Only the splitter constructs synthesis and verdict" (the package reads verdict fields through `fields.*` only), of "Nothing in the library imports the agent", and of "Nothing in the library or the other commands imports the live package";
   - add a new contract:
 
@@ -781,12 +781,12 @@ forbidden_modules = ["ntsb_probable_cause.memory"]
 
   Use the exact list of top-level library modules the "Nothing in the library imports the agent" contract names (read it), less `memory`, plus `agent`, `live` and `apps`. Update `tests/test_import_boundaries.py:114`'s list of package children to include `memory`, and add a grimp test that only `ntsb_probable_cause.memory.claude` imports `anthropic` (it passes vacuously until Task 10).
 
-- [ ] **Step 7: Run the boundary checks.**
+- [x] **Step 7: Run the boundary checks.**
 
 Run: `uv run lint-imports && uv run pytest tests/test_import_boundaries.py -v`
 Expected: every contract KEPT; tests PASS.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/memory pyproject.toml tests/test_memory_lessons.py tests/test_import_boundaries.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2519,3 +2519,4 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 4: the test went in `tests/test_sources_settings.py`, beside the existing `sources` price tests (`test_model_prices_match_decision_0009`, `test_price_of_known_and_unknown_model`), not in `tests/test_sources.py`, which does not exist. The Claude block in `sources.py` sits after `price_of`, outside `_PRICES`, since the Anthropic ids are a separate namespace from OpenRouter's. `make check` passed apart from the known `test_store_sync` boto3 failure.
 - 2026-10-15, Task 4: the claude-api skill's model summary (read 2026-10-15) gives Sonnet 5.5 cache reads as $0.20 (0.1x), against the pricing page's $0.10 (0.05x, read 2026-10-08). The plan's $0.10 is kept, since the pricing page is the primary source (rule 2). The difference touches only cached-prompt reads; the learning line's spend rows record what was priced.
 - 2026-10-15, Task 5: the new `TypeError` message also touched two files the plan did not name: `tests/fixtures/rendered/not_model_text.toml` (which classifies that exception literal as not model text, keyed by its text, and now also lists the new payload key `ntsb_probable_cause`, which no loop or arm B request carries) and `tests/test_model_client.py` (which matched the old message). Both now carry the new message. `+t` is unchanged.
+- 2026-10-15, Task 6: the grimp check that only `memory.claude` imports `anthropic` is two checks (controller ruling R1): grimp over the library, and a text scan of `src/`, `apps/` and `scripts/` that fails if it finds no file. Both pass vacuously until Task 10. Also added `memory` to the live-package contract's sources (the test holds it to the package's children), and two tests for the new contract and for memory not importing the agent or live. The brief's placeholder codes became real ones: `550240` (Landing / Loss of control in flight), `500240` (Approach, same event), category `010100`.
