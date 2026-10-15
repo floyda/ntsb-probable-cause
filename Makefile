@@ -787,7 +787,7 @@ s4-dry-run:
 # Runs on the Mac because the local export needs .git for its commit stamp.
 # All three folders hold open-split text: they are ignored by git and never committed (decision 0024).
 s4-export:
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && { test -n "$$NTSB_LIVE_BUCKET" || { echo "s4-export: NtsbLiveStack is not deployed (no live bucket found); this target needs it." >&2; exit 1; }; } && for part in runs scores nights; do aws s3 sync "s3://$$NTSB_LIVE_BUCKET/$$part" "$${NTSB_DATA_DIR:-data}/live-mirror/$$part" --profile ntsb --region eu-west-2 --no-progress --only-show-errors; done && aws s3 sync "s3://$$NTSB_LIVE_BUCKET/export/board-1" "$${NTSB_DATA_DIR:-data}/live-night-export" --delete --profile ntsb --region eu-west-2 --no-progress --only-show-errors
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && { test -n "$$NTSB_LIVE_BUCKET" || { echo "s4-export: NtsbLiveStack is not deployed (no live bucket found); this target needs it." >&2; exit 1; }; } && for part in runs scores nights; do aws s3 sync "s3://$$NTSB_LIVE_BUCKET/$$part" "$${NTSB_DATA_DIR:-data}/live-mirror/$$part" --profile ntsb --region eu-west-2 --no-progress --only-show-errors --exact-timestamps; done && aws s3 sync "s3://$$NTSB_LIVE_BUCKET/export/board-1" "$${NTSB_DATA_DIR:-data}/live-night-export" --delete --profile ntsb --region eu-west-2 --no-progress --only-show-errors --exact-timestamps
 	uv run --locked ntsb-live export --from "$${NTSB_DATA_DIR:-data}/live-mirror" --out "$${NTSB_DATA_DIR:-data}/live-export"
 
 # S4 Task 14, free: fetches the public ledger branch and checks the local mirror (run s4-export
