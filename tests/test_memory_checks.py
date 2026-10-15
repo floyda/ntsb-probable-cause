@@ -79,3 +79,30 @@ def test_save_refuses_to_overwrite(tmp_path: Path) -> None:
     snapshots.save(memory, tmp_path)
     with pytest.raises(ConfigurationError):
         snapshots.save(memory, tmp_path)
+
+
+def test_curly_and_straight_apostrophes_match_both_ways() -> None:
+    straight = "the pilot's failure to maintain adequate airspeed during the approach"
+    curly = straight.replace("'", "\u2019")
+    assert checks.copying_findings(_memory(straight), [curly])
+    assert checks.copying_findings(_memory(curly), [straight])
+
+
+def test_curly_quotes_in_a_withheld_sentence_are_found() -> None:
+    sentence = 'the pilot said "go around" and did not maintain adequate airspeed on approach.'
+    withheld = sentence.replace('"', "\u201c", 1).replace('"', "\u201d", 1)
+    assert checks.withheld_findings(_memory(sentence), [withheld])
+
+
+def test_a_possessive_of_an_allowed_word_passes_and_a_name_does_not() -> None:
+    assert checks.identifier_findings(_memory("the NTSB's code is loss of control")) == []
+    assert checks.identifier_findings(_memory("the NTSB\u2019s code is loss of control")) == []
+    found = checks.identifier_findings(_memory("Smith's stall is coded loss of control"))
+    assert any("Smith" in f for f in found)
+
+
+def test_a_pushed_out_lesson_is_checked_too() -> None:
+    memory = _memory("when the pilot stalls on approach, the NTSB codes loss of control")
+    pushed = memory.lessons[0].model_copy(update={"lesson_id": "L002", "statement": "Smith stalls"})
+    memory = memory.model_copy(update={"pushed_out": (pushed,)})
+    assert any("L002" in f for f in checks.identifier_findings(memory))

@@ -19,6 +19,17 @@ MIN_SENTENCE_CHARS: Final = 30  # as scripts/check_guidance.py (S2.7)
 COPY_WORDS: Final = 8
 _WORD: Final = re.compile(r"[A-Za-z][A-Za-z'-]*")
 _LOWER_WORD: Final = re.compile(r"[a-z0-9']+")
+_FOLD: Final = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+    }
+)
+_POSSESSIVE: Final = re.compile(r"['\u2019]s$")
 _SENTENCE_END: Final = re.compile(r"(?<=[.!?])\s+")
 
 
@@ -33,6 +44,11 @@ ALLOWED_WORDS: Final = _allowed_words()
 
 
 def _texts(memory: Memory) -> list[tuple[str, str]]:
+    """Every statement and scope of the kept and pushed-out lessons, with the lesson's id.
+
+    ``Lesson.history`` is not read: the learner script writes it, as years ("edited in 2010"),
+    never a model.
+    """
     return [
         (lesson.lesson_id, text)
         for lesson in (*memory.lessons, *memory.pushed_out)
@@ -49,14 +65,14 @@ def identifier_findings(memory: Memory, allowed: frozenset[str] = ALLOWED_WORDS)
         found.extend(
             f"{lesson_id}: capitalised word {word!r} is not allowed"
             for word in _WORD.findall(text)
-            if word != word.lower() and word not in allowed
+            if word != word.lower() and _POSSESSIVE.sub("", word) not in allowed
         )
     return found
 
 
 def normalise(text: str) -> str:
-    """Lower case, whitespace collapsed, stripped."""
-    return " ".join(text.lower().split())
+    """Curly quotes and dashes folded to plain ones, lower case, whitespace collapsed, stripped."""
+    return " ".join(text.translate(_FOLD).lower().split())
 
 
 def sentences(text: str) -> list[str]:
@@ -80,7 +96,7 @@ def withheld_findings(memory: Memory, withheld: Iterable[str]) -> list[str]:
 
 def windows(text: str, n: int = COPY_WORDS) -> set[tuple[str, ...]]:
     """Every run of ``n`` consecutive lower-case words in ``text``."""
-    words = _LOWER_WORD.findall(text.lower())
+    words = _LOWER_WORD.findall(text.translate(_FOLD).lower())
     return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
 
 

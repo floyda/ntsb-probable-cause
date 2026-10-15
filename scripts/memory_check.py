@@ -29,6 +29,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from ntsb_probable_cause import fields, gitinfo
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.memory import checks, snapshots
 from ntsb_probable_cause.settings import Settings
 
@@ -45,6 +46,8 @@ def _development_texts() -> tuple[list[str], list[str]]:
     withheld: list[str] = []
     causes: list[str] = []
     columns = ["split", "raw_json"]
+    if not processed_path().exists():
+        raise ConfigurationError(f"{processed_path()} is missing: run make build")
     with pq.ParquetFile(processed_path()) as parquet:
         for batch in parquet.iter_batches(batch_size=512, columns=columns):
             rows = zip(*(batch.column(c).to_pylist() for c in columns), strict=True)

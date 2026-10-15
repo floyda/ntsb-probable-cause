@@ -1,6 +1,7 @@
 """Coding-memory snapshots on disk, and the refusal of any that is unchecked (decision 0201)."""
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Final
 
@@ -9,6 +10,7 @@ from ntsb_probable_cause.memory import checks
 from ntsb_probable_cause.memory.lessons import Memory
 
 SNAPSHOT_DIR: Final = Path(__file__).parent / "snapshots"
+_NAME: Final = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def snapshot_path(name: str, directory: Path = SNAPSHOT_DIR) -> Path:
@@ -30,8 +32,11 @@ def save(memory: Memory, directory: Path = SNAPSHOT_DIR) -> Path:
     """Write a new snapshot; never overwrite one.
 
     Raises:
-        ConfigurationError: a snapshot of that name exists.
+        ConfigurationError: the name is not lower-case letters, digits and hyphens, or a snapshot
+            of that name exists.
     """
+    if not _NAME.fullmatch(memory.name):
+        raise ConfigurationError(f"snapshot name {memory.name!r} must match {_NAME.pattern}")
     path = snapshot_path(memory.name, directory)
     if path.exists():
         raise ConfigurationError(f"snapshot {memory.name} exists; snapshots are never rewritten")

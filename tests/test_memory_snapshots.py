@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 from scripts import memory_check
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.memory import checks, snapshots
 from ntsb_probable_cause.memory.lessons import Lesson, Memory, Prediction
 
@@ -87,3 +88,21 @@ def test_main_writes_no_stamp_for_a_copying_memory(
     )
     assert memory_check.main(["--snapshot", "t"]) == 1
     assert not snapshots.stamp_path("t", directory).exists()
+
+
+def test_save_refuses_a_name_that_is_a_path(tmp_path: Path) -> None:
+    bad = _memory("when the pilot stalls on approach, the NTSB codes loss of control")
+    with pytest.raises(ConfigurationError):
+        snapshots.save(bad.model_copy(update={"name": "../x"}), tmp_path)
+
+
+def test_main_names_make_build_when_the_data_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _setup(tmp_path, monkeypatch)
+    snapshots.save(
+        _memory("when the pilot stalls on approach, the NTSB codes loss of control"), directory
+    )
+    monkeypatch.setattr(memory_check, "processed_path", lambda: tmp_path / "none.parquet")
+    with pytest.raises(ConfigurationError, match="make build"):
+        memory_check.main(["--snapshot", "t"])
