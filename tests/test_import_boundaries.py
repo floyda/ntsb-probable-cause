@@ -209,12 +209,11 @@ _ANTHROPIC_IMPORT = re.compile(r"^\s*(import anthropic|from anthropic\b)", re.MU
 
 def test_only_memory_claude_imports_anthropic_in_the_library() -> None:
     graph = grimp.build_graph(_ROOT, include_external_packages=True)
-    # Absent from the graph until the SDK is a dependency (Task 10): the check passes vacuously.
-    importers = (
-        graph.find_modules_that_directly_import("anthropic")
-        if "anthropic" in graph.modules
-        else set()
-    )
+    # Not vacuous: the SDK is in the graph (a dependency since Task 10) and ``memory.claude``
+    # is its importer, so a graph that left external packages out would fail here.
+    assert "anthropic" in graph.modules
+    importers = graph.find_modules_that_directly_import("anthropic")
+    assert _CLAUDE_MODULE in importers
     assert importers <= {_CLAUDE_MODULE}, (
         f"importing anthropic: {sorted(importers - {_CLAUDE_MODULE})}"
     )

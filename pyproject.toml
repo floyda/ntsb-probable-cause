@@ -26,6 +26,7 @@ dependencies = [
     # Pillow writes the drawn page as JPEG.
     "pypdfium2>=5.13.0",
     "pillow>=12.3.0",
+    "anthropic>=1.14.0",
 ]
 
 [project.scripts]
@@ -146,7 +147,14 @@ forbidden_modules = ["ntsb_probable_cause.records.synthesis", "ntsb_probable_cau
 # the Synthesis/Verdict it returns; that necessary call is the only edge exempted, so the
 # recorder still cannot import records.synthesis or records.verdict directly, or by any other
 # path.
-ignore_imports = ["ntsb_probable_cause.recorder.cases -> ntsb_probable_cause.records.split"]
+# Task 10 (decision 0207): the learner's client writes its spend rows with ``scoring.budget``,
+# whose module reaches ``records.verdict`` only through ``scoring.records`` and ``scoring.metrics``
+# (the run record's score types); the client touches no verdict field, so that one edge is
+# exempted, as the recorder's is.
+ignore_imports = [
+    "ntsb_probable_cause.recorder.cases -> ntsb_probable_cause.records.split",
+    "ntsb_probable_cause.memory.claude -> ntsb_probable_cause.scoring.budget",
+]
 
 [[tool.importlinter.contracts]]
 name = "The model boundary cannot see synthesis or verdict"
