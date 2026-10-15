@@ -2122,12 +2122,12 @@ mem-shape-probe: ## The Claude API shape probe, ONCE (0202 item 5; paid, cents o
 Run: `uv run pytest tests/test_memory_shape_probe.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit, then run the probe once (paid).** Commit Steps 1–4 first (the probe records a clean commit). Andy stores the key in `pass` at `api/anthropic` first (or sets `NTSB_PASS_ANTHROPIC`).
+- [x] **Step 5: Commit, then run the probe once (paid).** Commit Steps 1–4 first (the probe records a clean commit). Andy stores the key in `pass` at `api/anthropic` first (or sets `NTSB_PASS_ANTHROPIC`).
 
 Run: `make mem-shape-probe`
 Expected: every check `ok`; cost a few cents. If any check fails, stop: fix the cause (a wrong id, a schema the API rejects, a truncated reply) under Deviations, and run it again; the probe is the only place rule 2's wire shapes are confirmed.
 
-- [ ] **Step 6: Commit the result.**
+- [x] **Step 6: Commit the result.**
 
 ```bash
 git add scripts/with_pass_keys.sh scripts/memory_shape_probe.py scripts/README.md Makefile tests/test_with_pass_keys.py tests/test_memory_shape_probe.py docs/plans/2026-10-14-coding-memory-pilot.md

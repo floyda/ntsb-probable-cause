@@ -1,0 +1,18 @@
+memory shape probe at commit 249aacb, 2026-10-15
+model claude-sonnet-5-5: id=claude-sonnet-5-5 display_name=Claude Sonnet 5.5 max_input_tokens=1000000 max_tokens=128000
+model claude-haiku-5-5: id=claude-haiku-5-5 display_name=Claude Haiku 5.5 max_input_tokens=1000000 max_tokens=128000
+sonnet: stop_reason=end_turn stop_category=None error=None
+sonnet: tokens input=50 output=21 cache_write=1006 cache_read=0 of max 16000
+sonnet: cost_usd=0.002825 parses_as_ProposeReply=True
+haiku batch: wall clock 425.3 seconds
+haiku 1: stop_reason=end_turn stop_category=None error=None
+haiku 1: tokens input=362 output=13 cache_write=0 cache_read=0 of max 2048
+haiku 1: cost_usd=0.000021 parses_as_ApplyReply=True
+haiku 2: stop_reason=end_turn stop_category=None error=None
+haiku 2: tokens input=355 output=10 cache_write=0 cache_read=0 of max 2048
+haiku 2: cost_usd=0.000020 parses_as_ApplyReply=True
+check both model ids retrievable: ok
+check sonnet reply parses as ProposeReply: ok
+check both haiku replies parse as ApplyReply: ok
+check every reply stopped on end_turn: ok
+check no reply reached its max_tokens: ok
