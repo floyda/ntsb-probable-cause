@@ -2458,9 +2458,9 @@ git commit -m "Coding memory: the pilot's reading and its stop rule (decision 02
 **Files:**
 - Create: `docs/rounds/memory-pilot.md`
 
-- [ ] **Step 1: Write the registration** in simplified technical English, with a glossary (rule 7). It names, before any learner or coding-test run: the samples (learning part, `dev-steer-400`); the three conditions and how each is run (Task 13's commands); the models, efforts and prices (0202, Task 4, the shape probe's result); the snapshots `pilot-2009` and `pilot-2010` and that the reading uses the last; the noise (counts(b) − counts(a), per measure); the stop rule word for word as `stop_rule`'s docstring; that failed cases count as wrong; the agreement check and its bar; the expected costs (the plan's estimates, labelled estimates); and the prediction Andy chooses to write, if any (none is required).
-- [ ] **Step 2: Andy reads and approves it.** Stop here until Andy does; record Andy's approval and date in the file.
-- [ ] **Step 3: Commit.**
+- [x] **Step 1: Write the registration** in simplified technical English, with a glossary (rule 7). It names, before any learner or coding-test run: the samples (learning part, `dev-steer-400`); the three conditions and how each is run (Task 13's commands); the models, efforts and prices (0202, Task 4, the shape probe's result); the snapshots `pilot-2009` and `pilot-2010` and that the reading uses the last; the noise (counts(b) − counts(a), per measure); the stop rule word for word as `stop_rule`'s docstring; that failed cases count as wrong; the agreement check and its bar; the expected costs (the plan's estimates, labelled estimates); and the prediction Andy chooses to write, if any (none is required).
+- [x] **Step 2: Andy reads and approves it.** Stop here until Andy does; record Andy's approval and date in the file.
+- [x] **Step 3: Commit.**
 
 ```bash
 git add docs/rounds/memory-pilot.md docs/plans/2026-10-14-coding-memory-pilot.md
