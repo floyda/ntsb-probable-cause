@@ -2286,7 +2286,7 @@ git commit -m "Coding memory: the learner script, propose, agreement and finish 
 - Consumes: `Payload.for_coding_test` (Task 5); `memory.prompts.coding_system`, `memory.snapshots.load_checked`, `snapshots.sha256_of`; `agent.drive.drive_batch`, `agent.loop.PendingCall`, `agent.loop.LoopConfig`, `agent.loop.PASS_REASONING`, `agent.armb.FixedToolsLoop`; `scoring.prompt` (`SYSTEM_REFINE`, `REJECTED`, `refine_message`, `guidance_sha256`); `scoring.hypothesis` (`parse_hypothesis`, `parse_refinement`, `HYPOTHESIS_SCHEMA`, `REFINEMENT_SCHEMA`); `scoring.coding_stats.load_stats("mem")`, `refuse_pool_holding`; `scoring.samples.sample_ids`, `load_cases`; `budget.reserve_within_budget`, `settle`, `write_spend`; `model.client.ModelSettings`, `Turn`; `model.batch.BatchClient`; `model.openrouter.OpenRouterClient`.
 - Produces: subcommands `answer --repeat {a,b}` (the **tables** condition) and `tools --source RUN_ID --repeat {a,b} [--snapshot NAME]` (the **counts** condition, or **memory** with a snapshot); class `CodingAnswerLoop` (a `DrivenLoop`); every run folder holds `spec.json`, `replies.jsonl`, `rounds.jsonl` (from `drive_batch`), `cases.jsonl` (one row per case: `case_id`, `hypothesis` as recorded JSON or null, `failure` or null, `cost_usd`) and a `spend.jsonl` row of kind `coding-test`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 """The coding test (decisions 0204, 0205). A fake batch runner; offline; made-up cases."""
@@ -2319,12 +2319,12 @@ Add three behaviour tests against a scripted batch runner (the `FakeBatchClient`
 - `answer`: a stage-1 reply that fails `parse_hypothesis` is retried once with `prompt.REJECTED` before the error in the system text; a second failure records `failure` and no hypothesis.
 - `tools --snapshot`: with a checked snapshot in a tmp snapshot directory (monkeypatch `snapshots.SNAPSHOT_DIR`), the system text the post-pass sends contains `prompts.MEMORY_HEADING`; without `--snapshot` it does not; a source case with no hypothesis gets `failure="source failed"` and no call.
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_memory_coding_test.py -v`
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Implement.** Docstring `Status`: "Live tool for the coding memory's pilot (decision 0204), paid on OpenRouter: GPT-6 Luna batch, about a cent or less a case. Development only: `dev-steer-400` and nothing else in this plan." Constants: `SAMPLE: Final = "dev-steer-400"`, `GUIDANCE: Final = ("r3-loc-stall", "r6-aircraft-control")`, `REGISTRATION: Final = Path("docs/rounds/memory-pilot.md")`, `CAP_USD: Final = 0.05`, `EXPECTED_USD_PER_CASE: Final = 0.01`, `STATS: Final = "mem"`.
+- [x] **Step 3: Implement.** Docstring `Status`: "Live tool for the coding memory's pilot (decision 0204), paid on OpenRouter: GPT-6 Luna batch, about a cent or less a case. Development only: `dev-steer-400` and nothing else in this plan." Constants: `SAMPLE: Final = "dev-steer-400"`, `GUIDANCE: Final = ("r3-loc-stall", "r6-aircraft-control")`, `REGISTRATION: Final = Path("docs/rounds/memory-pilot.md")`, `CAP_USD: Final = 0.05`, `EXPECTED_USD_PER_CASE: Final = 0.01`, `STATS: Final = "mem"`.
   - `refuse_sample(sample)`: raise `ConfigurationError` unless `sample == SAMPLE`; then `coding_stats.refuse_pool_holding(STATS, sample)`.
   - `refuse_memory_without_registration()`: raise unless `gitinfo.is_committed(REGISTRATION)`.
   - `causes(processed) -> dict[str, str]`: `samples.load_cases(processed, samples.sample_ids(SAMPLE))` mapped to `fields.probable_cause(raw)`; a case with no cause is left out and later recorded with `failure="no cause"`.
@@ -2339,12 +2339,12 @@ mem-coding-tools: ## The counts condition, or the memory condition with SNAPSHOT
 	scripts/with_pass_keys.sh uv run python -m scripts.memory_coding_test tools --source $(SOURCE) --repeat $(REPEAT) $(if $(SNAPSHOT),--snapshot $(SNAPSHOT))
 ```
 
-- [ ] **Step 4: Run the tests and the boundary test.**
+- [x] **Step 4: Run the tests and the boundary test.**
 
 Run: `uv run pytest tests/test_memory_coding_test.py tests/test_boundary.py -v && uv run mypy && make s33-continuity`
 Expected: PASS; `test_only_the_coding_test_script_opens_the_coding_test_door` now finds exactly the two files; `+t` unchanged.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add scripts/memory_coding_test.py scripts/README.md Makefile tests/test_memory_coding_test.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2529,3 +2529,4 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 12: `merge_proposal` and `merge_revision` also drop (with a message) any draft whose statement or scope fails `checks.identifier_findings` on a one-lesson memory, so a lesson with a name, a digit or an unlisted capital never enters the draft (controller addition; decision 0201's identifier rule). An edit clears the lesson's stale support until the next count.
 - 2026-10-15, Task 12: the script calls `memory.claude.sdk_from_key(settings.require_anthropic_key())` through a `client_factory` parameter on `main`, never `anthropic.Anthropic(...)` (ruling R1, decision 0207 item 1). Subcommands share one frozen `Run` context to stay inside the argument limits. `Memory`'s `pushed_out` lessons ride in the draft and rejoin the working memory at `finish`. Each phase prints its projected cost (estimated input plus full `max_tokens` output, at sync or batch price) before `check_learning_budget`; the propose projection prices every chunk at the starting memory, which grows as lessons are added. `scripts/README.md` does not exist, so no row was added. `_write` and `_coded_record` moved from `tests/test_memory_pool.py` to `tests/conftest.py` as plain functions (`write_cases`, `coded_record`).
 - 2026-10-15, Task 12 fix round 1: `agreement` keeps Sonnet (the reference) running first, then Haiku low, then Haiku medium if needed, not the brief's Haiku-first order: the three runs are independent and recorded, so order changes no result, and the reference is needed for every comparison. Drop and failure messages carry fixed words only (never lesson, cause or case text; model-supplied ids print only in the shape `L<number>`). Resume: failed replies are not cached, so a resume after a failed chunk re-sends it, and because the memory text then changes, later chunks are re-sent too, within the projected cost; `propose` prints how many calls were already recorded before its projection.
+- 2026-10-15, Task 13: `causes(processed)` returns every steering-slice case in sample order, mapped to its sentence or None (`dict[str, str | None]`), not the brief's `dict[str, str]` with the uncaused cases left out: the run needs the whole case list for the `no cause` rows, and the tests replace one function. A rejected stage-1 or refinement reply is asked again with `prompt.REJECTED` and the reason appended after the system text (`f"{system}\n\n{prompt.REJECTED}{reason}"`), as `scoring/runner.py`'s `_two_turns` and `FixedToolsLoop` append it, not prefixed as the brief wrote; the reason is `agent.steps.sanitised(error)`, as `FixedToolsLoop` gives it, so no model text is repeated. `cases.jsonl` rows are `CodingCase` (the final answer as a `Hypothesis` object with its items, so Task 14 can score it), and the counts and memory conditions start from that answer as `later.as_recorded(answer)`, as arm B's post-pass does (`agent/armb.py`), not the row's text. The spend is read from the run folder (`agent.run.round_costs(folder).reported_usd`, else every reply in `replies.jsonl` priced with `model.client.cost_usd`, which is how the loops price them) and written with the settle in a `finally`, so a cancelled or failed run still records its spend; `calls` is the replies written. The script lists `__all__` (with `gitinfo`) so the brief's `ct.gitinfo` passes `mypy --strict`. `tests/test_boundary.py::test_only_the_coding_test_script_opens_the_coding_test_door` failed once the script existed: `sorted` puts `scripts/` before `src/`, so its second allowed list could never match; it now asserts exactly `[scripts/memory_coding_test.py, src/.../model/client.py]`. A run folder is never reused (no `--resume`); the make targets run no `mem-spend` check first (the brief's recipes). `scripts/README.md` does not exist, so no row was added.

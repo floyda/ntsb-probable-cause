@@ -1640,7 +1640,5 @@ def test_only_the_coding_test_script_opens_the_coding_test_door() -> None:
         for path in root.rglob("*.py")
         if "for_coding_test" in path.read_text()
     )
-    assert callers in (
-        [Path("src/ntsb_probable_cause/model/client.py")],
-        [Path("src/ntsb_probable_cause/model/client.py"), CODING_TEST_CALLER],
-    )
+    # Sorted, ``scripts/`` comes before ``src/``.
+    assert callers == [CODING_TEST_CALLER, Path("src/ntsb_probable_cause/model/client.py")]
