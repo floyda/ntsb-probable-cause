@@ -216,7 +216,10 @@ def price_of(model_id: str) -> ModelPrice:
 # Anthropic's own, distinct from OpenRouter's ``anthropic/...`` ids above. Source: Anthropic's
 # pricing page, read 2026-10-08: Sonnet 5.5 $2 / $10, 5-minute cache writes $2.50, cache hits
 # $0.10 (0.05x); Haiku 5.5 up to 100,000 prompt tokens $0.10 / $0.50, writes $0.125, hits $0.01
-# (0.1x); the Batch API halves every rate, and the multipliers stack.
+# (0.1x); the Batch API halves every rate, and the multipliers stack. The claude-api skill's model
+# summary, read 2026-10-15, gives Sonnet 5.5 cache reads as $0.20 (0.1x); the pricing page's $0.10
+# is used, since it is the primary source (rule 2). The difference touches only cached-prompt
+# reads, and the learning line's spend rows record what was priced.
 CLAUDE_PRICING_SOURCE: Final = "Anthropic pricing page, read 2026-10-08"
 HAIKU_55_PROMPT_LIMIT: Final = 100_000
 
