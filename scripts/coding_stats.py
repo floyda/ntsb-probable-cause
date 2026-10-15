@@ -6,7 +6,8 @@ Status
     writes src/ntsb_probable_cause/scoring/tables/coding_stats.json (the counts the ordering
     check and the guidance read); ``s3`` (S3, decision 0129) writes
     src/ntsb_probable_cause/scoring/tables/coding_stats_s3.json from a pool that also leaves
-    out dev-seal-s3-400. ``--out`` writes the same counts, readable (docs/results/
+    out dev-seal-s3-400; ``mem`` (the coding memory, decision 0203) writes coding_stats_mem.json
+    from S3's pool less dev-steer-400. ``--out`` writes the same counts, readable (docs/results/
     s27-coding-stats.txt, docs/results/s3-coding-stats.txt). Counts and code labels only; no
     case number or text is written. S2.7's files are not rebuilt: its numbers stay citable.
 
@@ -18,7 +19,7 @@ Why
     writing anything.
 
 Usage
-    NTSB_DATA_DIR=... uv run python -m scripts.coding_stats [--stage {s27,s3}] [--out PATH]
+    NTSB_DATA_DIR=... uv run python -m scripts.coding_stats [--stage {s27,s3,mem}] [--out PATH]
 """
 
 import argparse
@@ -79,6 +80,14 @@ STAGES: dict[StatsName, Stage] = {
         built_from=(
             "development split, classes C/F/L, excluding dev-400, dev-seal-400 and "
             "dev-seal-s3-400 (scripts/coding_stats.py, decisions 0094, 129)"
+        ),
+    ),
+    "mem": Stage(
+        excluded=POOL_EXCLUDED["mem"],
+        json_out=TABLES_DIR / "coding_stats_mem.json",
+        built_from=(
+            "development split, classes C/F/L, excluding dev-400, dev-seal-400, dev-seal-s3-400 "
+            "and dev-steer-400 (scripts/coding_stats.py, decisions 0094, 129, 203, 206)"
         ),
     ),
 }

@@ -180,7 +180,7 @@ git commit -m "Coding memory: the steering slice dev-steer-400 (decisions 0203, 
 **Interfaces:**
 - Produces: `StatsName = Literal["s27", "s3", "mem"]`; `load_stats("mem") -> CodingStats`; `POOL_EXCLUDED["mem"] == ("dev-400", "dev-seal-400", "dev-seal-s3-400", "dev-steer-400")`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 # tests/test_coding_stats.py
@@ -199,24 +199,24 @@ def test_s3_statistics_refuse_the_steering_slice_and_mem_allows_it() -> None:
 
 Update the existing assertions at `:171` (add the `mem` row), `:181` (parametrise over `["s27", "s3", "mem"]`) and `:203` (the three names), and the stage checks in `tests/test_coding_stats_script.py:131-145` to include `mem` with a `built_from` that names all four excluded samples.
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_coding_stats.py tests/test_coding_stats_script.py -v`
 Expected: FAIL on the new names.
 
-- [ ] **Step 3: Implement.** Add `"mem"` to the Literal, `"mem": "tables/coding_stats_mem.json"` to `_RESOURCES`, the `POOL_EXCLUDED["mem"]` tuple above, and a `STAGES["mem"]` in `scripts/coding_stats.py` mirroring `s3`'s with the fourth exclusion, `json_out` pointing at the new file and `built_from` naming the four samples and decisions 0203 and 0206. Never rebuild the `s3` file (version 1's fingerprint covers it). Add:
+- [x] **Step 3: Implement.** Add `"mem"` to the Literal, `"mem": "tables/coding_stats_mem.json"` to `_RESOURCES`, the `POOL_EXCLUDED["mem"]` tuple above, and a `STAGES["mem"]` in `scripts/coding_stats.py` mirroring `s3`'s with the fourth exclusion, `json_out` pointing at the new file and `built_from` naming the four samples and decisions 0203 and 0206. Never rebuild the `s3` file (version 1's fingerprint covers it). Add:
 
 ```make
 mem-coding-stats: ## The coding memory's statistics: S3's pool less dev-steer-400 (0203); free
 	uv run python -m scripts.coding_stats --stage mem --out docs/results/mem-coding-stats.txt
 ```
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `uv run pytest tests/test_coding_stats.py tests/test_coding_stats_script.py -v`
 Expected: PASS except any test that loads the json before it exists; build it next.
 
-- [ ] **Step 5: Build the file (free).**
+- [x] **Step 5: Build the file (free).**
 
 Run: `make mem-coding-stats`
 Expected: `coding_stats_mem.json` written; the report's first lines name 400 fewer pool cases than `docs/results/s3-coding-stats.txt` (12,090 less those of the slice inside the pool; the slice is drawn from the same split and classes, so expect 11,690).
@@ -224,7 +224,7 @@ Expected: `coding_stats_mem.json` written; the report's first lines name 400 few
 Run: `uv run pytest tests/test_coding_stats.py tests/test_coding_stats_script.py -v && make s33-continuity`
 Expected: PASS; `s33-continuity` reports `+t` unchanged.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/coding_stats.py scripts/coding_stats.py src/ntsb_probable_cause/scoring/tables/coding_stats_mem.json docs/results/mem-coding-stats.txt Makefile tests/test_coding_stats.py tests/test_coding_stats_script.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2514,3 +2514,5 @@ Each entry: date, task, what changed and why.
 - 2026-10-14, planning: support is not weighted towards recent periods in the pilot (the note's §4 allows it). Two periods give too little drift to weigh; the full pass's plan decides the weighting, with the pilot's counts per period as its evidence.
 - 2026-10-15, Task 1: `scripts/draw_sealed.py` needed no behaviour change for an unsealed sample (it never consulted `SEALED`); only its docstring and `--sample` usage line now name `dev-steer-400`. The draw printed 401 cases (the quota rounding the other 400-case samples share), so the contamination test's 395 to 405 bound holds.
 - 2026-10-15, Task 1: the seed-20261014 draw included one redacted record fixture case, so fixture ids were excluded from this draw only (`Draw.exclude_fixtures`, True for `dev-steer-400`) and the seed was kept. Decision 0203 names the seed and the pool, not the fixture rule. The other draws are unchanged (their `--verify` stays identical).
+- 2026-10-15, Task 2: the `mem` pool holds 11,689 cases (6,710 in 2009-2014, 4,979 in 2015-2019), not the 11,690 the plan expected: the steering slice has 401 cases, not 400, and all 401 were inside S3's 12,090-case pool (12,090 less 401). Figure from `docs/results/mem-coding-stats.txt`.
+- 2026-10-15, Task 2: `coding_stats_mem.json` is 1.27 MB, over the pre-commit `check-added-large-files` limit of 500 KB, which already exempts the two other statistics files for the same reason (pairwise code counts built by one script). The exemption regex in `.pre-commit-config.yaml` now also names `coding_stats_mem.json`.

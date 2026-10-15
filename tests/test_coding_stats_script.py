@@ -126,6 +126,7 @@ def test_report_prints_counts_and_both_halves_without_case_numbers() -> None:
 
 _S27_SAMPLES = ("dev-400", "dev-seal-400")
 _S3_SAMPLES = ("dev-400", "dev-seal-400", "dev-seal-s3-400")
+_MEM_SAMPLES = (*_S3_SAMPLES, "dev-steer-400")
 
 
 def test_the_two_stages_name_their_samples_their_file_and_their_provenance() -> None:
@@ -144,6 +145,18 @@ def test_the_two_stages_name_their_samples_their_file_and_their_provenance() -> 
         "(scripts/coding_stats.py, decisions 0094, 129)"
     )
     assert s27.json_out != s3.json_out
+
+
+def test_the_memory_stage_leaves_out_the_steering_slice_as_well() -> None:
+    """Decisions 0203, 0206: ``mem`` is S3's pool less ``dev-steer-400``; S3's file stays."""
+    mem = cs.STAGES["mem"]
+    assert mem.excluded == _MEM_SAMPLES
+    assert mem.json_out == Path("src/ntsb_probable_cause/scoring/tables/coding_stats_mem.json")
+    assert mem.built_from == (
+        "development split, classes C/F/L, excluding dev-400, dev-seal-400, dev-seal-s3-400 "
+        "and dev-steer-400 (scripts/coding_stats.py, decisions 0094, 129, 203, 206)"
+    )
+    assert mem.json_out != cs.STAGES["s3"].json_out
 
 
 def test_the_s3_pool_leaves_out_the_new_sample_and_the_guard_refuses_one_that_is_present() -> None:

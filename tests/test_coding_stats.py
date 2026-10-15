@@ -171,12 +171,18 @@ def test_the_committed_s3_counts_load_and_name_no_case() -> None:
 def test_each_stats_file_leaves_out_the_samples_its_provenance_names() -> None:
     assert POOL_EXCLUDED["s27"] == ("dev-400", "dev-seal-400")
     assert POOL_EXCLUDED["s3"] == ("dev-400", "dev-seal-400", "dev-seal-s3-400")
+    assert POOL_EXCLUDED["mem"] == (
+        "dev-400",
+        "dev-seal-400",
+        "dev-seal-s3-400",
+        "dev-steer-400",
+    )
     for name in STATS_NAMES:
         built_from = load_stats(name).built_from
         assert all(sample in built_from for sample in POOL_EXCLUDED[name]), name
 
 
-@pytest.mark.parametrize("name", ["s27", "s3"])
+@pytest.mark.parametrize("name", ["s27", "s3", "mem"])
 @pytest.mark.parametrize("sample", ["dev-400", "dev-seal-400", "heldout-400"])
 def test_a_sample_both_pools_leave_out_may_be_checked_with_either(
     sample: str, name: StatsName
@@ -189,7 +195,7 @@ def test_a_sample_both_pools_leave_out_may_be_checked_with_either(
 def test_the_s3_sample_may_not_be_checked_with_counts_that_hold_its_own_verdicts() -> None:
     """S2.7's pool still holds ``dev-seal-s3-400``'s cases (decision 0129 item 5)."""
     refuse_pool_holding("s3", "dev-seal-s3-400")
-    with pytest.raises(ConfigurationError, match=r"--stats s3 \(decision 0129\)"):
+    with pytest.raises(ConfigurationError, match=r"--stats s3 or mem \(decision 0129\)"):
         refuse_pool_holding("s27", "dev-seal-s3-400")
 
 
@@ -200,8 +206,17 @@ def test_a_development_sample_no_pool_leaves_out_is_refused_with_either_file() -
             refuse_pool_holding(name, "dev-seal-s4-400")
 
 
-def test_the_stats_names_are_the_two_stages() -> None:
-    assert STATS_NAMES == ("s27", "s3")
+def test_the_stats_names_are_the_three_files() -> None:
+    assert STATS_NAMES == ("s27", "s3", "mem")
+
+
+def test_s3_statistics_refuse_the_steering_slice_and_mem_allows_it() -> None:
+    """Decision 0203: S3's counts hold ``dev-steer-400``'s verdicts; ``mem``'s pool does not."""
+    with pytest.raises(ConfigurationError, match="pass --stats mem"):
+        refuse_pool_holding("s3", "dev-steer-400")
+    with pytest.raises(ConfigurationError):
+        refuse_pool_holding("s27", "dev-steer-400")
+    refuse_pool_holding("mem", "dev-steer-400")
 
 
 def test_group_n_counts_every_past_case_in_a_group() -> None:

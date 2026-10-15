@@ -22,17 +22,20 @@ from ntsb_probable_cause.errors import ConfigurationError
 HALVES: tuple[tuple[str, int, int], ...] = (("2009-2014", 2009, 2014), ("2015-2019", 2015, 2019))
 # A case whose phase-of-flight evidence is blank is counted under this group name.
 NO_GROUP = "(none)"
-StatsName = Literal["s27", "s3"]
+StatsName = Literal["s27", "s3", "mem"]
 STATS_NAMES: tuple[StatsName, ...] = get_args(StatsName)
 _RESOURCES: Mapping[StatsName, str] = {
     "s27": "tables/coding_stats.json",
     "s3": "tables/coding_stats_s3.json",
+    "mem": "tables/coding_stats_mem.json",
 }
-# The samples whose cases each file's pool leaves out (decisions 0094, 0129); one table, read by
-# ``scripts/coding_stats.py`` to build the pool and by :func:`refuse_pool_holding` to guard it.
+# The samples whose cases each file's pool leaves out (decisions 0094, 0129, 0203); one table,
+# read by ``scripts/coding_stats.py`` to build the pool and by :func:`refuse_pool_holding` to
+# guard it.
 POOL_EXCLUDED: Mapping[StatsName, tuple[str, ...]] = {
     "s27": ("dev-400", "dev-seal-400"),
     "s3": ("dev-400", "dev-seal-400", "dev-seal-s3-400"),
+    "mem": ("dev-400", "dev-seal-400", "dev-seal-s3-400", "dev-steer-400"),
 }
 
 
@@ -233,7 +236,8 @@ def load_stats(name: StatsName = "s27") -> CodingStats:
     Args:
         name: ``"s27"`` for ``scoring/tables/coding_stats.json`` (the default, so every
             existing caller is unchanged) or ``"s3"`` for ``coding_stats_s3.json``, from the
-            pool without ``dev-seal-s3-400`` (decision 0129).
+            pool without ``dev-seal-s3-400`` (decision 0129), or ``"mem"`` for
+            ``coding_stats_mem.json``, which also leaves out ``dev-steer-400`` (decision 0203).
     """
     return _load(name)
 
