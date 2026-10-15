@@ -2364,7 +2364,7 @@ git commit -m "Coding memory: the coding test, tables, counts and memory conditi
 - Consumes: run folders from Task 13; `scripts._live_fence.refuse_live`; `records.split.split_record`; `scoring.metrics.score_case`, `wilson`, `bootstrap_mean`, `paired_difference`; `samples.load_cases`, `samples.seen_pairs`; `memory.snapshots.load_checked`.
 - Produces: `CaseMeasures` (frozen dataclass: `top1: bool`, `top3: bool`, `recall10: float | None`); `measure_failed(*, flags_findings: bool) -> CaseMeasures` (a failed case is wrong: `top1=top3=False`, `recall10=0.0` when the verdict flags findings, else `None`); `measures(rows, verdicts, tables, seen) -> dict[str, CaseMeasures]`; `stop_rule(memory: Diff3, counts_a_vs_b: Diff3) -> tuple[bool, list[str]]` where `Diff3` is a frozen dataclass of the three paired point estimates (`top1`, `top3`, `recall10`); `main` writes `docs/results/memory-pilot-dev.txt`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 """The pilot's reading and its registered stop rule (decision 0204). Made-up numbers; offline."""
@@ -2396,12 +2396,12 @@ def test_a_failed_case_counts_as_wrong() -> None:
     assert pr.measure_failed(flags_findings=False).recall10 is None
 ```
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_memory_pilot_result.py -v`
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Implement.** The stop rule, exactly as registered:
+- [x] **Step 3: Implement.** The stop rule, exactly as registered:
 
 ```python
 @dataclass(frozen=True)
@@ -2439,12 +2439,12 @@ mem-pilot-result: ## The pilot's reading and stop rule (0204); free
 	uv run python -m scripts.memory_pilot_result --tables-a $(TA) --tables-b $(TB) --counts-a $(CA) --counts-b $(CB) --memory $(MEM) --learn-runs $(LEARN) --out docs/results/memory-pilot-dev.txt
 ```
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `uv run pytest tests/test_memory_pilot_result.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add scripts/memory_pilot_result.py scripts/README.md Makefile tests/test_memory_pilot_result.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2530,3 +2530,4 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 12: the script calls `memory.claude.sdk_from_key(settings.require_anthropic_key())` through a `client_factory` parameter on `main`, never `anthropic.Anthropic(...)` (ruling R1, decision 0207 item 1). Subcommands share one frozen `Run` context to stay inside the argument limits. `Memory`'s `pushed_out` lessons ride in the draft and rejoin the working memory at `finish`. Each phase prints its projected cost (estimated input plus full `max_tokens` output, at sync or batch price) before `check_learning_budget`; the propose projection prices every chunk at the starting memory, which grows as lessons are added. `scripts/README.md` does not exist, so no row was added. `_write` and `_coded_record` moved from `tests/test_memory_pool.py` to `tests/conftest.py` as plain functions (`write_cases`, `coded_record`).
 - 2026-10-15, Task 12 fix round 1: `agreement` keeps Sonnet (the reference) running first, then Haiku low, then Haiku medium if needed, not the brief's Haiku-first order: the three runs are independent and recorded, so order changes no result, and the reference is needed for every comparison. Drop and failure messages carry fixed words only (never lesson, cause or case text; model-supplied ids print only in the shape `L<number>`). Resume: failed replies are not cached, so a resume after a failed chunk re-sends it, and because the memory text then changes, later chunks are re-sent too, within the projected cost; `propose` prints how many calls were already recorded before its projection.
 - 2026-10-15, Task 13: `causes(processed)` returns every steering-slice case in sample order, mapped to its sentence or None (`dict[str, str | None]`), not the brief's `dict[str, str]` with the uncaused cases left out: the run needs the whole case list for the `no cause` rows, and the tests replace one function. A rejected stage-1 or refinement reply is asked again with `prompt.REJECTED` and the reason appended after the system text (`f"{system}\n\n{prompt.REJECTED}{reason}"`), as `scoring/runner.py`'s `_two_turns` and `FixedToolsLoop` append it, not prefixed as the brief wrote; the reason is `agent.steps.sanitised(error)`, as `FixedToolsLoop` gives it, so no model text is repeated. `cases.jsonl` rows are `CodingCase` (the final answer as a `Hypothesis` object with its items, so Task 14 can score it), and the counts and memory conditions start from that answer as `later.as_recorded(answer)`, as arm B's post-pass does (`agent/armb.py`), not the row's text. The spend is read from the run folder (`agent.run.round_costs(folder).reported_usd`, else every reply in `replies.jsonl` priced with `model.client.cost_usd`, which is how the loops price them) and written with the settle in a `finally`, so a cancelled or failed run still records its spend; `calls` is the replies written. The script lists `__all__` (with `gitinfo`) so the brief's `ct.gitinfo` passes `mypy --strict`. `tests/test_boundary.py::test_only_the_coding_test_script_opens_the_coding_test_door` failed once the script existed: `sorted` puts `scripts/` before `src/`, so its second allowed list could never match; it now asserts exactly `[scripts/memory_coding_test.py, src/.../model/client.py]`. A run folder is never reused (no `--resume`); the make targets run no `mem-spend` check first (the brief's recipes). `scripts/README.md` does not exist, so no row was added.
+- 2026-10-15, Task 14: the run arguments (`--tables-a` and the rest) are run ids under `NTSB_RUNS_DIR` or a folder path; the memory runs are named `memory-1`, `memory-2` and so on in the text, in the order given. Scoring matches `ntsb-eval`: `score_case` for answered cases, finding recall@10 as `finding_recall_10` (flagged findings, `finding_codes_in_cause`), a failed case as wrong (0136). Added `--agreement` (default `docs/results/memory-agreement-dev.txt`) for the agreement file's last line, and `paired()` and `refusals_by_category()` as testable helpers. A learner refusal is a `calls.jsonl` reply that is not `ok` with `stop_reason == "refusal"`. The result is written through `scripts._s3_runs.write_result`, which refuses a dirty tree for a file under `docs/results/`. `scripts/README.md` does not exist, so no row was added.
