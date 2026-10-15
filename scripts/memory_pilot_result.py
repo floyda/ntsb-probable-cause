@@ -188,10 +188,14 @@ def _points_interval(low: float, high: float) -> str:
 # The learner's refusals. -------------------------------------------------------------------
 
 
-def refusals_by_category(folders: Sequence[Path]) -> dict[str, int]:
+def refusals_by_category(folders: Sequence[Path]) -> tuple[dict[str, int], int]:
     """Failed learner replies that were refusals, by ``stop_category`` (``none`` when absent).
 
-    Reads each folder's ``calls.jsonl`` (decision 0207 item 4). Counts only.
+    Reads each folder's ``calls.jsonl`` (decision 0207 item 4). Counts only. A line that does
+    not parse (a write cut short) is skipped and counted (final review M2).
+
+    Returns:
+        The refusals by category, and the unreadable lines skipped.
 
     Raises:
         SystemExit: a folder is a live run (``refuse_live``).
@@ -199,18 +203,18 @@ def refusals_by_category(folders: Sequence[Path]) -> dict[str, int]:
             must not read as "no refusals".
     """
     counts: Counter[str] = Counter()
+    skipped = 0
     for folder in folders:
         refuse_live(PROG, folder)
         path = folder / claude.CALLS_FILE
         if not path.exists():
             raise ConfigurationError(f"{folder.name}: no {claude.CALLS_FILE}: not a learner run")
-        for line in path.read_text().splitlines():
-            if not line:
-                continue
-            reply = claude.Reply.model_validate_json(line)
+        replies, unreadable = claude.read_replies(path)
+        skipped += unreadable
+        for reply in replies:
             if not reply.ok and reply.stop_reason == "refusal":
                 counts[reply.stop_category or "none"] += 1
-    return dict(sorted(counts.items()))
+    return dict(sorted(counts.items())), skipped
 
 
 # Reading run folders. ----------------------------------------------------------------------
@@ -379,9 +383,10 @@ def report(  # noqa: PLR0913 -- the runs, their scores and the four things the t
     out += ["", "snapshots"]
     out += [f"  {m}: {snapshot_counts(runs[m].spec, snapshot_dir)}" for m in memory_ids]
     out += ["", f"agreement file, last line: {last_line(agreement)}"]
-    refusals = refusals_by_category(learn_runs)
+    refusals, skipped = refusals_by_category(learn_runs)
     detail = ", ".join(f"{k} {v}" for k, v in refusals.items()) or "none"
     out.append(f"learner refusals by category: {detail}")
+    out.append(f"learner record lines unreadable and skipped: {skipped}")
     noise = diffs["counts(b) - counts(a), the noise"]
     last = memory_ids[-1]
     ok, reasons = stop_rule(diffs[f"{last} - counts(a)"], noise)

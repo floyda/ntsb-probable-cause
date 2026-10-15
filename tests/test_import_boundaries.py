@@ -204,7 +204,14 @@ def test_the_memory_package_imports_neither_the_agent_nor_live() -> None:
 # Decision 0207 item 1 (ruling R1): only ``memory.claude`` imports the Anthropic SDK.
 _CLAUDE_MODULE = f"{_ROOT}.memory.claude"
 _REPO = _PYPROJECT.parent
-_ANTHROPIC_IMPORT = re.compile(r"^\s*(import anthropic|from anthropic\b)", re.MULTILINE)
+# ``import anthropic``, ``import anthropic.types``, ``import os, anthropic as sdk`` and
+# ``from anthropic... import`` all match, indented or not. ``anthropic_x`` (another name) does not,
+# by the word boundary; a comment or a string holding the words does not either.
+_ANTHROPIC_IMPORT = re.compile(
+    r"^[ \t]*(?:import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*anthropic\b"
+    r"|from[ \t]+anthropic\b)",
+    re.MULTILINE,
+)
 
 
 def test_only_memory_claude_imports_anthropic_in_the_library() -> None:
@@ -229,3 +236,38 @@ def test_only_memory_claude_imports_anthropic_in_src_apps_and_scripts() -> None:
         if p != allowed and _ANTHROPIC_IMPORT.search(p.read_text())
     ]
     assert offenders == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "import anthropic",
+        "from anthropic import Anthropic",
+        "    import anthropic",
+        "\tfrom anthropic.types import Message",
+        "import anthropic.types",
+        "import anthropic as sdk",
+        "import os, anthropic",
+        "import os.path, json as j,  anthropic as sdk",
+        "    import os ,anthropic",
+    ],
+)
+def test_the_anthropic_scan_catches_every_import_form(line: str) -> None:
+    # Positive control for the R1 text scan (final review T6), multi-name imports included.
+    assert _ANTHROPIC_IMPORT.search(f"x = 1\n{line}\n")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # Deliberate: another distribution whose name starts with the SDK's is not the SDK.
+        "import anthropic_x",
+        "from anthropic_x import y",
+        "import os, anthropic_x",
+        "import osanthropic",
+        "# import anthropic",
+        "x = 'from anthropic import Anthropic'",
+    ],
+)
+def test_the_anthropic_scan_leaves_other_names_alone(line: str) -> None:
+    assert not _ANTHROPIC_IMPORT.search(f"{line}\n")

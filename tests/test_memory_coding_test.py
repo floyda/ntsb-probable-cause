@@ -423,13 +423,16 @@ def _on_disk(folder: Path) -> set[str]:
 
 
 def test_a_resume_after_a_death_mid_round_sends_no_answered_call_and_counts_spend_once(
-    settings: Settings,
+    settings: Settings, capsys: pytest.CaptureFixture[str]
 ) -> None:
     dead = FakeBatch(_first_try_rejected, die_at="b2")
     with pytest.raises(KilledError):
         _run(settings, dead, ["answer", "--repeat", "a"])
     folder = _folder(settings, "-mem-tables-a")
     run_id = folder.name
+    kept = capsys.readouterr().out  # final review M6: the message names both ways out
+    assert f"--resume {run_id}" in kept
+    assert f"uv run ntsb-eval release {run_id}" in kept
     (spend,) = read_jsonl(folder / SPEND_FILE, SpendRecord)
     assert spend.calls == 2  # round 1's replies; round 2 is open, so the priced cost is counted
     assert run_id in open_reservations(settings.runs_dir)  # an open round may still be billed

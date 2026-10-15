@@ -1,5 +1,6 @@
 """The gated Claude client (decisions 0202, 0207). A fake SDK object; offline; no key."""
 
+import dataclasses
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +38,7 @@ class FakeMessages:
         )
         self.batch_requests: list[list[dict[str, object]]] = []
         self.recorded_keys: list[str] = []
+        self.errored: set[str] = set()
 
     def create(self, **params: object) -> SimpleNamespace:
         self.created.append(params)
@@ -55,13 +57,23 @@ class FakeMessages:
             if self.batch_requests
             else self.recorded_keys
         )
-        return [
-            SimpleNamespace(
-                custom_id=key,
-                result=SimpleNamespace(type="succeeded", message=_message('{"applies": []}')),
-            )
-            for key in reversed(keys)
-        ]
+        requests = {
+            str(r["custom_id"]): r for batch in self.batch_requests for r in batch
+        }  # the fake answers each request with its own user text, so matching is by custom_id
+
+        def answer(key: str) -> SimpleNamespace:
+            if key in self.errored:
+                error = SimpleNamespace(type="overloaded_error", message="Overloaded")
+                return SimpleNamespace(type="errored", error=SimpleNamespace(error=error))
+            request = requests.get(key)
+            text = "{}"
+            if request is not None:
+                params = cast(dict[str, object], request["params"])
+                user = cast(list[dict[str, str]], params["messages"])[0]["content"]
+                text = json.dumps({"applies": [user]})
+            return SimpleNamespace(type="succeeded", message=_message(text))
+
+        return [SimpleNamespace(custom_id=key, result=answer(key)) for key in reversed(keys)]
 
 
 def _client(
@@ -134,6 +146,11 @@ def test_batch_results_are_matched_by_id_whatever_their_order(tmp_path: Path) ->
     assert all(r.ok for r in replies.values())
     assert all(r.batch for r in replies.values())
     assert len(messages.batch_requests) == 1
+    # The fake returns results in reverse order, each carrying its own request's user text.
+    for call in calls:
+        text = replies[call.key()].text
+        assert text is not None
+        assert json.loads(text) == {"applies": [call.user]}
 
 
 def test_cost_is_priced_from_usage_and_written_as_learning_spend(tmp_path: Path) -> None:
@@ -213,3 +230,80 @@ def test_a_haiku_prompt_past_the_price_limit_is_refused(tmp_path: Path) -> None:
 def test_sdk_from_key_builds_a_client_without_the_network() -> None:
     sdk = claude.sdk_from_key("test-key-not-real")
     assert isinstance(sdk, anthropic.Anthropic)
+
+
+# Final review T10 and M2. -------------------------------------------------------------------
+
+
+def test_a_refused_reply_is_sent_again_on_a_second_identical_send(tmp_path: Path) -> None:
+    client, messages = _client(tmp_path, [_message(None, stop="refusal"), _message('{"a": 1}')])
+    assert not client.send(_call()).ok
+    again = client.send(_call())
+    assert again.ok
+    assert len(messages.created) == 2
+
+
+def test_a_new_client_over_the_same_folder_does_not_serve_a_failed_row(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path, [_message(None, stop="refusal")])
+    assert not client.send(_call()).ok
+    fresh, messages = _client(tmp_path, [_message('{"a": 1}')])
+    assert fresh.send(_call()).ok
+    assert len(messages.created) == 1
+
+
+def test_keys_differ_when_only_effort_or_max_tokens_differ() -> None:
+    base = _call()
+    assert base.key() != dataclasses.replace(base, effort="low").key()
+    assert base.key() != dataclasses.replace(base, max_tokens=4000).key()
+    assert base.key() == dataclasses.replace(base).key()
+
+
+def test_an_errored_batch_result_records_its_error_type_and_message(tmp_path: Path) -> None:
+    client, messages = _client(tmp_path, [])
+    calls = [_call(role="apply", user=f"u{i}") for i in range(2)]
+    messages.errored = {calls[0].key()}
+    replies = client.send_batch(calls, sleep=lambda _: None)
+    failed = replies[calls[0].key()]
+    assert not failed.ok
+    assert failed.error == "errored: overloaded_error: Overloaded"
+    assert replies[calls[1].key()].ok
+
+
+def _recorded(call: claude.Call, text: str | None) -> str:
+    return claude.Reply(
+        key=call.key(),
+        role=call.role,
+        model=call.model,
+        effort=call.effort,
+        batch=False,
+        text=text,
+        stop_reason="end_turn",
+        stop_category=None,
+        error=None,
+        input_tokens=1,
+        output_tokens=1,
+        cache_write_tokens=0,
+        cache_read_tokens=0,
+        cost_usd=0.0,
+    ).model_dump_json()
+
+
+def test_a_truncated_last_line_is_skipped_counted_and_never_glued_to_the_next(
+    tmp_path: Path,
+) -> None:
+    folder = tmp_path / "run-1"
+    folder.mkdir()
+    done = _call(user="done")
+    (folder / "calls.jsonl").write_text(_recorded(done, '{"a": 1}') + "\n" + '{"key": "trunc')
+    (folder / "batches.jsonl").write_text('{"batch_id": "batch-0", "ke')
+    client, messages = _client(tmp_path, [_message('{"b": 2}')])
+    assert client.skipped_lines == 2
+    assert client.send(done).ok
+    assert messages.created == []
+    assert client.send(_call(user="new")).ok
+    assert len(messages.created) == 1
+    fresh, again = _client(tmp_path, [])
+    assert fresh.send(_call(user="new")).ok  # its row was written on a line of its own
+    assert again.created == []
+    batched = [_call(role="apply", user="b0")]
+    assert fresh.send_batch(batched, sleep=lambda _: None)[batched[0].key()].ok

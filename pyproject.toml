@@ -335,6 +335,9 @@ extend-exclude = [
     "src/ntsb_probable_cause/scoring/tables/*.csv",
     # The typesafe fixtures are saved replies that send the code-table labels verbatim (0097).
     "tests/fixtures/typesafe/*.json",
+    # Coding-memory snapshots and their stamps (0201): a snapshot is never rewritten, and a
+    # spelling fix would break the stamp's hash; its text is the learner's, checked by 0201.
+    "src/ntsb_probable_cause/memory/snapshots/*",
 ]
 
 [dependency-groups]

@@ -3,6 +3,7 @@
 import dataclasses
 import json
 import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from ntsb_probable_cause.memory import claude, pool, snapshots
 from ntsb_probable_cause.memory.lessons import Lesson, Memory, Prediction, Support
 from ntsb_probable_cause.memory.pool import LearningCase
 from ntsb_probable_cause.memory.prompts import LessonDraft, LessonEdit, ProposeReply, ReviseReply
+from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.settings import Settings
 
@@ -510,3 +512,53 @@ def test_the_2009_finish_with_sonnet_as_applier_projects_under_the_learning_line
     assert total < 90.0
     at_old_limit = [dataclasses.replace(c, max_tokens=ml.MAX_TOKENS_SONNET) for c in calls]
     assert ml.projected_usd(at_old_limit, batch=True) > 90.0  # one apply alone, before the ruling
+
+
+def test_propose_sends_no_steering_or_dev_400_case_by_the_default_exclusions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Final review T8, end to end: real sample ids among learning rows, the default exclusions.
+    steer = samples.sample_ids("dev-steer-400")[0]
+    dev400 = samples.sample_ids("dev-400")[0]
+    raw = coded_record()
+
+    def caused(marker: str) -> dict[str, object]:
+        narratives = cast(list[dict[str, object]], raw["narratives"])
+        return {**raw, "narratives": [{**narratives[0], "probableCause": f"{marker} cause."}]}
+
+    h = Harness(tmp_path, lambda p: json.dumps({"new": [], "edits": [], "retire": []}), ())
+    processed = h.settings.data_dir / "processed"
+    shutil.rmtree(processed)
+    write_cases(
+        processed,
+        [
+            ("A000", "2009-05-01", "dev", "C", raw),
+            (steer, "2009-05-02", "dev", "C", caused("steeringmarker")),
+            (dev400, "2009-05-03", "dev", "C", caused("devfourmarker")),
+        ],
+    )
+    sent: list[claude.Call] = []
+    original = claude.LearningClient.send
+
+    def spy(self: claude.LearningClient, call: claude.Call) -> claude.Reply:
+        sent.append(call)
+        return original(self, call)
+
+    monkeypatch.setattr(claude.LearningClient, "send", spy)
+    assert h.run("propose", "--period", "2009", "--from", "empty", "--to", "pilot-a") == 0
+    assert [call.case_ids for call in sent] == [("A000",)]
+    users = " ".join(_user(params) for params in h.messages.created)
+    assert len(h.messages.created) == 1
+    for needle in (steer, dev400, "steeringmarker", "devfourmarker"):
+        assert needle not in users
+
+
+def test_a_truncated_record_line_is_skipped_and_its_count_printed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Final review M2: a write cut short leaves a line that does not parse; it is not fatal.
+    h = Harness(tmp_path, lambda p: json.dumps({"new": [], "edits": [], "retire": []}), ("2009",))
+    (h.run_folder("run-x") / claude.CALLS_FILE).write_text('{"key": "cut sho')
+    args = ("propose", "--period", "2009", "--from", "empty", "--to", "pilot-a")
+    assert h.run(*args, "--resume", "run-x") == 0
+    assert "1 unreadable record lines skipped in run run-x" in capsys.readouterr().out

@@ -3,7 +3,8 @@
 Not a ``model.client.ModelClient``: it carries no ``Payload`` and serves no answering call. Every
 call states its effort and asks for structured output; thinking stays at the model's default.
 Every reply is recorded under the run folder before it is used, so a repeated call is answered
-from the record and never paid for twice. A refused or truncated reply is a failed reply.
+from the record and never paid for twice. A refused or truncated reply is a failed reply. A
+record line that does not parse (a write cut short) is skipped and counted, never fatal.
 """
 
 import hashlib
@@ -16,7 +17,9 @@ from pathlib import Path
 from typing import Final, Literal
 
 import anthropic
-from pydantic import BaseModel, ConfigDict
+from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+from anthropic.types.messages.batch_create_params import Request
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.errors import ConfigurationError
@@ -50,7 +53,7 @@ class Call:
     max_tokens: int
     case_ids: tuple[str, ...]
 
-    def params(self) -> dict[str, object]:
+    def params(self) -> MessageCreateParamsNonStreaming:
         """The Messages API parameters; the system text is cached (the memory repeats)."""
         return {
             "model": self.model,
@@ -69,6 +72,15 @@ class Call:
         """The request's hash: its record key, and its batch ``custom_id``."""
         body = json.dumps(self.params(), sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(body.encode()).hexdigest()[:32]
+
+
+class BatchRow(BaseModel):
+    """One line of ``batches.jsonl``: a batch sent, or that batch finished."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    batch_id: str
+    keys: tuple[str, ...]
+    finished: bool
 
 
 class Reply(BaseModel):
@@ -112,6 +124,45 @@ def cost_usd(
     ) / 1e6
 
 
+def _parsed[M: BaseModel](path: Path, model: type[M]) -> tuple[list[M], int]:
+    """Every line of a record file that parses as ``model``, and how many did not."""
+    rows: list[M] = []
+    skipped = 0
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                rows.append(model.model_validate_json(line))
+            except ValidationError:
+                skipped += 1
+    return rows, skipped
+
+
+def read_replies(path: Path) -> tuple[list[Reply], int]:
+    """Every reply in a ``calls.jsonl`` that parses, and how many lines did not (review M2)."""
+    return _parsed(path, Reply)
+
+
+def _append(path: Path, lines: Sequence[str]) -> None:
+    """Append lines, first ending a line a cut-short write left open, so no row is glued to it."""
+    with path.open("a+") as out:
+        out.seek(0, 2)
+        if out.tell():
+            out.seek(out.tell() - 1)
+            if out.read(1) != "\n":
+                out.write("\n")
+        out.writelines(f"{line}\n" for line in lines)
+
+
+def _errored(result: object) -> str:
+    """An errored batch result's error type and message, never any request content."""
+    detail = getattr(getattr(result, "error", None), "error", None)
+    kind = getattr(detail, "type", None) or "unknown"
+    message = getattr(detail, "message", None) or ""
+    return f"errored: {kind}: {message}"
+
+
 def _reply(call: Call, message: object | None, *, batch: bool, error: str | None = None) -> Reply:
     usage = getattr(message, "usage", None)
     counts = [
@@ -152,7 +203,11 @@ def _reply(call: Call, message: object | None, *, batch: bool, error: str | None
 
 
 class LearningClient:
-    """Learner calls, sync or in batches, refused outside their role and the learning part."""
+    """Learner calls, sync or in batches, refused outside their role and the learning part.
+
+    ``skipped_lines`` counts the record lines found unreadable when the client opened its
+    folder; the caller prints it (final review M2).
+    """
 
     def __init__(
         self,
@@ -171,12 +226,12 @@ class LearningClient:
         self._folder = runs_dir / run_id
         self._folder.mkdir(parents=True, exist_ok=True)
         self._replies: dict[str, Reply] = {}
-        calls = self._folder / CALLS_FILE
-        if calls.exists():
-            for line in calls.read_text().splitlines():
-                reply = Reply.model_validate_json(line)
-                if reply.ok:
-                    self._replies[reply.key] = reply
+        replies, skipped = read_replies(self._folder / CALLS_FILE)
+        for reply in replies:
+            if reply.ok:
+                self._replies[reply.key] = reply
+        skipped += _parsed(self._folder / BATCHES_FILE, BatchRow)[1]
+        self.skipped_lines = skipped
 
     def _check(self, call: Call) -> None:
         if call.role not in ROLES:
@@ -192,9 +247,7 @@ class LearningClient:
             )
 
     def _record(self, replies: Sequence[Reply], *, model: str) -> None:
-        with (self._folder / CALLS_FILE).open("a") as out:
-            for reply in replies:
-                out.write(reply.model_dump_json() + "\n")
+        _append(self._folder / CALLS_FILE, [reply.model_dump_json() for reply in replies])
         for reply in replies:
             if reply.ok:
                 self._replies[reply.key] = reply
@@ -213,50 +266,40 @@ class LearningClient:
             ),
         )
 
-    def _batch_rows(self) -> list[dict[str, object]]:
-        path = self._folder / BATCHES_FILE
-        if not path.exists():
-            return []
-        return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    def _batch_rows(self) -> list[BatchRow]:
+        return _parsed(self._folder / BATCHES_FILE, BatchRow)[0]
 
     def _append_batch(self, batch_id: str, keys: Sequence[str], *, finished: bool) -> None:
-        row = {"batch_id": batch_id, "keys": sorted(keys), "finished": finished}
-        with (self._folder / BATCHES_FILE).open("a") as out:
-            out.write(json.dumps(row) + "\n")
+        row = BatchRow(batch_id=batch_id, keys=tuple(sorted(keys)), finished=finished)
+        _append(self._folder / BATCHES_FILE, [row.model_dump_json()])
 
     def _submit(self, calls: Sequence[Call]) -> str:
         """Send one batch, and record its id before waiting so a crash resumes on it."""
-        batch = self._sdk.messages.batches.create(
-            requests=[{"custom_id": c.key(), "params": c.params()} for c in calls]  # type: ignore[typeddict-item]
-        )
+        requests: list[Request] = [{"custom_id": c.key(), "params": c.params()} for c in calls]
+        batch = self._sdk.messages.batches.create(requests=requests)
         self._append_batch(batch.id, [c.key() for c in calls], finished=False)
         return batch.id
 
     def _open_batch(self, keys: set[str]) -> str | None:
         """The last unfinished recorded batch holding exactly these keys, if any."""
         rows = self._batch_rows()
-        closed = {r["batch_id"] for r in rows if r["finished"]}
+        closed = {r.batch_id for r in rows if r.finished}
         found: str | None = None
         for row in rows:
-            if set(row["keys"]) == keys and row["batch_id"] not in closed:  # type: ignore[call-overload]
-                found = str(row["batch_id"])
+            if set(row.keys) == keys and row.batch_id not in closed:
+                found = row.batch_id
         return found
 
     def _mark_finished(self, batch_id: str) -> None:
-        keys = next(
-            (r["keys"] for r in reversed(self._batch_rows()) if r["batch_id"] == batch_id), []
-        )
-        self._append_batch(batch_id, keys, finished=True)  # type: ignore[arg-type]
+        keys = next((r.keys for r in reversed(self._batch_rows()) if r.batch_id == batch_id), ())
+        self._append_batch(batch_id, keys, finished=True)
 
     def _failed(self, call: Call) -> Reply:
         """The last recorded failed reply for a call, so its caller sees why it failed."""
-        path = self._folder / CALLS_FILE
         found: Reply | None = None
-        if path.exists():
-            for line in path.read_text().splitlines():
-                reply = Reply.model_validate_json(line)
-                if reply.key == call.key():
-                    found = reply
+        for reply in read_replies(self._folder / CALLS_FILE)[0]:
+            if reply.key == call.key():
+                found = reply
         if found is None:
             raise ConfigurationError(f"no recorded reply for call {call.key()}")
         return found
@@ -267,7 +310,7 @@ class LearningClient:
         if (known := self._replies.get(call.key())) is not None:
             return known
         try:
-            message = self._sdk.messages.create(**call.params())  # type: ignore[call-overload]
+            message = self._sdk.messages.create(**call.params())
             reply = _reply(call, message, batch=False)
         except anthropic.APIError as exc:
             reply = _reply(call, None, batch=False, error=f"{type(exc).__name__}: {exc}")
@@ -296,7 +339,10 @@ class LearningClient:
                 call = todo[result.custom_id]
                 kind = result.result.type
                 message = getattr(result.result, "message", None) if kind == "succeeded" else None
-                got.append(_reply(call, message, batch=True, error=None if message else kind))
+                error = (
+                    None if message else (_errored(result.result) if kind == "errored" else kind)
+                )
+                got.append(_reply(call, message, batch=True, error=error))
             missing = set(todo) - {r.key for r in got}
             got.extend(
                 _reply(todo[k], None, batch=True, error="no result") for k in sorted(missing)

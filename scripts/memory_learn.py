@@ -734,6 +734,8 @@ def main(
         else:
             run_id = args.resume
         client = client_factory(settings, run_id, (commit, dirty), forbidden)
+        if client.skipped_lines:
+            print(f"{client.skipped_lines} unreadable record lines skipped in run {run_id}")
         run = Run(settings, tables, client, run_id, forbidden, commit)
         commands = {"propose": propose, "agreement": agreement, "finish": finish}
         return commands[args.command](args, run)

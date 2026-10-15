@@ -29,14 +29,18 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import pyarrow.parquet as pq
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.settings import Settings
 from ntsb_probable_cause.splits import Split
 
 CLASSES = ("C", "F", "L")
+REPOSITORY: Final = Path(__file__).resolve().parents[1]
+FIXTURE_RECORDS: Path = REPOSITORY / "tests" / "fixtures" / "records"
 
 
 @dataclass(frozen=True)
@@ -73,8 +77,18 @@ def drawn(sample: str) -> list[tuple[str, str]]:
 
 
 def fixture_case_ids() -> frozenset[str]:
-    """Case ids of the redacted record fixtures, read as tests/test_contamination.py reads them."""
-    paths = sorted(Path("tests/fixtures/records").glob("*.json"))
+    """Case ids of the redacted record fixtures, read as tests/test_contamination.py reads them.
+
+    The folder is found from this file, not the working folder (``FIXTURE_RECORDS``, read at
+    call time), so a draw run from elsewhere leaves the same cases out.
+
+    Raises:
+        ConfigurationError: the folder holds no fixture file: an empty exclusion would draw a
+            different sample without saying so.
+    """
+    paths = sorted(FIXTURE_RECORDS.glob("*.json"))
+    if not paths:
+        raise ConfigurationError(f"no record fixture files in {FIXTURE_RECORDS}")
     return frozenset(str(json.loads(p.read_text())["record"]["ntsbNumber"]) for p in paths)
 
 

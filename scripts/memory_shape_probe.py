@@ -79,8 +79,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         0 when every check is ok, 1 when any check failed.
 
     Raises:
-        ConfigurationError: the tree has uncommitted changes, the learning line would be
-            passed, or the Anthropic key is not set.
+        ConfigurationError: the tree has uncommitted changes, or the Anthropic key is not set.
+        BudgetError: the learning line would be passed (``budget.check_learning_budget``).
     """
     parser = argparse.ArgumentParser(prog="memory_shape_probe")
     parser.add_argument("--out", type=Path, help="also write the printed text here")

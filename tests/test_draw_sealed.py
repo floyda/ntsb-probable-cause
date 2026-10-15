@@ -1,12 +1,14 @@
 """scripts/draw_sealed.py: the two sealed samples, drawn once, never overwritten (0095, 0129)."""
 
 import csv
+import json
 from pathlib import Path
 
 import pytest
 from scripts import draw_sealed
 from tests.test_samples import _raw, _write_cases
 
+from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.splits import Split
 
@@ -177,3 +179,42 @@ def test_the_steering_slice_draw_is_seeded_and_excludes_every_sample() -> None:
     assert plan.exclude_fixtures is True
     assert not draw_sealed.DRAWS["dev-seal-400"].exclude_fixtures
     assert not draw_sealed.DRAWS["dev-seal-s3-400"].exclude_fixtures
+
+
+def test_fixture_ids_are_read_from_the_repository_whatever_the_working_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Final review T1: anchored to the repository, so a run from another folder still finds them.
+    expected = draw_sealed.fixture_case_ids()
+    assert expected
+    monkeypatch.chdir(tmp_path)
+    assert draw_sealed.fixture_case_ids() == expected
+
+
+def test_no_fixture_files_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(draw_sealed, "FIXTURE_RECORDS", tmp_path / "none")
+    with pytest.raises(ConfigurationError, match="fixture"):
+        draw_sealed.fixture_case_ids()
+
+
+def test_a_draw_that_excludes_fixtures_leaves_their_cases_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    processed, _lists, dev400, _seal27 = _env(tmp_path, monkeypatch)
+    plain = draw_sealed.Draw(seed=_S3_SEED, excluded=("dev-400",))
+    monkeypatch.setitem(draw_sealed.DRAWS, "t-plain", plain)
+    monkeypatch.setitem(
+        draw_sealed.DRAWS,
+        "t-fixtures",
+        draw_sealed.Draw(seed=_S3_SEED, excluded=("dev-400",), exclude_fixtures=True),
+    )
+    chosen = draw_sealed.drawn("t-plain")[0][0]  # a case the draw takes without the rule
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "one.json").write_text(json.dumps({"record": {"ntsbNumber": chosen}}))
+    monkeypatch.setattr(draw_sealed, "FIXTURE_RECORDS", records)
+    rows = draw_sealed.drawn("t-fixtures")
+    assert chosen not in {case for case, _date in rows}
+    assert rows == samples.draw(
+        processed, Split.DEV, seed=_S3_SEED, exclude=frozenset(dev400) | {chosen}
+    )

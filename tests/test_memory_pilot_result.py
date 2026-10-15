@@ -133,8 +133,11 @@ def test_learner_refusals_are_counted_by_category(tmp_path: Path) -> None:
         )
         + "\n"
     )
-    assert pr.refusals_by_category([folder]) == {"cyber": 2, "none": 1}
-    assert json.loads(json.dumps(pr.refusals_by_category([folder])))
+    assert pr.refusals_by_category([folder]) == ({"cyber": 2, "none": 1}, 0)
+    # Final review M2: a last line cut short is skipped and counted, not fatal.
+    with (folder / "calls.jsonl").open("a") as out:
+        out.write(row("6", "refusal", "cyber", None)[:40])
+    assert pr.refusals_by_category([folder]) == ({"cyber": 2, "none": 1}, 1)
 
 
 # Boundaries of the stop rule (decision 0204 item 5). ---------------------------------------
@@ -329,8 +332,10 @@ def test_main_writes_a_counts_only_reading_that_ends_with_the_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pilot = Pilot(tmp_path, monkeypatch)
+    (pilot.settings.runs_dir / "learn" / "calls.jsonl").write_text('{"key": "cut sho')
     assert pilot.main(pilot.argv()) == 0
     text = pilot.out.read_text()
+    assert "learner record lines unreadable and skipped: 1" in text
     assert not any(i in text for i in IDS)
     assert pilot.cause is not None
     assert pilot.cause not in text

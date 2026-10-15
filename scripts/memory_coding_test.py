@@ -562,7 +562,8 @@ def _run(ctx: Context, plan: Plan, *, resume: bool) -> int:
         else:
             print(
                 f"{plan.run_id}: a batch round is still open, so its reservation is kept; "
-                f"resume with --resume {plan.run_id}"
+                f"resume with --resume {plan.run_id}, or, once the round can no longer be "
+                f"billed, free it with uv run ntsb-eval release {plan.run_id}"
             )
     answered = sum(1 for row in rows if row.hypothesis is not None)
     print(f"{plan.run_id}: {answered} of {len(rows)} cases answered")
