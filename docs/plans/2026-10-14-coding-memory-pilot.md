@@ -102,7 +102,7 @@ git commit -m "Coding memory: decisions 0205 to 0207 (payload door, slice name, 
 **Interfaces:**
 - Produces: sample name `"dev-steer-400"` in `samples.SAMPLES`; `samples.sample_ids("dev-steer-400") -> tuple[str, ...]`; it is **not** in `samples.SEALED`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 # tests/test_samples.py (append)
@@ -132,34 +132,34 @@ def test_the_steering_slice_is_development_only_and_disjoint(eval_ids) -> None:
 
 Use the same `eval_ids` shape the neighbouring tests use (read them first; if they hold bare ids, adapt the two comprehensions to that shape).
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_samples.py tests/test_draw_sealed.py -k steer -v`
 Expected: FAIL (`dev-steer-400` not in `SAMPLES`; `KeyError` in `DRAWS`). The contamination test errors until the csv exists (Step 6).
 
-- [ ] **Step 3: Implement.** In `samples.py` add `"dev-steer-400"` to `SAMPLES` and `"dev-steer-400": "dev_steer_400_ids.csv"` to `_FILES`, with a comment `# Decisions 0203, 0206: the coding memory's steering slice; read only by its coding test.` In `draw_sealed.py` add `"dev-steer-400": Draw(seed=20261014, excluded=("dev-400", "dev-seal-400", "dev-seal-s3-400"))` and update the module docstring's Status block to name decision 0203 and 0206. Add to the `Makefile`, beside `s3-draw-sealed`:
+- [x] **Step 3: Implement.** In `samples.py` add `"dev-steer-400"` to `SAMPLES` and `"dev-steer-400": "dev_steer_400_ids.csv"` to `_FILES`, with a comment `# Decisions 0203, 0206: the coding memory's steering slice; read only by its coding test.` In `draw_sealed.py` add `"dev-steer-400": Draw(seed=20261014, excluded=("dev-400", "dev-seal-400", "dev-seal-s3-400"))` and update the module docstring's Status block to name decision 0203 and 0206. Add to the `Makefile`, beside `s3-draw-sealed`:
 
 ```make
 mem-draw-steer: ## Draw dev-steer-400 once (seed 20261014, decisions 0203, 0206); free
 	uv run python -m scripts.draw_sealed --sample dev-steer-400
 ```
 
-- [ ] **Step 4: Run the unit tests.**
+- [x] **Step 4: Run the unit tests.**
 
 Run: `uv run pytest tests/test_samples.py tests/test_draw_sealed.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Draw the slice (free, local data).**
+- [x] **Step 5: Draw the slice (free, local data).**
 
 Run: `make mem-draw-steer` then `uv run python -m scripts.draw_sealed --sample dev-steer-400 --verify`
 Expected: the csv written with 400 rows (200 fatal, 200 non-fatal) and counts by year printed; `--verify` reports it matches.
 
-- [ ] **Step 6: Record it and run the contamination test.** Add a paragraph to `tests/fixtures/eval/README.md`: drawn 2026-10-14 by `make mem-draw-steer`, `samples.draw` seed 20261014 from the development split excluding `dev-400`, `dev-seal-400`, `dev-seal-s3-400`; not sealed; read only by the coding memory's coding test (decisions 0203, 0206).
+- [x] **Step 6: Record it and run the contamination test.** Add a paragraph to `tests/fixtures/eval/README.md`: drawn 2026-10-14 by `make mem-draw-steer`, `samples.draw` seed 20261014 from the development split excluding `dev-400`, `dev-seal-400`, `dev-seal-s3-400`; not sealed; read only by the coding memory's coding test (decisions 0203, 0206).
 
 Run: `uv run pytest tests/test_contamination.py -v`
 Expected: PASS.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/samples.py scripts/draw_sealed.py tests/fixtures/eval/dev_steer_400_ids.csv tests/fixtures/eval/README.md Makefile tests/test_samples.py tests/test_contamination.py tests/test_draw_sealed.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2512,3 +2512,5 @@ git commit -m "Coding memory: the pilot's result"
 Each entry: date, task, what changed and why.
 
 - 2026-10-14, planning: support is not weighted towards recent periods in the pilot (the note's §4 allows it). Two periods give too little drift to weigh; the full pass's plan decides the weighting, with the pilot's counts per period as its evidence.
+- 2026-10-15, Task 1: `scripts/draw_sealed.py` needed no behaviour change for an unsealed sample (it never consulted `SEALED`); only its docstring and `--sample` usage line now name `dev-steer-400`. The draw printed 401 cases (the quota rounding the other 400-case samples share), so the contamination test's 395 to 405 bound holds.
+- 2026-10-15, Task 1: the seed-20261014 draw included one redacted record fixture case, so fixture ids were excluded from this draw only (`Draw.exclude_fixtures`, True for `dev-steer-400`) and the seed was kept. Decision 0203 names the seed and the pool, not the fixture rule. The other draws are unchanged (their `--verify` stays identical).

@@ -406,3 +406,9 @@ def test_draw_clamps_a_class_quota_larger_than_its_pool(tmp_path: Path) -> None:
     processed = _write_cases(tmp_path, rows)
     drawn = {case_id for case_id, _ in samples.draw(processed, Split.DEV, per_slice=10)}
     assert drawn == {r[0] for r in rows}
+
+
+def test_the_steering_slice_is_a_development_sample_and_not_sealed() -> None:
+    assert "dev-steer-400" in samples.SAMPLES
+    assert "dev-steer-400" not in samples.SEALED
+    assert samples.sample_path("dev-steer-400").name == "dev_steer_400_ids.csv"

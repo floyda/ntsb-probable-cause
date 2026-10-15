@@ -15,13 +15,23 @@ from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.fields import EvidenceRole
 from ntsb_probable_cause.splits import Split
 
-SAMPLES = ("heldout-40", "heldout-400", "dev-400", "dev-seal-400", "dev-seal-s3-400")
+# Decisions 0203, 0206: "dev-steer-400" is the coding memory's steering slice; read only by its
+# coding test. It is a development sample and is not sealed.
+SAMPLES = (
+    "heldout-40",
+    "heldout-400",
+    "dev-400",
+    "dev-seal-400",
+    "dev-seal-s3-400",
+    "dev-steer-400",
+)
 _FILES = {
     "heldout-40": "decidability_ids.csv",
     "heldout-400": "heldout_400_ids.csv",
     "dev-400": "dev_400_ids.csv",
     "dev-seal-400": "dev_seal_400_ids.csv",
     "dev-seal-s3-400": "dev_seal_s3_400_ids.csv",
+    "dev-steer-400": "dev_steer_400_ids.csv",
 }
 EVAL_DIR = Path("tests/fixtures/eval")
 # Decisions 0095 and 0129: a sealed development sample opens once, when its own registration,

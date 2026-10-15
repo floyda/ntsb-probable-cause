@@ -4,6 +4,9 @@ Status
     One-shot per sample, chosen with ``--sample`` (default ``dev-seal-400``). ``draw`` writes
     the sample's list under tests/fixtures/eval and refuses to overwrite it: S2.7's
     dev_seal_400_ids.csv (decision 0095) and S3's dev_seal_s3_400_ids.csv (decision 0129).
+    ``dev-steer-400`` (decisions 0203, 0206) is drawn
+    the same way but is not sealed: the coding memory's coding test scores on it, and the
+    learner and the ``mem`` statistics leave it out.
     ``--verify`` re-draws and compares, free, reading only the processed file's index columns
     and each case's injury level (no case is scored, read or fetched).
 
@@ -15,8 +18,8 @@ Why
     a working sample).
 
 Usage
-    NTSB_DATA_DIR=... uv run python -m scripts.draw_sealed [--sample {dev-seal-400,dev-seal-s3-400}]
-        [--verify]
+    NTSB_DATA_DIR=... uv run python -m scripts.draw_sealed
+        [--sample {dev-seal-400,dev-seal-s3-400,dev-steer-400}] [--verify]
 """
 
 import argparse
@@ -42,11 +45,20 @@ class Draw:
 
     seed: int
     excluded: tuple[str, ...]  # earlier samples whose cases are never drawn
+    exclude_fixtures: bool = False  # also leave out every redacted record fixture's case
 
 
 DRAWS: dict[str, Draw] = {
     "dev-seal-400": Draw(seed=20260926, excluded=("dev-400",)),
     "dev-seal-s3-400": Draw(seed=20260930, excluded=("dev-400", "dev-seal-400")),
+    # Decisions 0203, 0206: not sealed; the coding memory's steering slice.
+    # Also leaves out the record fixtures: the bare seed-20261014 draw held one, and no fixture
+    # may be an evaluation case (tests/test_contamination.py).
+    "dev-steer-400": Draw(
+        seed=20261014,
+        excluded=("dev-400", "dev-seal-400", "dev-seal-s3-400"),
+        exclude_fixtures=True,
+    ),
 }
 
 
@@ -55,7 +67,15 @@ def drawn(sample: str) -> list[tuple[str, str]]:
     plan = DRAWS[sample]
     processed = Settings().data_dir / "processed"
     exclude = frozenset(case for name in plan.excluded for case in samples.sample_ids(name))
+    if plan.exclude_fixtures:
+        exclude |= fixture_case_ids()
     return samples.draw(processed, Split.DEV, seed=plan.seed, exclude=exclude)
+
+
+def fixture_case_ids() -> frozenset[str]:
+    """Case ids of the redacted record fixtures, read as tests/test_contamination.py reads them."""
+    paths = sorted(Path("tests/fixtures/records").glob("*.json"))
+    return frozenset(str(json.loads(p.read_text())["record"]["ntsbNumber"]) for p in paths)
 
 
 def strata(processed: Path, cases: Sequence[str]) -> dict[str, dict[str, int]]:

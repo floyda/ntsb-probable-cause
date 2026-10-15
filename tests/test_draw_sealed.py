@@ -168,3 +168,12 @@ def test_strata_count_fatal_and_class_for_the_listed_cases_only(tmp_path: Path) 
         "fatal": {"C": 1, "F": 0, "L": 0},
         "non-fatal": {"C": 1, "F": 1, "L": 1},
     }
+
+
+def test_the_steering_slice_draw_is_seeded_and_excludes_every_sample() -> None:
+    plan = draw_sealed.DRAWS["dev-steer-400"]
+    assert plan.seed == 20261014
+    assert set(plan.excluded) == {"dev-400", "dev-seal-400", "dev-seal-s3-400"}
+    assert plan.exclude_fixtures is True
+    assert not draw_sealed.DRAWS["dev-seal-400"].exclude_fixtures
+    assert not draw_sealed.DRAWS["dev-seal-s3-400"].exclude_fixtures

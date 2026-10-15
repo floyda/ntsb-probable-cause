@@ -34,7 +34,7 @@ def test_evaluation_cases_are_held_out_by_event_date(eval_ids: dict[str, dict[st
     # dev_400_ids, dev_seal_400_ids and dev_seal_s3_400_ids are the development-split lists
     # among the eval id lists (spec §5.3, decisions 0095 and 0129); each gets its own purity
     # test below rather than being asserted held-out here.
-    development = {"dev_400_ids", "dev_seal_400_ids", "dev_seal_s3_400_ids"}
+    development = {"dev_400_ids", "dev_seal_400_ids", "dev_seal_s3_400_ids", "dev_steer_400_ids"}
     offenders = [
         case
         for name, cases in eval_ids.items()
@@ -118,3 +118,15 @@ def test_docket_fixtures_are_dev_400_cases_by_event_date(
         assert case_id in dev, f"{case_id} is not in dev-400"
         assert _split(manifest["fixture"]["event_date"]) is Split.DEV
         assert _split(dev[case_id]) is Split.DEV
+
+
+def test_the_steering_slice_is_development_only_and_disjoint(
+    eval_ids: dict[str, dict[str, str]],
+) -> None:
+    """Decisions 0203 and 0206: the coding memory's steering slice, drawn from the development
+    split, sharing no case with any other sample (not sealed, but never learned from)."""
+    steer = eval_ids["dev_steer_400_ids"]
+    assert 395 <= len(steer) <= 405
+    assert all(split_of(date.fromisoformat(day)) is Split.DEV for day in steer.values())
+    for other in ("dev_400_ids", "dev_seal_400_ids", "dev_seal_s3_400_ids", "heldout_400_ids"):
+        assert not set(steer) & set(eval_ids[other]), other
