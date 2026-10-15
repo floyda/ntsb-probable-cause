@@ -1306,7 +1306,7 @@ git commit -m "Coding memory: the learning part (decisions 0200, 0203)"
   - `curate.apply_cap(lessons: Sequence[Lesson], tables: CodeTables, cap_tokens: int) -> tuple[tuple[Lesson, ...], tuple[Lesson, ...]]` (kept, pushed out)
   - `curate.agreement(a: Mapping[str, frozenset[str]], b: Mapping[str, frozenset[str]]) -> tuple[int, int]` (pairs both mark, pairs either marks)
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 """Support counts, revision, the cap and model agreement (decisions 0201, 0204). Offline."""
@@ -1376,12 +1376,12 @@ def test_agreement_counts_pairs_either_model_marks() -> None:
 
 Replace `"020630"`, `"0206304044"` and `"0101010101"` with codes from `TABLES` that keep the stated relationship (a ten-digit finding whose first six digits are the category, and one whose first six are not).
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_memory_curate.py -v`
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Implement `memory/curate.py`.**
+- [x] **Step 3: Implement `memory/curate.py`.**
 
 ```python
 """Counting support, choosing what to revise, the cap, and model agreement (0201, 0204).
@@ -1481,12 +1481,12 @@ def agreement(
 
 The test's `_case` gives every case a second occurrence code so `case.occurrence[0]` always exists; `pool.learning_part` guarantees at least one.
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `uv run pytest tests/test_memory_curate.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/memory/curate.py tests/test_memory_curate.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2523,3 +2523,4 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 7: the brief's seven-word copying test was an eight-word copy by its own rule ("pilot's failure to maintain adequate airspeed during the" is eight words), so the test's text now ends "during a flare" (seven shared words). The code is the brief's.
 - 2026-10-15, Task 7: `scripts/README.md` does not exist (no scripts table in the repo), so no row was added; the Makefile target `mem-check` and the script's docstring carry its description. `memory_check.main` reads `snapshots.SNAPSHOT_DIR` at call time and passes it explicitly, because the library functions' default arguments bind at definition and a monkeypatch would not reach them.
 - 2026-10-15, Task 8: `learning_part` streams row batches (256 rows, parsing `raw_json` only for rows passing the cheap filters) instead of the brief's whole-table read, as `samples.load_cases` does; the brief's `from collections.abc import AbstractSet` does not exist, so it imports `Set as AbstractSet` as `scripts/coding_stats.py` does; `POOL_CLASSES` stays a literal because the only public one lives in `scripts/`, which the library cannot import. `fields.occurrence_codes` and `finding_codes_in_cause` already return tuples, so no `tuple(...)` wrapping.
+- 2026-10-15, Task 9: the brief's cap test gave the room as the strongest lesson's bare token estimate, but `apply_cap` (as its docstring specifies) charges one more token for the line break, so the strongest lesson could never fit and the test failed on the brief's code (RED evidence in the task report). The test's room now adds that one token; the implementation is the brief's. `test_memory_curate.py` also takes the real finding codes `02063000`+`44` (category 020630) and `01010000`+`00` via `compose_finding`, and `551240` and `600470` are real occurrence codes, so no code was replaced.
