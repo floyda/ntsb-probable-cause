@@ -181,12 +181,18 @@ def refusals_by_category(folders: Sequence[Path]) -> dict[str, int]:
     """Failed learner replies that were refusals, by ``stop_category`` (``none`` when absent).
 
     Reads each folder's ``calls.jsonl`` (decision 0207 item 4). Counts only.
+
+    Raises:
+        SystemExit: a folder is a live run (``refuse_live``).
+        ConfigurationError: a named folder, or its ``calls.jsonl``, is missing: a mistyped run id
+            must not read as "no refusals".
     """
     counts: Counter[str] = Counter()
     for folder in folders:
+        refuse_live(PROG, folder)
         path = folder / claude.CALLS_FILE
         if not path.exists():
-            continue
+            raise ConfigurationError(f"{folder.name}: no {claude.CALLS_FILE}: not a learner run")
         for line in path.read_text().splitlines():
             if not line:
                 continue
@@ -213,13 +219,18 @@ class RunRead:
         return sum(row.hypothesis is None for row in self.rows)
 
 
-def load_run(folder: Path) -> RunRead:
-    """Read a run after the fence and the sample check.
+def load_run(folder: Path, condition: str) -> RunRead:
+    """Read a run after the fence, the sample check and the condition check.
+
+    Args:
+        folder: the run folder.
+        condition: ``tables``, ``counts`` or ``memory``; the spec must say the same, and a memory
+            run must name a snapshot.
 
     Raises:
-        SystemExit: a live run (``refuse_live``).
-        ConfigurationError: not a finished coding-test run, or a sample other than the steering
-            slice.
+        SystemExit: a live run (``refuse_live``), before anything else is read.
+        ConfigurationError: not a finished coding-test run, a sample other than the steering
+            slice, or another condition than expected.
     """
     refuse_live(PROG, folder)
     try:
@@ -235,7 +246,29 @@ def load_run(folder: Path) -> RunRead:
         ) from None
     if not isinstance(spec, dict) or spec.get("sample") != SAMPLE:
         raise ConfigurationError(f"{folder.name} is not a {SAMPLE} run: the pilot reads that only")
+    if spec.get("condition") != condition:
+        raise ConfigurationError(
+            f"{folder.name} is a {spec.get('condition')} run, not the {condition} run expected"
+        )
+    if condition == "memory" and not isinstance(spec.get("snapshot"), str):
+        raise ConfigurationError(f"{folder.name} is a memory run with no snapshot named")
     return RunRead(folder, spec, rows)
+
+
+def refuse_unequal_cases(runs: Mapping[str, RunRead]) -> None:
+    """Refuse runs whose case-id sets differ; the message holds counts only.
+
+    Raises:
+        ConfigurationError: some run's cases are not the same set as the first run's.
+    """
+    sets = {name: {row.case_id for row in run.rows} for name, run in runs.items()}
+    first = next(iter(sets.values()))
+    odd = [name for name, ids in sets.items() if ids != first]
+    if odd:
+        raise ConfigurationError(
+            f"runs cover different cases ({', '.join(f'{n}: {len(sets[n])}' for n in sets)}); "
+            f"differing: {', '.join(odd)}"
+        )
 
 
 def _folder(runs_dir: Path, name: str) -> Path:
@@ -287,12 +320,6 @@ def report(  # noqa: PLR0913 -- the runs, their scores and the four things the t
         diff, text = paired(scored[first], scored[second])
         diffs[label] = diff
         out += [f"{label}", text]
-    out.append("")
-    noise = diffs["counts(b) - counts(a), the noise"]
-    last = memory_ids[-1]
-    ok, reasons = stop_rule(diffs[f"{last} - counts(a)"], noise)
-    out.append(f"stop rule on the last memory run ({last}): {'PASS' if ok else 'FAIL'}")
-    out += [f"  {reason}" for reason in reasons]
     out += ["", "curve (top-1, top-3, finding recall@10, per cent)"]
     for name in ("tables-a", "counts-a", *memory_ids):
         got = scored[name].values()
@@ -307,6 +334,11 @@ def report(  # noqa: PLR0913 -- the runs, their scores and the four things the t
     refusals = refusals_by_category(learn_runs)
     detail = ", ".join(f"{k} {v}" for k, v in refusals.items()) or "none"
     out.append(f"learner refusals by category: {detail}")
+    noise = diffs["counts(b) - counts(a), the noise"]
+    last = memory_ids[-1]
+    ok, reasons = stop_rule(diffs[f"{last} - counts(a)"], noise)
+    out += ["", *[f"not passed: {reason}" for reason in reasons]]
+    out.append(f"stop rule on the last memory run ({last}): {'PASS' if ok else 'FAIL'}")
     return "\n".join(out)
 
 
@@ -338,13 +370,19 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
         }
         memory_ids = [f"memory-{i + 1}" for i in range(len(args.memory))]
         names.update(zip(memory_ids, args.memory, strict=True))
-        runs = {k: load_run(_folder(settings.runs_dir, v)) for k, v in names.items()}
+        runs = {
+            k: load_run(_folder(settings.runs_dir, v), k.split("-")[0]) for k, v in names.items()
+        }
+        refuse_unequal_cases(runs)
         processed = settings.data_dir / "processed"
         ids = sorted({row.case_id for run in runs.values() for row in run.rows})
-        verdicts = {
-            case_id: split_record(raw)[2]
-            for case_id, raw in zip(ids, samples.load_cases(processed, ids), strict=True)
-        }
+        try:
+            raws = samples.load_cases(processed, ids)
+        except ValueError:
+            raise ConfigurationError(
+                f"some of the {len(ids)} cases are not in {processed / 'cases.parquet'}"
+            ) from None
+        verdicts = {case_id: split_record(raw)[2] for case_id, raw in zip(ids, raws, strict=True)}
         tables, seen = load_tables(), samples.seen_pairs(processed)
         scored = {k: measures(run.rows, verdicts, tables, seen) for k, run in runs.items()}
         text = report(

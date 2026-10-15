@@ -6,11 +6,16 @@ from pathlib import Path
 import pytest
 from scripts import memory_pilot_result as pr
 from scripts.memory_coding_test import CodingCase
+from tests.conftest import coded_record, write_cases
 
-from ntsb_probable_cause.memory import claude
+from ntsb_probable_cause import fields
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.memory import claude, snapshots
+from ntsb_probable_cause.memory.lessons import Memory
 from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import Hypothesis
+from ntsb_probable_cause.settings import Settings
 
 
 def test_a_finding_gain_beyond_the_noise_with_no_harm_passes() -> None:
@@ -130,3 +135,220 @@ def test_learner_refusals_are_counted_by_category(tmp_path: Path) -> None:
     )
     assert pr.refusals_by_category([folder]) == {"cyber": 2, "none": 1}
     assert json.loads(json.dumps(pr.refusals_by_category([folder])))
+
+
+# Boundaries of the stop rule (decision 0204 item 5). ---------------------------------------
+
+
+def test_top3_harm_beyond_the_noise_fails() -> None:
+    noise = pr.Diff3(top1=0.0, top3=0.01, recall10=0.01)
+    ok, reasons = pr.stop_rule(pr.Diff3(top1=0.0, top3=-0.02, recall10=0.05), noise)
+    assert not ok
+    assert any("top-3" in r for r in reasons)
+
+
+def test_a_finding_gain_equal_to_the_noise_fails() -> None:
+    noise = pr.Diff3(top1=0.0, top3=0.0, recall10=-0.02)
+    ok, _ = pr.stop_rule(pr.Diff3(top1=0.0, top3=0.0, recall10=0.02), noise)
+    assert not ok
+
+
+def test_a_fall_exactly_equal_to_the_noise_passes() -> None:
+    noise = pr.Diff3(top1=0.02, top3=0.02, recall10=0.01)
+    ok, reasons = pr.stop_rule(pr.Diff3(top1=-0.02, top3=-0.02, recall10=0.03), noise)
+    assert ok, reasons
+
+
+# Wiring: load_run, report, main. -----------------------------------------------------------
+
+SAMPLE = "dev-steer-400"
+
+
+def _write_run(root: Path, name: str, rows: list[CodingCase], **spec: object) -> Path:
+    folder = root / name
+    folder.mkdir(parents=True)
+    body = {"sample": SAMPLE, "condition": "tables", **spec}
+    (folder / "spec.json").write_text(json.dumps(body))
+    (folder / "cases.jsonl").write_text("".join(row.model_dump_json() + "\n" for row in rows))
+    return folder
+
+
+def test_load_run_refuses_another_sample(tmp_path: Path) -> None:
+    folder = _write_run(tmp_path, "r-dev-400", [], sample="dev-400")
+    with pytest.raises(ConfigurationError, match="dev-steer-400"):
+        pr.load_run(folder, "tables")
+
+
+def test_load_run_refuses_the_wrong_condition_and_a_memory_run_with_no_snapshot(
+    tmp_path: Path,
+) -> None:
+    folder = _write_run(tmp_path, "r1", [], condition="counts")
+    with pytest.raises(ConfigurationError, match="not the tables run"):
+        pr.load_run(folder, "tables")
+    memory = _write_run(tmp_path, "r2", [], condition="memory")
+    with pytest.raises(ConfigurationError, match="no snapshot"):
+        pr.load_run(memory, "memory")
+
+
+def test_a_live_folder_is_fenced_before_anything_is_read(tmp_path: Path) -> None:
+    folder = tmp_path / "20261015T000000Z-abc-live-C"
+    folder.mkdir()  # no spec.json and no cases.jsonl: a read would raise ConfigurationError
+    with pytest.raises(SystemExit, match="live run"):
+        pr.load_run(folder, "tables")
+    (folder / "spec.json").write_text(json.dumps({"sample": "live"}))
+    with pytest.raises(SystemExit, match="live run"):
+        pr.load_run(folder, "tables")
+
+
+def test_learner_refusals_fence_live_folders_and_refuse_a_missing_one(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match=r"no calls\.jsonl"):
+        pr.refusals_by_category([tmp_path / "typo"])
+    live = tmp_path / "x-live-y"
+    live.mkdir()
+    (live / "run.jsonl").write_text(json.dumps({"sample": "live"}))
+    with pytest.raises(SystemExit):
+        pr.refusals_by_category([live])
+
+
+def _case(case_id: str) -> CodingCase:
+    return CodingCase(case_id=case_id, hypothesis=None, failure="cap", cost_usd=0.0)
+
+
+def test_runs_with_different_cases_are_refused_with_counts_only(tmp_path: Path) -> None:
+    one = pr.load_run(_write_run(tmp_path, "a", [_case("SECRET1"), _case("SECRET2")]), "tables")
+    two = pr.load_run(_write_run(tmp_path, "b", [_case("SECRET1")]), "tables")
+    with pytest.raises(ConfigurationError) as caught:
+        pr.refuse_unequal_cases({"tables-a": one, "tables-b": two})
+    assert "SECRET" not in str(caught.value)
+    assert "2" in str(caught.value)
+
+
+def _scored(top1: bool, recall: float) -> dict[str, pr.CaseMeasures]:
+    return {str(i): pr.CaseMeasures(top1, top1, recall) for i in range(10)}
+
+
+def test_the_stop_rule_line_names_the_last_memory_run_and_follows_it(tmp_path: Path) -> None:
+    names = ["tables-a", "tables-b", "counts-a", "counts-b", "memory-1", "memory-2"]
+    runs = {n: pr.RunRead(tmp_path / n, {"snapshot": None}, ()) for n in names}
+    base = _scored(False, 0.0)
+
+    def verdict(second_recall: float) -> str:
+        scored = {
+            "tables-a": base,
+            "tables-b": base,
+            "counts-a": base,
+            "counts-b": base,
+            "memory-1": _scored(False, 1.0),  # would pass on its own
+            "memory-2": _scored(False, second_recall),
+        }
+        text = pr.report(
+            runs,
+            scored,
+            memory_ids=["memory-1", "memory-2"],
+            learn_runs=[],
+            snapshot_dir=tmp_path,
+            agreement=tmp_path / "none.txt",
+        )
+        return text.splitlines()[-1]
+
+    assert verdict(0.0) == "stop rule on the last memory run (memory-2): FAIL"
+    assert verdict(1.0) == "stop rule on the last memory run (memory-2): PASS"
+
+
+def test_main_writes_a_counts_only_reading_that_ends_with_the_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = Settings(data_dir=tmp_path / "data", runs_dir=tmp_path / "runs")
+    base = coded_record()
+    ids = ["ZZZ09LA001", "ZZZ09LA002", "ZZZ09LA003"]
+    write_cases(
+        settings.data_dir / "processed",
+        [(i, "2009-05-01", "dev", "LA", {**base, "ntsbNumber": i}) for i in ids],
+    )
+    code = fields.occurrence_codes(base)[0]
+    right = _hypothesis(code[:3], code[3:])
+
+    def rows(answer: Hypothesis | None) -> list[CodingCase]:
+        return [
+            CodingCase(
+                case_id=i, hypothesis=answer, failure=None if answer else "cap", cost_usd=0.0
+            )
+            for i in ids
+        ]
+
+    runs = settings.runs_dir
+    for name, cond, answer in (
+        ("ta", "tables", None),
+        ("tb", "tables", None),
+        ("ca", "counts", None),
+        ("cb", "counts", None),
+        ("m1", "memory", right),
+    ):
+        _write_run(
+            runs, name, rows(answer), condition=cond, snapshot="s" if cond == "memory" else None
+        )
+    out = tmp_path / "result.txt"
+    monkeypatch.setattr(
+        snapshots, "load_checked", lambda *_a, **_k: Memory(name="s", periods=(2009,))
+    )
+    status = pr.main(
+        [
+            "--tables-a",
+            "ta",
+            "--tables-b",
+            "tb",
+            "--counts-a",
+            "ca",
+            "--counts-b",
+            "cb",
+            "--memory",
+            "m1",
+            "--agreement",
+            str(tmp_path / "none.txt"),
+            "--out",
+            str(out),
+        ],
+        settings=settings,
+    )
+    assert status == 0
+    text = out.read_text()
+    assert not any(i in text for i in ids)
+    cause = fields.probable_cause(base)
+    assert cause is not None
+    assert cause not in text
+    last = text.strip().splitlines()[-1]
+    assert last.startswith("stop rule on the last memory run (memory-1): ")
+
+
+def test_main_refuses_missing_cases_without_naming_them(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path / "data", runs_dir=tmp_path / "runs")
+    write_cases(
+        settings.data_dir / "processed",
+        [("ZZZ09LA001", "2009-05-01", "dev", "LA", {**coded_record(), "ntsbNumber": "ZZZ09LA001"})],
+    )
+    for name, cond in (
+        ("ta", "tables"),
+        ("tb", "tables"),
+        ("ca", "counts"),
+        ("cb", "counts"),
+        ("m1", "memory"),
+    ):
+        _write_run(settings.runs_dir, name, [_case("ZZZ09LA999")], condition=cond, snapshot="s")
+    status = pr.main(
+        [
+            "--tables-a",
+            "ta",
+            "--tables-b",
+            "tb",
+            "--counts-a",
+            "ca",
+            "--counts-b",
+            "cb",
+            "--memory",
+            "m1",
+            "--out",
+            str(tmp_path / "o.txt"),
+        ],
+        settings=settings,
+    )
+    assert status == 1
