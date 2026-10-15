@@ -29,13 +29,22 @@ What it writes
     record, ``agent.drive.drive_batch``); ``cases.jsonl``, one ``CodingCase`` per case (its final
     answer or its failure, and its priced cost); and one ``spend.jsonl`` row. The spend is the
     rounds' reported costs when every round reported one, else the calls' priced costs (decision
-    0135). Nothing is committed and only counts are printed. A run folder is never reused: a run
-    that dies is moved aside and run again.
+    0135), read from the whole folder. Nothing is committed and only counts are printed.
+
+Resume
+    A run that dies is continued with ``--resume RUN_ID`` and the arguments it was started with:
+    the folder's ``spec.json`` must match them, and ``drive_batch`` replays the replies on disk
+    and waits on a round that was sent and never finished, so no answered call is sent again.
+    The one spend row is replaced after every attempt, finished or not, so a resume never counts
+    a call twice. A run that dies with a round in flight keeps its budget reservation (the round
+    may still be billed) until it is resumed or released (``ntsb-eval release``).
 
 Usage
-    uv run python -m scripts.memory_coding_test answer --repeat {a,b}
+    uv run python -m scripts.memory_coding_test answer --repeat {a,b} [--resume RUN_ID]
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --repeat {a,b}
-        [--snapshot NAME]
+        [--resume RUN_ID]
+    uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
+        [--resume RUN_ID]
 """
 
 import argparse
@@ -51,7 +60,13 @@ from pydantic import BaseModel, ConfigDict
 
 from ntsb_probable_cause import fields, gitinfo, sources
 from ntsb_probable_cause.agent.armb import FixedToolsLoop
-from ntsb_probable_cause.agent.drive import REPLIES_FILE, ReplyRow, RoundRow, drive_batch
+from ntsb_probable_cause.agent.drive import (
+    REPLIES_FILE,
+    ROUNDS_FILE,
+    ReplyRow,
+    RoundRow,
+    drive_batch,
+)
 from ntsb_probable_cause.agent.later import as_recorded
 from ntsb_probable_cause.agent.loop import PASS_REASONING, LoopConfig, PendingCall, estimate_usd
 from ntsb_probable_cause.agent.run import log_line, round_costs, round_line
@@ -404,79 +419,159 @@ def spend_usd(folder: Path) -> float:
     )
 
 
-def _run(  # noqa: PLR0913, PLR0917 -- the context, the run and what it sends and skips.
-    ctx: Context,
-    run_id: str,
-    spec: Mapping[str, object],
-    loops: Sequence[Loop],
-    skipped: Mapping[str, str],
-    order: Sequence[str],
-) -> int:
-    """Reserve, drive every loop in batch rounds, write the cases and the spend row, settle.
+def _round_open(folder: Path) -> bool:
+    """Whether an attempt left a batch round sent and never finished: it may still be billed."""
+    path = folder / ROUNDS_FILE
+    latest: dict[int, RoundRow] = {}
+    if path.is_file():
+        for line in path.read_text().splitlines():
+            with contextlib.suppress(ValueError):
+                row = RoundRow.model_validate_json(line)
+                latest[row.round] = row
+    return any(row.finished_at is None for row in latest.values())
 
-    The spend row is written and the reservation settled whatever happens once the batch runner
-    has been made, so a run that dies has still recorded what it was billed.
+
+def _write_spend(ctx: Context, run_id: str, started: datetime) -> None:
+    """Replace the run's one spend row with what its folder now says it cost.
+
+    One row per run, rewritten after every attempt (decision 0135's rule, over every round and
+    reply the folder holds, earlier attempts included), so a resume never counts a call twice.
     """
     folder = ctx.runs_dir / run_id
-    if folder.exists():
+    (folder / budget.SPEND_FILE).unlink(missing_ok=True)
+    sha, dirty = ctx.commit
+    budget.write_spend(
+        ctx.runs_dir,
+        budget.SpendRecord(
+            job_id=run_id,
+            kind="coding-test",
+            model=sources.DEFAULT_MODEL,
+            started=started,
+            calls=len(_reply_rows(folder)),
+            cost_usd=spend_usd(folder),
+            commit_sha=sha,
+            dirty=dirty,
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class Plan:
+    """One run: its id, its spec, the loops it drives, and the cases it records but never sends.
+
+    Attributes:
+        run_id: the run folder's name.
+        spec: what ``spec.json`` holds, less its start time.
+        loops: one loop per case that is sent.
+        skipped: the cases recorded with a failure and no call, and why.
+        order: every case, in the order ``cases.jsonl`` lists them.
+    """
+
+    run_id: str
+    spec: dict[str, object]
+    loops: Sequence[Loop]
+    skipped: Mapping[str, str]
+    order: Sequence[str]
+
+
+def _resumed_start(folder: Path, spec: Mapping[str, object]) -> datetime:
+    """Check a folder can be resumed with this spec, and return when it was first started.
+
+    Raises:
+        ConfigurationError: no such folder or no readable ``spec.json``; a run that finished
+            (``cases.jsonl`` exists); or a spec that differs from what the arguments give (the
+            differing fields are named).
+    """
+    try:
+        stored = json.loads((folder / SPEC_FILE).read_text())
+    except OSError, ValueError:
+        raise ConfigurationError(f"{folder.name}: no readable {SPEC_FILE} to resume") from None
+    if (folder / CASES_FILE).exists():
+        raise ConfigurationError(f"{folder.name} finished: there is nothing to resume")
+    if not isinstance(stored, dict) or not isinstance(stored.get("started"), str):
+        raise ConfigurationError(f"{folder.name}: {SPEC_FILE} records no start time")
+    wanted = json.loads(json.dumps(spec))
+    given = {k: v for k, v in stored.items() if k != "started"}
+    differ = sorted(k for k in wanted.keys() | given.keys() if wanted.get(k) != given.get(k))
+    if differ:
         raise ConfigurationError(
-            f"{run_id} exists: a run folder is never reused. Move it aside under another name "
-            "(its spend stays counted) and run again"
+            f"{folder.name} was started with other settings ({', '.join(differ)} differ): "
+            "resume it with the arguments and commit it was started with"
         )
+    return datetime.fromisoformat(stored["started"])
+
+
+def _run(ctx: Context, plan: Plan, *, resume: bool) -> int:
+    """Reserve, drive every loop in batch rounds, write the cases, then the spend row.
+
+    A fresh run refuses an existing folder. A resume (``--resume``) checks the folder's spec
+    against the arguments and calls ``drive_batch`` on the same folder, which replays the replies
+    on disk and waits on a round that was sent and never finished, so no answered call is sent
+    again. The spend row is rewritten after every attempt, finished or not (``_write_spend``).
+    The reservation is settled when the run finishes, or when it stops with no round open; a run
+    that dies with a round in flight keeps its reservation, since that round may still be billed,
+    until it is resumed (or released by hand, ``ntsb-eval release``).
+    """
+    folder = ctx.runs_dir / plan.run_id
+    if resume:
+        started = _resumed_start(folder, plan.spec)
+    elif folder.exists():
+        raise ConfigurationError(
+            f"{plan.run_id} exists: resume it with --resume {plan.run_id}, or move it aside "
+            "under another name (its spend stays counted) and run again"
+        )
+    else:
+        started = ctx.now()
     batch = ctx.batch_factory(ctx.settings)
-    started = ctx.now()
     budget.reserve_within_budget(
         ctx.runs_dir,
-        run_id,
-        len(loops) * EXPECTED_USD_PER_CASE,
+        plan.run_id,
+        len(plan.loops) * EXPECTED_USD_PER_CASE,
         ctx.settings.monthly_budget_usd,
-        now=started,
+        now=ctx.now(),
     )
-    (folder / SPEC_FILE).write_text(json.dumps({**spec, "started": started.isoformat()}, indent=1))
-    print(f"{run_id}: {len(loops)} cases to code, {len(skipped)} not sent")
+    action = "resuming" if resume else "starting"
+    print(f"{plan.run_id}: {action}, {len(plan.loops)} cases to code, {len(plan.skipped)} not sent")
 
     def on_round(row: RoundRow, running: int, waited: bool) -> None:
         log_line(ctx.now, lambda: round_line(row, running, waited=waited))
 
+    finished = False
     try:
-        drive_batch(loops, batch, folder=folder, now=ctx.now, on_round=on_round)
-        by_case = {loop.case_id: loop for loop in loops}
+        if not resume:
+            spec = {**plan.spec, "started": started.isoformat()}
+            (folder / SPEC_FILE).write_text(json.dumps(spec, indent=1))
+        drive_batch(plan.loops, batch, folder=folder, now=ctx.now, on_round=on_round)
+        by_case = {loop.case_id: loop for loop in plan.loops}
         rows: list[CodingCase] = []
-        for case_id in order:
-            if case_id in skipped:
-                rows.append(
-                    CodingCase(
-                        case_id=case_id, hypothesis=None, failure=skipped[case_id], cost_usd=0.0
-                    )
-                )
-                continue
-            final, failure, cost = _outcome(by_case[case_id])
+        for case_id in plan.order:
+            if case_id in plan.skipped:
+                failure: str | None = plan.skipped[case_id]
+                final, cost = None, 0.0
+            else:
+                final, failure, cost = _outcome(by_case[case_id])
             rows.append(
                 CodingCase(case_id=case_id, hypothesis=final, failure=failure, cost_usd=cost)
             )
         write_jsonl(folder / CASES_FILE, rows)
+        finished = True
     finally:
-        sha, dirty = ctx.commit
-        budget.write_spend(
-            ctx.runs_dir,
-            budget.SpendRecord(
-                job_id=run_id,
-                kind="coding-test",
-                model=sources.DEFAULT_MODEL,
-                started=started,
-                calls=len(_reply_rows(folder)),
-                cost_usd=spend_usd(folder),
-                commit_sha=sha,
-                dirty=dirty,
-            ),
-        )
-        budget.settle(ctx.runs_dir, run_id)
+        _write_spend(ctx, plan.run_id, started)
+        if finished or not _round_open(folder):
+            budget.settle(ctx.runs_dir, plan.run_id)
+        else:
+            print(
+                f"{plan.run_id}: a batch round is still open, so its reservation is kept; "
+                f"resume with --resume {plan.run_id}"
+            )
     answered = sum(1 for row in rows if row.hypothesis is not None)
-    print(f"{run_id}: {answered} of {len(rows)} cases answered")
+    print(f"{plan.run_id}: {answered} of {len(rows)} cases answered")
     return 0
 
 
-def _base_spec(condition: Condition, repeat: str, commit: tuple[str, bool]) -> dict[str, object]:
+def _base_spec(
+    condition: Condition, repeat: str | None, commit: tuple[str, bool]
+) -> dict[str, object]:
     return {
         "sample": SAMPLE,
         "condition": condition,
@@ -514,9 +609,10 @@ def answer(args: argparse.Namespace, ctx: Context) -> int:
         if cause is not None
     ]
     skipped = {case_id: NO_CAUSE for case_id, cause in found.items() if cause is None}
-    run_id = f"{_stamp(ctx.now())}-{ctx.commit[0]}-{SAMPLE}-mem-tables-{args.repeat}"
+    run_id = args.resume or f"{_stamp(ctx.now())}-{ctx.commit[0]}-{SAMPLE}-mem-tables-{args.repeat}"
     spec = {**_base_spec("tables", args.repeat, ctx.commit), "case_ids": list(found)}
-    return _run(ctx, run_id, spec, loops, skipped, tuple(found))
+    plan = Plan(run_id, spec, loops, skipped, tuple(found))
+    return _run(ctx, plan, resume=args.resume is not None)
 
 
 def _read_source(folder: Path) -> list[CodingCase]:
@@ -543,22 +639,56 @@ def _read_source(folder: Path) -> list[CodingCase]:
     return rows
 
 
+def _checked_memory(name: str) -> tuple[Memory, str]:
+    """A checked snapshot with at least one lesson, and its file's hash.
+
+    Raises:
+        ConfigurationError: no registration (0204 item 6), a snapshot ``load_checked`` refuses,
+            or one with no lessons (its system text would be the counts condition's).
+    """
+    refuse_memory_without_registration()
+    memory = snapshots.load_checked(name, snapshots.SNAPSHOT_DIR)
+    if not memory.lessons:
+        raise ConfigurationError(
+            f"snapshot {name} holds no lessons: the memory condition would be the counts "
+            "condition under another name"
+        )
+    return memory, snapshots.sha256_of(snapshots.snapshot_path(name, snapshots.SNAPSHOT_DIR))
+
+
+def _tools_run_id(args: argparse.Namespace) -> str:
+    """The derived run's id, from the source, and the repeat or the snapshot.
+
+    Raises:
+        ConfigurationError: ``--repeat`` missing without ``--snapshot``, or ``--resume`` not the
+            id these arguments give.
+    """
+    if args.snapshot is None:
+        if args.repeat is None:
+            raise ConfigurationError("the counts condition needs --repeat a or b")
+        run_id = f"{args.source}-counts-{args.repeat}"
+    else:
+        run_id = f"{args.source}-memory-{args.snapshot}"
+    if args.resume is not None and args.resume != run_id:
+        raise ConfigurationError(
+            f"--resume {args.resume} is not the run these arguments make ({run_id})"
+        )
+    return run_id
+
+
 def tools(args: argparse.Namespace, ctx: Context) -> int:
-    """The counts condition over a tables run, or the memory condition with ``--snapshot``."""
+    """The counts condition over a tables run, or the memory condition with ``--snapshot``.
+
+    The memory condition ignores ``--repeat``: one memory run per snapshot and source.
+    """
     source = args.source
+    run_id = _tools_run_id(args)
     memory: Memory | None = None
     snapshot_sha: str | None = None
     if args.snapshot is not None:
-        refuse_memory_without_registration()
-        memory = snapshots.load_checked(args.snapshot, snapshots.SNAPSHOT_DIR)
-        snapshot_sha = snapshots.sha256_of(
-            snapshots.snapshot_path(args.snapshot, snapshots.SNAPSHOT_DIR)
-        )
+        memory, snapshot_sha = _checked_memory(args.snapshot)
     first = _read_source(ctx.runs_dir / source)
     condition: Condition = "counts" if memory is None else "memory"
-    run_id = (
-        f"{source}-counts-{args.repeat}" if memory is None else f"{source}-memory-{args.snapshot}"
-    )
     tables = load_tables()
     config = LoopConfig(
         tables=tables,
@@ -599,15 +729,18 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
                     config,
                 )
             )
+    repeat = args.repeat if memory is None else None
+    order = [row.case_id for row in first]
     spec = {
-        **_base_spec(condition, args.repeat, ctx.commit),
+        **_base_spec(condition, repeat, ctx.commit),
         "source_run": source,
         "snapshot": args.snapshot,
         "snapshot_sha256": snapshot_sha,
         "suggest_codes": SUGGEST_CODES,
-        "case_ids": [row.case_id for row in first],
+        "case_ids": order,
     }
-    return _run(ctx, run_id, spec, loops, skipped, [row.case_id for row in first])
+    plan = Plan(run_id, spec, loops, skipped, order)
+    return _run(ctx, plan, resume=args.resume is not None)
 
 
 def _require_clean(dirty: bool) -> None:
@@ -634,20 +767,27 @@ def main(
     batch_factory: BatchFactory = _default_batch,
     now: Clock = _utc_now,
 ) -> int:
-    """Run one condition.
+    """Run one condition, or resume one.
 
     Returns:
         0 on success; 1 on a refusal (dirty tree, sample, source, registration, snapshot,
-        budget, an existing folder) or a batch the provider cancelled or failed.
+        budget, an existing folder, a resume that does not match) or a batch the provider
+        cancelled or lost.
     """
     parser = argparse.ArgumentParser(prog=_PROG)
     sub = parser.add_subparsers(dest="command", required=True)
     a = sub.add_parser("answer", help="the tables condition")
     a.add_argument("--repeat", choices=("a", "b"), required=True)
+    a.add_argument("--resume", metavar="RUN_ID", help="continue this run's folder")
     t = sub.add_parser("tools", help="the counts condition, or memory with --snapshot")
     t.add_argument("--source", required=True, help="the tables run to start from")
-    t.add_argument("--repeat", choices=("a", "b"), required=True)
+    t.add_argument(
+        "--repeat",
+        choices=("a", "b"),
+        help="the counts run's repeat (required for counts; the memory condition ignores it)",
+    )
     t.add_argument("--snapshot", help="a checked memory snapshot's name")
+    t.add_argument("--resume", metavar="RUN_ID", help="continue this run's folder")
     args = parser.parse_args(argv)
     try:
         commit = gitinfo.commit_state()

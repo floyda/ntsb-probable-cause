@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from scripts import memory_coding_test as ct
@@ -55,12 +56,18 @@ def _text(content: str) -> ModelReply:
     )
 
 
+class KilledError(Exception):
+    """The process dying while it waits on a batch: not a model error, nothing catches it."""
+
+
 @dataclass
 class FakeBatch:
     """A scripted batch runner: every request answered by ``answer``; each round reports $0.001."""
 
     answer: Answer
     submitted: list[list[BatchRequest]] = field(default_factory=list)
+    waited: list[str] = field(default_factory=list)
+    die_at: str | None = None  # a batch id whose wait kills the process
 
     def submit(self, requests: Sequence[BatchRequest]) -> str:
         self.submitted.append(list(requests))
@@ -69,6 +76,9 @@ class FakeBatch:
     def wait(
         self, batch_id: str, *, on_status: Callable[[BatchStatus], None] = lambda _s: None
     ) -> BatchStatus:
+        self.waited.append(batch_id)
+        if batch_id == self.die_at:
+            raise KilledError
         requests = self.submitted[int(batch_id.removeprefix("b")) - 1]
         results = []
         for request in requests:
@@ -242,7 +252,7 @@ def _tools_answer(request: BatchRequest) -> ModelReply:
     return tool_reply("submit_answer", json.dumps(HYPOTHESIS))
 
 
-def _snapshot(directory: Path) -> None:
+def _snapshot(directory: Path, *, lessons: bool = True) -> None:
     lesson = Lesson(
         lesson_id="L001",
         kind="convention",
@@ -252,7 +262,8 @@ def _snapshot(directory: Path) -> None:
         written_in=2009,
     )
     directory.mkdir()
-    path = snapshots.save(Memory(name="t", periods=(2009,), lessons=(lesson,)), directory)
+    kept = (lesson,) if lessons else ()
+    path = snapshots.save(Memory(name="t", periods=(2009,), lessons=kept), directory)
     stamp = checks.Stamp(
         snapshot="t",
         sha256=snapshots.sha256_of(path),
@@ -303,7 +314,7 @@ def test_memory_appends_the_checked_snapshot_to_the_system_text(
     _snapshot(tmp_path / "snapshots")
     monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
     fake = FakeBatch(_tools_answer)
-    argv = ["tools", "--source", SOURCE, "--repeat", "a", "--snapshot", "t"]
+    argv = ["tools", "--source", SOURCE, "--snapshot", "t"]
     assert _run(settings, fake, argv) == 0
     answer = fake.submitted[0][0]
     assert answer.system.startswith(prompts.CODING_PREFACE)
@@ -311,6 +322,7 @@ def test_memory_appends_the_checked_snapshot_to_the_system_text(
     folder = settings.runs_dir / f"{SOURCE}-memory-t"
     spec = json.loads((folder / "spec.json").read_text())
     assert spec["condition"] == "memory"
+    assert spec["repeat"] is None  # the memory condition ignores --repeat
     assert spec["snapshot"] == "t"
     assert spec["snapshot_sha256"] == snapshots.sha256_of(tmp_path / "snapshots" / "t.json")
 
@@ -391,3 +403,129 @@ def test_a_cancelled_batch_still_writes_its_spend_and_settles(settings: Settings
     assert spend.cost_usd == pytest.approx(0.0015)
     assert spend.calls == 2
     assert open_reservations(settings.runs_dir) == {}
+
+
+# --- fix round 1: resume, the spend row, empty snapshots, fairness --------------------------
+
+
+def _first_try_rejected(request: BatchRequest) -> ModelReply:
+    """The first case's first answer is rejected; everything else is answered."""
+    if request.custom_id == f"{FIRST}#0":
+        return _text("not a hypothesis")
+    return _tables_answer(request)
+
+
+def _on_disk(folder: Path) -> set[str]:
+    return {
+        f"{row['case_id']}#{row['call_index']}"
+        for row in map(json.loads, (folder / "replies.jsonl").read_text().splitlines())
+    }
+
+
+def test_a_resume_after_a_death_mid_round_sends_no_answered_call_and_counts_spend_once(
+    settings: Settings,
+) -> None:
+    dead = FakeBatch(_first_try_rejected, die_at="b2")
+    with pytest.raises(KilledError):
+        _run(settings, dead, ["answer", "--repeat", "a"])
+    folder = _folder(settings, "-mem-tables-a")
+    run_id = folder.name
+    (spend,) = read_jsonl(folder / SPEND_FILE, SpendRecord)
+    assert spend.calls == 2  # round 1's replies; round 2 is open, so the priced cost is counted
+    assert run_id in open_reservations(settings.runs_dir)  # an open round may still be billed
+    answered = _on_disk(folder)
+    assert answered == {f"{FIRST}#0", f"{SECOND}#0"}
+
+    resumed = FakeBatch(_first_try_rejected, submitted=[list(b) for b in dead.submitted])
+    argv = ["answer", "--repeat", "a", "--resume", run_id]
+    assert _run(settings, resumed, argv) == 0
+    assert resumed.waited == ["b2", "b3"]  # b2 waited on again, never sent again
+    new = [r.custom_id for batch in resumed.submitted[len(dead.submitted) :] for r in batch]
+    assert new == [f"{FIRST}#2"]  # only the first case's refinement is left
+    assert not set(new) & answered
+    (spend,) = read_jsonl(folder / SPEND_FILE, SpendRecord)  # one row, replaced
+    assert spend.cost_usd == pytest.approx(0.003)  # three rounds, each reported once
+    assert spend.calls == 5
+    assert open_reservations(settings.runs_dir) == {}
+    rows = _cases(folder)
+    assert all(row.hypothesis is not None for row in rows.values())
+
+
+def test_a_resume_is_refused_unless_its_spec_matches_and_it_is_unfinished(
+    settings: Settings,
+) -> None:
+    dead = FakeBatch(_tables_answer, die_at="b2")
+    with pytest.raises(KilledError):
+        _run(settings, dead, ["answer", "--repeat", "a"])
+    run_id = _folder(settings, "-mem-tables-a").name
+    fake = FakeBatch(_tables_answer, submitted=[list(b) for b in dead.submitted])
+    assert _run(settings, fake, ["answer", "--repeat", "b", "--resume", run_id]) == 1
+    assert _run(settings, fake, ["answer", "--repeat", "a", "--resume", "no-such-run"]) == 1
+    assert not fake.waited
+    assert _run(settings, fake, ["answer", "--repeat", "a", "--resume", run_id]) == 0
+    assert _run(settings, fake, ["answer", "--repeat", "a", "--resume", run_id]) == 1  # finished
+
+
+def test_a_tools_resume_must_name_the_run_its_arguments_make(settings: Settings) -> None:
+    _source(settings)
+    fake = FakeBatch(_tools_answer)
+    argv = ["tools", "--source", SOURCE, "--repeat", "a", "--resume", f"{SOURCE}-counts-b"]
+    assert _run(settings, fake, argv) == 1
+    assert _run(settings, fake, ["tools", "--source", SOURCE]) == 1  # counts needs --repeat
+    assert not fake.submitted
+
+
+def test_a_failed_spec_write_still_writes_spend_and_settles(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*_args: object, **_kwargs: object) -> str:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(ct, "json", SimpleNamespace(dumps=broken, loads=json.loads))
+    fake = FakeBatch(_tables_answer)
+    with pytest.raises(OSError, match="disk full"):
+        _run(settings, fake, ["answer", "--repeat", "a"])
+    assert not fake.submitted
+    folder = _folder(settings, "-mem-tables-a")
+    (spend,) = read_jsonl(folder / SPEND_FILE, SpendRecord)
+    assert (spend.calls, spend.cost_usd) == (0, 0.0)
+    assert open_reservations(settings.runs_dir) == {}
+
+
+def test_a_snapshot_with_no_lessons_is_refused(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _snapshot(tmp_path / "snapshots", lessons=False)
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    with pytest.raises(ConfigurationError, match="no lessons"):
+        ct._checked_memory("t")
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, ["tools", "--source", SOURCE, "--snapshot", "t"]) == 1
+    assert not fake.submitted
+
+
+def test_counts_and_memory_send_the_same_requests_but_for_the_memory_suffix(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    counts, memory = FakeBatch(_tools_answer), FakeBatch(_tools_answer)
+    assert _run(settings, counts, ["tools", "--source", SOURCE, "--repeat", "a"]) == 0
+    assert _run(settings, memory, ["tools", "--source", SOURCE, "--snapshot", "t"]) == 0
+    pairs = list(zip(counts.requests(), memory.requests(), strict=True))
+    assert pairs
+    suffixed = 0
+    for plain, with_memory in pairs:
+        assert plain.custom_id == with_memory.custom_id
+        assert plain.payload == with_memory.payload
+        assert plain.settings == with_memory.settings
+        assert plain.history == with_memory.history
+        if plain.system != with_memory.system:
+            assert with_memory.system.startswith(plain.system)
+            assert with_memory.system[len(plain.system) :].startswith(prompts.MEMORY_HEADING)
+            suffixed += 1
+    assert suffixed == 1  # the answer call; the refinement's system text holds no memory

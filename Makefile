@@ -264,10 +264,10 @@ mem-learn-finish: ## Apply, count, revise, cap and save a snapshot (0201; paid, 
 	scripts/with_pass_keys.sh uv run python -m scripts.memory_learn finish --resume $(RUN) --to $(TO)
 
 mem-coding-answer: ## The coding test's tables condition on dev-steer-400 (0204; paid, OpenRouter)
-	scripts/with_pass_keys.sh uv run python -m scripts.memory_coding_test answer --repeat $(REPEAT)
+	uv run python -m scripts.stage_spend --stage mem --estimate 4.01 && scripts/with_pass_keys.sh uv run python -m scripts.memory_coding_test answer --repeat $(REPEAT) $(if $(RESUME),--resume $(RESUME))
 
 mem-coding-tools: ## The counts condition, or the memory condition with SNAPSHOT (0204; paid, OpenRouter)
-	scripts/with_pass_keys.sh uv run python -m scripts.memory_coding_test tools --source $(SOURCE) --repeat $(REPEAT) $(if $(SNAPSHOT),--snapshot $(SNAPSHOT))
+	uv run python -m scripts.stage_spend --stage mem --estimate 4.01 && scripts/with_pass_keys.sh uv run python -m scripts.memory_coding_test tools --source $(SOURCE) $(if $(REPEAT),--repeat $(REPEAT)) $(if $(SNAPSHOT),--snapshot $(SNAPSHOT)) $(if $(RESUME),--resume $(RESUME))
 
 mem-pilot-result: ## The pilot's reading and stop rule (0204); free
 	uv run python -m scripts.memory_pilot_result --tables-a $(TA) --tables-b $(TB) --counts-a $(CA) --counts-b $(CB) --memory $(MEM) --learn-runs $(LEARN) --out docs/results/memory-pilot-dev.txt
