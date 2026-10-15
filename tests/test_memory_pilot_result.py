@@ -255,100 +255,150 @@ def test_the_stop_rule_line_names_the_last_memory_run_and_follows_it(tmp_path: P
     assert verdict(1.0) == "stop rule on the last memory run (memory-2): PASS"
 
 
+IDS = ("ZZZ09LA001", "ZZZ09LA002", "ZZZ09LA003")
+
+
+class Pilot:
+    """A consistent set of the pilot's runs, a learner folder and two snapshots, on disk."""
+
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.settings = Settings(data_dir=tmp_path / "data", runs_dir=tmp_path / "runs")
+        base = coded_record()
+        self.cause = fields.probable_cause(base)
+        write_cases(
+            self.settings.data_dir / "processed",
+            [(i, "2009-05-01", "dev", "LA", {**base, "ntsbNumber": i}) for i in IDS],
+        )
+        code = fields.occurrence_codes(base)[0]
+        right = _hypothesis(code[:3], code[3:])
+        snaps = tmp_path / "snaps"
+        snaps.mkdir()
+        monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", snaps)
+        # The stamp is load_checked's own concern (tests above); here it reads the file.
+        monkeypatch.setattr(snapshots, "load_checked", snapshots.load)
+        sha = {}
+        for name, periods in (("s1", (2009,)), ("s2", (2009, 2010))):
+            sha[name] = snapshots.sha256_of(
+                snapshots.save(Memory(name=name, periods=periods), snaps)
+            )
+        runs = self.settings.runs_dir
+        for name, cond, repeat, answer, snapshot in (
+            ("ta", "tables", "a", None, None),
+            ("tb", "tables", "b", None, None),
+            ("ca", "counts", "a", None, None),
+            ("cb", "counts", "b", None, None),
+            ("m1", "memory", None, right, "s1"),
+            ("m2", "memory", None, right, "s2"),
+        ):
+            spec: dict[str, object] = {"condition": cond, "repeat": repeat}
+            if cond != "tables":
+                spec |= {
+                    "source_run": "ta",
+                    "snapshot": snapshot,
+                    "snapshot_sha256": sha[snapshot] if snapshot else None,
+                }
+            rows = [
+                CodingCase(
+                    case_id=i, hypothesis=answer, failure=None if answer else "cap", cost_usd=0.0
+                )
+                for i in IDS
+            ]
+            _write_run(runs, name, rows, **spec)
+        learn = runs / "learn"
+        learn.mkdir()
+        (learn / "calls.jsonl").write_text("")
+        self.out = tmp_path / "result.txt"
+        self.agreement = tmp_path / "none.txt"
+
+    def argv(self, memory: tuple[str, ...] = ("m1", "m2")) -> list[str]:
+        return [
+            *("--tables-a", "ta", "--tables-b", "tb", "--counts-a", "ca", "--counts-b", "cb"),
+            *("--memory", *memory, "--learn-runs", "learn"),
+            *("--agreement", str(self.agreement), "--out", str(self.out)),
+        ]
+
+    def edit_spec(self, run: str, **changes: object) -> None:
+        path = self.settings.runs_dir / run / "spec.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), **changes}))
+
+    def main(self, argv: list[str]) -> int:
+        return pr.main(argv, settings=self.settings)
+
+
 def test_main_writes_a_counts_only_reading_that_ends_with_the_verdict(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    settings = Settings(data_dir=tmp_path / "data", runs_dir=tmp_path / "runs")
-    base = coded_record()
-    ids = ["ZZZ09LA001", "ZZZ09LA002", "ZZZ09LA003"]
-    write_cases(
-        settings.data_dir / "processed",
-        [(i, "2009-05-01", "dev", "LA", {**base, "ntsbNumber": i}) for i in ids],
-    )
-    code = fields.occurrence_codes(base)[0]
-    right = _hypothesis(code[:3], code[3:])
-
-    def rows(answer: Hypothesis | None) -> list[CodingCase]:
-        return [
-            CodingCase(
-                case_id=i, hypothesis=answer, failure=None if answer else "cap", cost_usd=0.0
-            )
-            for i in ids
-        ]
-
-    runs = settings.runs_dir
-    for name, cond, answer in (
-        ("ta", "tables", None),
-        ("tb", "tables", None),
-        ("ca", "counts", None),
-        ("cb", "counts", None),
-        ("m1", "memory", right),
-    ):
-        _write_run(
-            runs, name, rows(answer), condition=cond, snapshot="s" if cond == "memory" else None
-        )
-    out = tmp_path / "result.txt"
-    monkeypatch.setattr(
-        snapshots, "load_checked", lambda *_a, **_k: Memory(name="s", periods=(2009,))
-    )
-    status = pr.main(
-        [
-            "--tables-a",
-            "ta",
-            "--tables-b",
-            "tb",
-            "--counts-a",
-            "ca",
-            "--counts-b",
-            "cb",
-            "--memory",
-            "m1",
-            "--agreement",
-            str(tmp_path / "none.txt"),
-            "--out",
-            str(out),
-        ],
-        settings=settings,
-    )
-    assert status == 0
-    text = out.read_text()
-    assert not any(i in text for i in ids)
-    cause = fields.probable_cause(base)
-    assert cause is not None
-    assert cause not in text
+    pilot = Pilot(tmp_path, monkeypatch)
+    assert pilot.main(pilot.argv()) == 0
+    text = pilot.out.read_text()
+    assert not any(i in text for i in IDS)
+    assert pilot.cause is not None
+    assert pilot.cause not in text
     last = text.strip().splitlines()[-1]
-    assert last.startswith("stop rule on the last memory run (memory-1): ")
+    assert last.startswith("stop rule on the last memory run (memory-2): ")
 
 
-def test_main_refuses_missing_cases_without_naming_them(tmp_path: Path) -> None:
-    settings = Settings(data_dir=tmp_path / "data", runs_dir=tmp_path / "runs")
-    write_cases(
-        settings.data_dir / "processed",
-        [("ZZZ09LA001", "2009-05-01", "dev", "LA", {**coded_record(), "ntsbNumber": "ZZZ09LA001"})],
-    )
-    for name, cond in (
-        ("ta", "tables"),
-        ("tb", "tables"),
-        ("ca", "counts"),
-        ("cb", "counts"),
-        ("m1", "memory"),
-    ):
-        _write_run(settings.runs_dir, name, [_case("ZZZ09LA999")], condition=cond, snapshot="s")
-    status = pr.main(
-        [
-            "--tables-a",
-            "ta",
-            "--tables-b",
-            "tb",
-            "--counts-a",
-            "ca",
-            "--counts-b",
-            "cb",
-            "--memory",
-            "m1",
-            "--out",
-            str(tmp_path / "o.txt"),
-        ],
-        settings=settings,
-    )
-    assert status == 1
+def test_main_refuses_missing_cases_without_naming_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pilot = Pilot(tmp_path, monkeypatch)
+    for name in ("ta", "tb", "ca", "cb", "m1", "m2"):
+        cases = pilot.settings.runs_dir / name / "cases.jsonl"
+        cases.write_text(cases.read_text().replace("ZZZ09LA003", "ZZZ09LA999"))
+    assert pilot.main(pilot.argv()) == 1
+    out = capsys.readouterr().out
+    assert "refused:" in out
+    assert "ZZZ09LA999" not in out
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("ca", {"source_run": "tb"}, "counts-a"),
+        ("cb", {"source_run": None}, "counts-b"),
+        ("m1", {"source_run": "other"}, "memory-1"),
+        ("ta", {"repeat": "b"}, "tables-a"),
+        ("tb", {"repeat": None}, "tables-b"),
+        ("cb", {"repeat": "a"}, "counts-b"),
+        ("m2", {"repeat": "a"}, "memory-2"),
+        ("m2", {"snapshot_sha256": "0" * 64}, "memory-2"),
+    ],
+)
+def test_main_refuses_runs_that_do_not_belong_together(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[str, dict[str, object], str],
+) -> None:
+    # Final review I3: sources, repeats and snapshot hashes tie the runs together.
+    run, changes, label = case
+    pilot = Pilot(tmp_path, monkeypatch)
+    pilot.edit_spec(run, **changes)
+    assert pilot.main(pilot.argv()) == 1
+    out = capsys.readouterr().out
+    assert out.startswith("refused: ")
+    assert label in out
+    assert not any(i in out for i in IDS)
+    assert not pilot.out.exists()
+
+
+def test_main_refuses_memory_runs_out_of_period_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pilot = Pilot(tmp_path, monkeypatch)
+    assert pilot.main(pilot.argv(memory=("m2", "m1"))) == 1
+    out = capsys.readouterr().out
+    assert "memory-2" in out
+    assert "period" in out
+    assert pilot.main(pilot.argv(memory=("m1", "m1"))) == 1
+
+
+def test_the_learner_runs_are_required(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pilot = Pilot(tmp_path, monkeypatch)
+    argv = pilot.argv()
+    at = argv.index("--learn-runs")
+    with pytest.raises(SystemExit) as stopped:
+        pilot.main(argv[:at] + argv[at + 2 :])
+    assert stopped.value.code == 2
+    with pytest.raises(SystemExit):
+        pilot.main([*argv[: at + 1], *argv[at + 2 :]])

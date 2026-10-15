@@ -9,7 +9,10 @@ Status
 
 What it reads
     Two tables runs (a, b), two counts runs (a, b) and the memory runs in period order, each a
-    folder under ``NTSB_RUNS_DIR`` (or a path). Each case's answer is scored against the NTSB's
+    folder under ``NTSB_RUNS_DIR`` (or a path), and the learner's runs. The runs must belong
+    together (``refuse_unrelated``): each run's repeat is its label's, every counts and memory
+    run was made from tables(a), each memory run's snapshot hash matches the snapshot file, and
+    the memory runs come in increasing period order. Each case's answer is scored against the NTSB's
     verdict, built by ``split_record`` and scored with ``score_case`` as ``ntsb-eval`` does. A
     failed case counts as wrong (decision 0136): top-1 and top-3 false, finding recall@10 0.0
     when the verdict flags findings in the cause, else left out.
@@ -24,7 +27,7 @@ What it prints
 
 Usage
     uv run python -m scripts.memory_pilot_result --tables-a RUN --tables-b RUN --counts-a RUN
-        --counts-b RUN --memory RUN [RUN ...] [--learn-runs RUN [RUN ...]] [--out PATH]
+        --counts-b RUN --memory RUN [RUN ...] --learn-runs RUN [RUN ...] [--out PATH]
 """
 
 import argparse
@@ -50,6 +53,14 @@ PROG: Final = "memory_pilot_result"
 AGREEMENT_FILE: Final = Path("docs/results/memory-agreement-dev.txt")
 DEFAULT_OUT: Final = Path("docs/results/memory-pilot-dev.txt")
 MEASURES: Final = ("occurrence top-1", "occurrence top-3", "finding recall@10")
+# Each fixed label's condition and repeat; every memory run is ("memory", None).
+LABELS: Final[dict[str, tuple[str, str | None]]] = {
+    "tables-a": ("tables", "a"),
+    "tables-b": ("tables", "b"),
+    "counts-a": ("counts", "a"),
+    "counts-b": ("counts", "b"),
+}
+MEMORY_RUN: Final = ("memory", None)
 
 
 @dataclass(frozen=True)
@@ -271,6 +282,43 @@ def refuse_unequal_cases(runs: Mapping[str, RunRead]) -> None:
         )
 
 
+def refuse_unrelated(
+    runs: Mapping[str, RunRead], memory_ids: Sequence[str], snapshot_dir: Path
+) -> None:
+    """Refuse runs that do not belong to one pilot; the message names labels only (I3).
+
+    Every run's ``repeat`` is its label's (memory runs: none); every counts and memory run was
+    made from the tables(a) run; each memory run's ``snapshot_sha256`` is its snapshot file's
+    hash; and the memory runs come in increasing period order, so the stop rule judges the last
+    snapshot.
+
+    Raises:
+        ConfigurationError: any of these does not hold.
+    """
+    for name, run in runs.items():
+        _condition, repeat = LABELS.get(name, MEMORY_RUN)
+        if run.spec.get("repeat") != repeat:
+            raise ConfigurationError(f"{name} is not the repeat its label names ({repeat})")
+        if name not in {"tables-a", "tables-b"} and (
+            run.spec.get("source_run") != runs["tables-a"].folder.name
+        ):
+            raise ConfigurationError(f"{name} was not made from the tables-a run")
+    last: int | None = None
+    previous = ""
+    for name in memory_ids:
+        snapshot = str(runs[name].spec["snapshot"])
+        path = snapshots.snapshot_path(snapshot, snapshot_dir)
+        if not path.exists() or runs[name].spec.get("snapshot_sha256") != snapshots.sha256_of(path):
+            raise ConfigurationError(f"{name}'s snapshot hash does not match its snapshot file")
+        periods = snapshots.load_checked(snapshot, snapshot_dir).periods
+        if not periods or (last is not None and max(periods) <= last):
+            raise ConfigurationError(
+                f"{name}'s snapshot does not come after {previous or 'nothing'} in period order: "
+                "give the memory runs in period order"
+            )
+        last, previous = max(periods), name
+
+
 def _folder(runs_dir: Path, name: str) -> Path:
     path = Path(name)
     return path if path.is_dir() else runs_dir / name
@@ -356,7 +404,7 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
     for flag in ("tables-a", "tables-b", "counts-a", "counts-b"):
         parser.add_argument(f"--{flag}", required=True)
     parser.add_argument("--memory", nargs="+", required=True, help="memory runs in period order")
-    parser.add_argument("--learn-runs", nargs="*", default=[])
+    parser.add_argument("--learn-runs", nargs="+", required=True, help="the learner's runs")
     parser.add_argument("--agreement", type=Path, default=AGREEMENT_FILE)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
@@ -371,9 +419,11 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
         memory_ids = [f"memory-{i + 1}" for i in range(len(args.memory))]
         names.update(zip(memory_ids, args.memory, strict=True))
         runs = {
-            k: load_run(_folder(settings.runs_dir, v), k.split("-")[0]) for k, v in names.items()
+            k: load_run(_folder(settings.runs_dir, v), LABELS.get(k, MEMORY_RUN)[0])
+            for k, v in names.items()
         }
         refuse_unequal_cases(runs)
+        refuse_unrelated(runs, memory_ids, snapshots.SNAPSHOT_DIR)
         processed = settings.data_dir / "processed"
         ids = sorted({row.case_id for run in runs.values() for row in run.rows})
         try:
