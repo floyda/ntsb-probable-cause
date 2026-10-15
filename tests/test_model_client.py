@@ -58,7 +58,7 @@ def test_excluded_roles_are_not_rendered() -> None:
 
 
 def test_payload_cannot_be_constructed_directly() -> None:
-    with pytest.raises(TypeError, match="from_evidence"):
+    with pytest.raises(TypeError, match="named constructors"):
         Payload('{"probable_cause": "leak"}', _token=object())
 
 
@@ -190,7 +190,7 @@ def test_tool_text_cannot_be_made_from_a_payload_or_evidence() -> None:
 
 def test_the_two_construction_tokens_are_not_interchangeable() -> None:
     """A Payload cannot be made with ToolText's token, nor ToolText with Payload's."""
-    with pytest.raises(TypeError, match="from_evidence"):
+    with pytest.raises(TypeError, match="named constructors"):
         Payload("text", _token=tool_text_module._TOOL_TEXT_TOKEN)
     with pytest.raises(TypeError, match=r"ToolText\.of"):
         ToolText("text", _token=model_client._CONSTRUCTION_TOKEN)
@@ -221,7 +221,7 @@ def test_tool_text_lives_apart_from_the_records_and_is_re_exported() -> None:
 
 def test_a_payload_cannot_be_made_from_tool_text() -> None:
     tool_text = ToolText.of("numbers only")
-    with pytest.raises(TypeError, match="from_evidence"):
+    with pytest.raises(TypeError, match="named constructors"):
         Payload(tool_text, _token=object())  # type: ignore[arg-type]
     with pytest.raises(AttributeError):
         Payload.from_evidence(tool_text)  # type: ignore[arg-type]

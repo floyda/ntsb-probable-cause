@@ -58,7 +58,8 @@ class Payload:
     """The exact text and images a model would receive.
 
     Built only by Payload.from_evidence (evidence text, no images), or for one page's
-    transcription by Payload.for_page (one page image and, on a mixed page, its text layer).
+    transcription by Payload.for_page (one page image and, on a mixed page, its text layer), or
+    by Payload.for_coding_test (one NTSB probable-cause sentence, decision 0205).
     Immutable: ``__setattr__``/``__delattr__`` refuse any change after construction, and
     ``@final`` closes off subclassing, which would otherwise bypass the construction token.
     """
@@ -69,7 +70,7 @@ class Payload:
 
     def __init__(self, text: str, *, images: tuple[PageImage, ...] = (), _token: object) -> None:
         if _token is not _CONSTRUCTION_TOKEN:
-            raise TypeError("Payload is built only by Payload.from_evidence")
+            raise TypeError("Payload is built only by its named constructors")
         object.__setattr__(self, "_text", text)
         object.__setattr__(self, "_images", images)
 
@@ -112,6 +113,20 @@ class Payload:
         ``tests/test_boundary.py`` checks the caller passes only the page's own text layer.
         """
         return cls(text_layer or "", images=(image,), _token=_CONSTRUCTION_TOKEN)
+
+    @classmethod
+    def for_coding_test(cls, cause: str) -> Payload:
+        """The coding memory's coding test: one NTSB probable-cause sentence, nothing else.
+
+        A declared exception to the request-side boundary (decision 0205, under 0200 item 2): the
+        test measures coding given a perfect cause, on development cases only. Only
+        ``scripts/memory_coding_test.py`` calls this, and ``tests/test_boundary.py`` proves it.
+        The answering agent never receives a payload built here.
+        """
+        return cls(
+            json.dumps({"ntsb_probable_cause": cause}, indent=1, ensure_ascii=False),
+            _token=_CONSTRUCTION_TOKEN,
+        )
 
     @property
     def text(self) -> str:

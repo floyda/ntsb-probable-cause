@@ -1623,3 +1623,24 @@ def test_the_arm_c_check_fails_on_withheld_text_in_passed_back_reasoning(
     requests = _arm_c_batch_requests(tmp_path, summary=f"Perhaps: {cause}")
     with pytest.raises(AssertionError, match=r"^tripwire: probable cause .* reasoning summary"):
         assert_requests_clean(requests, _arm_c_withheld(_arm_c_raws()))
+
+
+CODING_TEST_CALLER = Path("scripts/memory_coding_test.py")
+
+
+def test_the_coding_test_payload_holds_the_cause_and_nothing_else() -> None:
+    payload = Payload.for_coding_test("Loss of control during the landing roll.")
+    assert payload.fields() == {"ntsb_probable_cause": "Loss of control during the landing roll."}
+
+
+def test_only_the_coding_test_script_opens_the_coding_test_door() -> None:
+    callers = sorted(
+        path
+        for root in (Path("src"), Path("apps"), Path("scripts"))
+        for path in root.rglob("*.py")
+        if "for_coding_test" in path.read_text()
+    )
+    assert callers in (
+        [Path("src/ntsb_probable_cause/model/client.py")],
+        [Path("src/ntsb_probable_cause/model/client.py"), CODING_TEST_CALLER],
+    )

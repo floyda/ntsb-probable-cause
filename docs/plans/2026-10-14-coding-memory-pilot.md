@@ -458,7 +458,7 @@ git commit -m "Coding memory: Claude direct-API prices, read 2026-10-08 (decisio
 **Interfaces:**
 - Produces: `Payload.for_coding_test(cause: str) -> Payload`, whose text is `json.dumps({"ntsb_probable_cause": cause}, indent=1, ensure_ascii=False)` and whose `fields()` is `{"ntsb_probable_cause": cause}`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 # tests/test_boundary.py
@@ -483,12 +483,12 @@ def test_only_the_coding_test_script_opens_the_coding_test_door() -> None:
     )
 ```
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_boundary.py -k coding_test -v`
 Expected: FAIL (`AttributeError: for_coding_test`).
 
-- [ ] **Step 3: Implement.**
+- [x] **Step 3: Implement.**
 
 ```python
     @classmethod
@@ -508,12 +508,12 @@ Expected: FAIL (`AttributeError: for_coding_test`).
 
 Name the third constructor in the class docstring, and change the `TypeError` message to `"Payload is built only by its named constructors"`. Run `make s33-continuity`: `model/client.py` is not model-facing text, so `+t` must not move; if it does, stop and log it under Deviations.
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `uv run pytest tests/test_boundary.py -v && make s33-continuity`
 Expected: PASS; `+t` unchanged.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/model/client.py tests/test_boundary.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2518,3 +2518,4 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 2: `coding_stats_mem.json` is 1.27 MB, over the pre-commit `check-added-large-files` limit of 500 KB, which already exempts the two other statistics files for the same reason (pairwise code counts built by one script). The exemption regex in `.pre-commit-config.yaml` now also names `coding_stats_mem.json`.
 - 2026-10-15, Task 4: the test went in `tests/test_sources_settings.py`, beside the existing `sources` price tests (`test_model_prices_match_decision_0009`, `test_price_of_known_and_unknown_model`), not in `tests/test_sources.py`, which does not exist. The Claude block in `sources.py` sits after `price_of`, outside `_PRICES`, since the Anthropic ids are a separate namespace from OpenRouter's. `make check` passed apart from the known `test_store_sync` boto3 failure.
 - 2026-10-15, Task 4: the claude-api skill's model summary (read 2026-10-15) gives Sonnet 5.5 cache reads as $0.20 (0.1x), against the pricing page's $0.10 (0.05x, read 2026-10-08). The plan's $0.10 is kept, since the pricing page is the primary source (rule 2). The difference touches only cached-prompt reads; the learning line's spend rows record what was priced.
+- 2026-10-15, Task 5: the new `TypeError` message also touched two files the plan did not name: `tests/fixtures/rendered/not_model_text.toml` (which classifies that exception literal as not model text, keyed by its text, and now also lists the new payload key `ntsb_probable_cause`, which no loop or arm B request carries) and `tests/test_model_client.py` (which matched the old message). Both now carry the new message. `+t` is unchanged.
