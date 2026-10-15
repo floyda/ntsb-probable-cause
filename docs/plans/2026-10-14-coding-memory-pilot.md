@@ -363,7 +363,7 @@ git commit -m "Coding memory: the learning line, the coding-test kind and the si
 **Interfaces:**
 - Produces: `sources.ClaudePrice` (frozen dataclass: `model_id: str`, `batch: bool`, `input_usd_per_mtok: float`, `output_usd_per_mtok: float`, `cache_write_usd_per_mtok: float`, `cache_read_usd_per_mtok: float`, `source: str`); `sources.claude_price(model_id: str, *, batch: bool) -> ClaudePrice` (raises `KeyError`); `sources.HAIKU_55_PROMPT_LIMIT: Final = 100_000`.
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.**
 
 ```python
 # tests/test_sources.py
@@ -385,12 +385,12 @@ def test_claude_direct_prices_as_published_on_2026_10_08() -> None:
         sources.claude_price("anthropic/claude-sonnet-5", batch=False)
 ```
 
-- [ ] **Step 2: Run it to see it fail.**
+- [x] **Step 2: Run it to see it fail.**
 
 Run: `uv run pytest tests/test_sources.py -k claude_direct -v`
 Expected: FAIL (`AttributeError: ClaudePrice`).
 
-- [ ] **Step 3: Implement.**
+- [x] **Step 3: Implement.**
 
 ```python
 # Anthropic's direct API, for the coding memory's learner only (decisions 0202, 207). The ids are
@@ -435,12 +435,12 @@ def claude_price(model_id: str, *, batch: bool) -> ClaudePrice:
     raise KeyError(f"no Claude direct-API price recorded for {model_id} (batch={batch})")
 ```
 
-- [ ] **Step 4: Run the test.**
+- [x] **Step 4: Run the test.**
 
 Run: `uv run pytest tests/test_sources.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/sources.py tests/test_sources.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2516,3 +2516,4 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 1: the seed-20261014 draw included one redacted record fixture case, so fixture ids were excluded from this draw only (`Draw.exclude_fixtures`, True for `dev-steer-400`) and the seed was kept. Decision 0203 names the seed and the pool, not the fixture rule. The other draws are unchanged (their `--verify` stays identical).
 - 2026-10-15, Task 2: the `mem` pool holds 11,689 cases (6,710 in 2009-2014, 4,979 in 2015-2019), not the 11,690 the plan expected: the steering slice has 401 cases, not 400, and all 401 were inside S3's 12,090-case pool (12,090 less 401). Figure from `docs/results/mem-coding-stats.txt`.
 - 2026-10-15, Task 2: `coding_stats_mem.json` is 1.27 MB, over the pre-commit `check-added-large-files` limit of 500 KB, which already exempts the two other statistics files for the same reason (pairwise code counts built by one script). The exemption regex in `.pre-commit-config.yaml` now also names `coding_stats_mem.json`.
+- 2026-10-15, Task 4: the test went in `tests/test_sources_settings.py`, beside the existing `sources` price tests (`test_model_prices_match_decision_0009`, `test_price_of_known_and_unknown_model`), not in `tests/test_sources.py`, which does not exist. The Claude block in `sources.py` sits after `price_of`, outside `_PRICES`, since the Anthropic ids are a separate namespace from OpenRouter's. `make check` passed apart from the known `test_store_sync` boto3 failure.

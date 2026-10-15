@@ -103,6 +103,24 @@ def test_price_of_known_and_unknown_model() -> None:
         sources.price_of("nobody/nothing")
 
 
+def test_claude_direct_prices_as_published_on_2026_10_08() -> None:
+    sonnet = sources.claude_price("claude-sonnet-5-5", batch=False)
+    assert (sonnet.input_usd_per_mtok, sonnet.output_usd_per_mtok) == (2.0, 10.0)
+    assert (sonnet.cache_write_usd_per_mtok, sonnet.cache_read_usd_per_mtok) == (2.5, 0.10)
+    sonnet_b = sources.claude_price("claude-sonnet-5-5", batch=True)
+    assert (sonnet_b.input_usd_per_mtok, sonnet_b.output_usd_per_mtok) == (1.0, 5.0)
+    assert (sonnet_b.cache_write_usd_per_mtok, sonnet_b.cache_read_usd_per_mtok) == (1.25, 0.05)
+    haiku = sources.claude_price("claude-haiku-5-5", batch=False)
+    assert (haiku.input_usd_per_mtok, haiku.output_usd_per_mtok) == (0.10, 0.50)
+    assert (haiku.cache_write_usd_per_mtok, haiku.cache_read_usd_per_mtok) == (0.125, 0.01)
+    haiku_b = sources.claude_price("claude-haiku-5-5", batch=True)
+    assert (haiku_b.input_usd_per_mtok, haiku_b.output_usd_per_mtok) == (0.05, 0.25)
+    assert (haiku_b.cache_write_usd_per_mtok, haiku_b.cache_read_usd_per_mtok) == (0.0625, 0.005)
+    assert sources.HAIKU_55_PROMPT_LIMIT == 100_000
+    with pytest.raises(KeyError):
+        sources.claude_price("anthropic/claude-sonnet-5", batch=False)
+
+
 def test_new_errors_are_ntsb_errors() -> None:
     for kind in (ModelError, SchemaError, BudgetError):
         assert issubclass(kind, NtsbError)

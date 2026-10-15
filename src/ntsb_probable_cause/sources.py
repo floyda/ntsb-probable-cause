@@ -212,6 +212,48 @@ def price_of(model_id: str) -> ModelPrice:
     return _PRICES[model_id]
 
 
+# Anthropic's direct API, for the coding memory's learner only (decisions 0202, 0207). The ids are
+# Anthropic's own, distinct from OpenRouter's ``anthropic/...`` ids above. Source: Anthropic's
+# pricing page, read 2026-10-08: Sonnet 5.5 $2 / $10, 5-minute cache writes $2.50, cache hits
+# $0.10 (0.05x); Haiku 5.5 up to 100,000 prompt tokens $0.10 / $0.50, writes $0.125, hits $0.01
+# (0.1x); the Batch API halves every rate, and the multipliers stack.
+CLAUDE_PRICING_SOURCE: Final = "Anthropic pricing page, read 2026-10-08"
+HAIKU_55_PROMPT_LIMIT: Final = 100_000
+
+
+@dataclass(frozen=True)
+class ClaudePrice:
+    """One Claude model's direct-API price per million tokens, standard or batch."""
+
+    model_id: str
+    batch: bool
+    input_usd_per_mtok: float
+    output_usd_per_mtok: float
+    cache_write_usd_per_mtok: float
+    cache_read_usd_per_mtok: float
+    source: str
+
+
+_CLAUDE_PRICES: Final = (
+    ClaudePrice("claude-sonnet-5-5", False, 2.0, 10.0, 2.5, 0.10, CLAUDE_PRICING_SOURCE),
+    ClaudePrice("claude-sonnet-5-5", True, 1.0, 5.0, 1.25, 0.05, CLAUDE_PRICING_SOURCE),
+    ClaudePrice("claude-haiku-5-5", False, 0.10, 0.50, 0.125, 0.01, CLAUDE_PRICING_SOURCE),
+    ClaudePrice("claude-haiku-5-5", True, 0.05, 0.25, 0.0625, 0.005, CLAUDE_PRICING_SOURCE),
+)
+
+
+def claude_price(model_id: str, *, batch: bool) -> ClaudePrice:
+    """The recorded direct-API price for ``model_id``.
+
+    Raises:
+        KeyError: no price is recorded for that model and variant.
+    """
+    for price in _CLAUDE_PRICES:
+        if price.model_id == model_id and price.batch is batch:
+            return price
+    raise KeyError(f"no Claude direct-API price recorded for {model_id} (batch={batch})")
+
+
 # The reasoning levels OpenRouter's model list gives (``reasoning.supported_efforts``): both
 # Luna models, read 2026-09-23; ``minimal`` added for the Gemini transcriber candidates, read
 # 2026-09-24.
