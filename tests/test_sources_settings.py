@@ -283,3 +283,13 @@ def test_training_cutoff_for_the_default_model() -> None:
     assert cutoff.read_on == date(2026, 10, 7)
     assert cutoff.source.startswith("https://")
     assert sources.DEFAULT_MODEL in sources.TRAINING_CUTOFFS
+
+
+def test_the_anthropic_key_and_the_learning_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    s = Settings(_env_file=None)
+    assert s.learning_monthly_budget_usd == 90.0
+    with pytest.raises(ConfigurationError, match="ANTHROPIC_API_KEY"):
+        s.require_anthropic_key()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    assert Settings(_env_file=None).require_anthropic_key() == "k"

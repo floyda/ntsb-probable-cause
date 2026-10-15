@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai"
     typesafe_api_key: SecretStr | None = Field(default=None, validation_alias="TYPESAFE_API_KEY")
     typesafe_base_url: str = "https://api.typesafe.ai"
+    # Coding memory (decisions 0202, 0207): Claude learner calls, on their own credit and line.
+    anthropic_api_key: SecretStr | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
+    learning_monthly_budget_usd: float = 90.0
     runs_dir: Path = Path("data/runs")
     # Decision 0083: $40 a month during the development stages, until the live board (S4).
     monthly_budget_usd: float = Field(default=40.0, gt=0)
@@ -117,6 +120,14 @@ class Settings(BaseSettings):
                 "OPENROUTER_API_KEY is not set; export it or load it from the password store."
             )
         return self.openrouter_api_key.get_secret_value()
+
+    def require_anthropic_key(self) -> str:
+        """Return the Anthropic key, or raise if it is not set (decision 0207)."""
+        if self.anthropic_api_key is None or not self.anthropic_api_key.get_secret_value():
+            raise ConfigurationError(
+                "ANTHROPIC_API_KEY is not set; export it or load it from the password store."
+            )
+        return self.anthropic_api_key.get_secret_value()
 
     def require_typesafe_key(self) -> str:
         """Return the TypeSafe key, or raise if it is not set (decision 0097)."""

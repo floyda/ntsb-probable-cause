@@ -244,7 +244,7 @@ git commit -m "Coding memory: statistics without the steering slice (decision 02
 **Interfaces:**
 - Produces: `SpendRecord.kind` accepts `"learning"` and `"coding-test"`; `budget.learning_month_spent(runs_dir: Path, *, now: datetime) -> float`; `budget.check_learning_budget(runs_dir: Path, projected_usd: float, budget_usd: float, *, now: datetime) -> None` (raises `BudgetError`); `Settings.anthropic_api_key: SecretStr | None` (alias `ANTHROPIC_API_KEY`); `Settings.learning_monthly_budget_usd: float = 90.0`; `Settings.require_anthropic_key() -> str`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 # tests/test_budget.py
@@ -290,12 +290,12 @@ def test_the_side_track_has_its_own_ten_dollar_line() -> None:
 
 Match the constructor and helper names already used in each test file (read the file's head first; `month_spent`'s month boundary helper, `SpendRecord` fields and `Settings(_env_file=None)` are as the survey found them).
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_budget.py tests/test_settings.py tests/test_stage_spend.py -v`
 Expected: FAIL (unknown kind, missing functions, missing stage).
 
-- [ ] **Step 3: Implement.** In `budget.py`: extend the kind Literal to `Literal["inventory", "transcriber-test", "transcription", "probe", "learning", "coding-test"]` with a comment naming decision 207; in `month_spent`, skip rows whose `kind == "learning"` (comment: "credit spend has its own line, decision 207"); add:
+- [x] **Step 3: Implement.** In `budget.py`: extend the kind Literal to `Literal["inventory", "transcriber-test", "transcription", "probe", "learning", "coding-test"]` with a comment naming decision 207; in `month_spent`, skip rows whose `kind == "learning"` (comment: "credit spend has its own line, decision 207"); add:
 
 ```python
 LEARNING: Final = "learning"
@@ -340,12 +340,12 @@ mem-spend: ## The side track's OpenRouter spend so far; exit 1 past the $10 line
 	uv run python -m scripts.stage_spend --stage mem --estimate $(EST)
 ```
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `uv run pytest tests/test_budget.py tests/test_settings.py tests/test_stage_spend.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/scoring/budget.py src/ntsb_probable_cause/settings.py .env.example scripts/stage_spend.py Makefile tests/test_budget.py tests/test_settings.py tests/test_stage_spend.py docs/plans/2026-10-14-coding-memory-pilot.md

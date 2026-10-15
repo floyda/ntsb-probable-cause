@@ -18,7 +18,7 @@ Why
     (decision 0128 item 3).
 
 Usage
-    uv run python -m scripts.stage_spend [--stage {s27,s3,s33}] [--estimate USD]
+    uv run python -m scripts.stage_spend [--stage {s27,s3,s33,mem}] [--estimate USD]
 """
 
 import argparse
@@ -73,6 +73,18 @@ STAGES: Mapping[str, Stage] = {
         prefix="s3-",
         line_rule="decision 163",
         count_rule="decisions 0128 item 2, 0135",
+    ),
+    # The coding-memory side track's own $10 of OpenRouter spend (decision 0207): its commits are
+    # those on coding-memory* branches since its first commit. Counts ``coding-test`` rows and
+    # run records, never ``learning`` rows (Claude credit, its own line).
+    "mem": Stage(
+        "mem",
+        base="832a121",
+        first="938bd83",
+        line_usd=10.0,
+        prefix="coding-memory",
+        line_rule="decision 0207",
+        count_rule="decision 0207",
     ),
 }
 # main holds every stage once merged, and later stages' commits too; it is never counted.

@@ -12,7 +12,7 @@ S3 = ss.STAGES["s3"]
 
 
 def test_the_stage_table_holds_s27_as_it_was_and_s3_as_decision_0128_fixes_it() -> None:
-    assert set(ss.STAGES) == {"s27", "s3", "s33"}
+    assert set(ss.STAGES) == {"s27", "s3", "s33", "mem"}
     assert ss.STAGES["s27"] == ss.Stage(
         "S2.7", base="971ee40", first="94f5d42", line_usd=25.0, prefix="s27-"
     )
@@ -226,3 +226,10 @@ def test_s33_is_s3s_branches_against_the_line_left_after_s31_and_s32() -> None:
     text, over = ss.report(ss.STAGES["s33"], runs=11.46, spend=0.0, estimate=10.01)
     assert over
     assert "refused: $21.47 would pass the line (decision 163)" in text
+
+
+def test_the_side_track_has_its_own_ten_dollar_line() -> None:
+    stage = ss.STAGES["mem"]
+    assert stage.line_usd == 10.0
+    assert stage.first == "938bd83"
+    assert stage.prefix == "coding-memory"

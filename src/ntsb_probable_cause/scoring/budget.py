@@ -11,7 +11,7 @@ from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -37,7 +37,11 @@ class SpendRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     job_id: str
-    kind: Literal["inventory", "transcriber-test", "transcription", "probe"]
+    # ``learning`` (Claude credit, its own monthly line) and ``coding-test`` (OpenRouter, the
+    # coding-memory side track's line): decision 0207.
+    kind: Literal[
+        "inventory", "transcriber-test", "transcription", "probe", "learning", "coding-test"
+    ]
     model: str
     started: datetime
     calls: int
@@ -82,26 +86,48 @@ def spent_usd(record: RunRecord) -> float:
     return reported if reported is not None and counts_billed(record) else record.cost_usd
 
 
+LEARNING: Final = "learning"
+
+
+def _in_month(started: datetime, now: datetime) -> bool:
+    return started.year == now.year and started.month == now.month
+
+
+def _spend_rows(runs_dir: Path) -> Iterator[SpendRecord]:
+    for spend_file in sorted(runs_dir.glob(f"*/{SPEND_FILE}")):
+        yield from read_jsonl(spend_file, SpendRecord)
+
+
 def month_spent(runs_dir: Path, *, now: datetime) -> float:
     """Cost of every run started in ``now``'s month, aborted runs included.
 
     A run folder's ``run.jsonl`` may hold more than one ``RunRecord`` (the answering run
     and a judge pass), and every one of them counts, each as ``spent_usd`` says (0135). So does
-    every preparation job's spend rows (0081). Reservations are not spend and are not counted
-    here.
+    every preparation job's spend rows (0081), except ``learning`` rows: Claude credit has its
+    own line (``learning_month_spent``, decision 0207). Reservations are not spend and are not
+    counted here.
     """
     if not runs_dir.exists():
         return 0.0
     total = 0.0
     for run_file in sorted(runs_dir.glob("*/run.jsonl")):
         for record in read_jsonl(run_file, RunRecord):
-            if record.started.year == now.year and record.started.month == now.month:
+            if _in_month(record.started, now):
                 total += spent_usd(record)
-    for spend_file in sorted(runs_dir.glob(f"*/{SPEND_FILE}")):
-        for spend in read_jsonl(spend_file, SpendRecord):
-            if spend.started.year == now.year and spend.started.month == now.month:
-                total += spend.cost_usd
+    for spend in _spend_rows(runs_dir):
+        # credit spend has its own line, decision 0207
+        if spend.kind != LEARNING and _in_month(spend.started, now):
+            total += spend.cost_usd
     return total
+
+
+def learning_month_spent(runs_dir: Path, *, now: datetime) -> float:
+    """The month's learner spend: every ``learning`` spend row in ``now``'s month (0207)."""
+    return sum(
+        row.cost_usd
+        for row in _spend_rows(runs_dir)
+        if row.kind == LEARNING and _in_month(row.started, now)
+    )
 
 
 # Recorded commit SHAs are short (``git rev-parse --short``); a stage's commits are full. A
@@ -119,7 +145,8 @@ def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, 
 
     Counted by commit, not by date, because S2.6 found a date filter caught another stage's
     runs (decision 0098 item 6). A judge pass is a run record (``<run id>-judge``) and counts.
-    Each run record counts as ``spent_usd`` says (decision 0135).
+    Each run record counts as ``spent_usd`` says (decision 0135). ``learning`` rows are Claude
+    credit with their own line and never count toward a stage's (decision 0207).
     """
     runs = sum(
         spent_usd(record)
@@ -129,9 +156,8 @@ def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, 
     )
     spend = sum(
         row.cost_usd
-        for path in sorted(runs_dir.glob(f"*/{SPEND_FILE}"))
-        for row in read_jsonl(path, SpendRecord)
-        if in_stage(row.commit_sha, stage_commits)
+        for row in _spend_rows(runs_dir)
+        if row.kind != LEARNING and in_stage(row.commit_sha, stage_commits)
     )
     return runs, spend
 
@@ -200,3 +226,24 @@ def reserve_within_budget(
                 f"reserved by other runs exceeds the ${budget_usd:.2f} budget"
             )
         reserve(runs_dir, job_id, projected_usd, now=now)
+
+
+def check_learning_budget(
+    runs_dir: Path, projected_usd: float, budget_usd: float, *, now: datetime
+) -> None:
+    """Refuse a learner job that would take the month's learner spend past its line (0207).
+
+    Checked under the budget lock so two jobs cannot both pass on the same remainder. No
+    reservation is written: learner jobs run one at a time, and the Console workspace's spend
+    limit is the hard stop.
+
+    Raises:
+        BudgetError: spent this month plus ``projected_usd`` exceeds ``budget_usd``.
+    """
+    with budget_lock(runs_dir):
+        spent = learning_month_spent(runs_dir, now=now)
+        if spent + projected_usd > budget_usd:
+            raise BudgetError(
+                f"learner spend ${spent:.4f} this month plus ${projected_usd:.4f} projected "
+                f"would pass the learning line of ${budget_usd:.2f} (decision 0207)"
+            )
