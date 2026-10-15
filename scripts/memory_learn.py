@@ -9,12 +9,15 @@ Status
 What it reads
     The learning part (``memory.pool``: development cases of the statistics pool, outside every
     sample), each case's probable-cause sentence and codes, and, for ``propose --from NAME``,
-    a stamped snapshot. The Claude key comes from the environment (``ANTHROPIC_API_KEY``).
+    a stamped snapshot. ``finish`` also reads every development case's withheld texts and
+    probable-cause sentences (``checks.development_texts``) to compare lessons against them,
+    never to send them. The Claude key comes from the environment (``ANTHROPIC_API_KEY``).
 
 What it writes
     ``<runs>/<run id>/``: ``calls.jsonl`` and ``batches.jsonl`` (the client's record, so a
     repeated call is never paid for twice), ``draft.json`` (the lessons so far) and
-    ``finish.json`` (counts). ``agreement`` writes a counts-only file, committed by hand;
+    ``finish.json`` (counts, the lessons the copying and withheld-text checks dropped among
+    them). ``agreement`` writes a counts-only file, committed by hand;
     ``finish`` saves ``memory/snapshots/NAME.json`` without a stamp (``make mem-check`` stamps
     it). Only counts are printed.
 
@@ -74,6 +77,12 @@ AGREEMENT_BAR: Final = 0.90
 AGREEMENT_FILE: Path = Path("docs/results/memory-agreement-dev.txt")
 MAX_TOKENS_HAIKU: Final = 2048
 MAX_TOKENS_SONNET: Final = 16000
+# Controller ruling, final review I2 (2026-10-15): a Sonnet apply call (the agreement's
+# reference and the sonnet-high applier) is a short list of lesson ids, so it gets 4,000
+# tokens, not 16,000; at 16,000 the projection of one 2009 apply batch (1,201 cases) passed the
+# $90 learner line alone. A reply cut off at this limit is a failed reply ("no lesson
+# applies"), counted with the failed replies.
+MAX_TOKENS_SONNET_APPLY: Final = 4000
 DISAGREEING_SHOWN: Final = 10
 AGREEING_SHOWN: Final = 5
 _NAME: Final = re.compile(r"[a-z0-9][a-z0-9-]*")
@@ -316,7 +325,7 @@ def _call_for_apply(
         system=prompts.SYSTEM_APPLY + render_for_apply(memory),
         user=prompts.apply_user(case.cause),
         schema=strict_schema(prompts.ApplyReply),
-        max_tokens=MAX_TOKENS_HAIKU if model == HAIKU else MAX_TOKENS_SONNET,
+        max_tokens=MAX_TOKENS_HAIKU if model == HAIKU else MAX_TOKENS_SONNET_APPLY,
         case_ids=(case.case_id,),
     )
 
@@ -510,9 +519,88 @@ def _retire(lessons: tuple[Lesson, ...], gone: set[str]) -> tuple[Lesson, ...]:
     return tuple(lesson for lesson in lessons if lesson.lesson_id not in gone)
 
 
+def drop_failing(
+    memory: Memory, withheld: Sequence[str], causes: Sequence[str]
+) -> tuple[Memory, list[str]]:
+    """Drop every lesson, kept or pushed out, that the copying or withheld-text check refuses.
+
+    ``make mem-check`` runs the same checks (decision 0201) and would refuse the snapshot; a
+    saved snapshot is never rewritten, so ``finish`` removes such lessons first (final review
+    I1). Messages name the lesson id and the check, never the text.
+
+    Returns:
+        The memory without those lessons, and one message per lesson dropped.
+    """
+    failed = checks.development_failures(memory, withheld, causes)
+    if not failed:
+        return memory, []
+    messages = [
+        f"{_id_text(lid)} dropped: {' and '.join(f'{name} check' for name in names)}"
+        for lid, names in failed.items()
+    ]
+    gone = set(failed)
+    kept = memory.model_copy(
+        update={
+            "lessons": _retire(memory.lessons, gone),
+            "pushed_out": _retire(memory.pushed_out, gone),
+        }
+    )
+    return kept, messages
+
+
+def _revise(  # noqa: PLR0913 -- the run, the memory, and the counts its revisions are shown
+    run: Run,
+    memory: Memory,
+    support: dict[str, Support],
+    *,
+    cases: Sequence[LearningCase],
+    applies: dict[str, frozenset[str]],
+    year: int,
+) -> tuple[Memory, int, int]:
+    """Send every lesson that disagrees more than it agrees back to the learner, one at a time.
+
+    Returns:
+        The memory after the revisions, and how many lessons were edited and retired.
+    """
+    revisable = [
+        lesson for lesson in memory.lessons if curate.needs_revision(support[lesson.lesson_id])
+    ]
+    revised = retired = 0
+    if not revisable:
+        return memory, revised, retired
+    calls = {
+        lesson.lesson_id: _revise_call(lesson, support, cases, applies, run.tables)
+        for lesson in revisable
+    }
+    _check_budget(run.settings, list(calls.values()), batch=False, label="revise")
+    for lesson in revisable:
+        reply = run.client.send(calls[lesson.lesson_id])
+        if not reply.ok or reply.text is None:
+            print(f"revision of {lesson.lesson_id} failed: {_reason(reply.error)}")
+            continue
+        try:
+            parsed = prompts.ReviseReply.model_validate_json(reply.text)
+        except ValidationError:
+            print(f"revision of {lesson.lesson_id} failed: reply did not parse")
+            continue
+        before = memory
+        memory, messages = merge_revision(memory, lesson.lesson_id, parsed, year, run.tables)
+        for message in messages:
+            print(message)
+        if memory is not before:
+            revised += parsed.action == "edit"
+            retired += parsed.action == "retire"
+    return memory, revised, retired
+
+
 def finish(args: argparse.Namespace, run: Run) -> int:
-    """Apply, count support, revise, retire, cap and save an unchecked snapshot."""
-    settings, tables, client, run_id = run.settings, run.tables, run.client, run.run_id
+    """Drop lessons the checks refuse, apply, count, revise, retire, cap, save unchecked.
+
+    The copying and withheld-text checks (decision 0201) run before support is first counted
+    and again after a revision changed any lesson, so neither a lesson carried from the starting
+    snapshot nor a revised one reaches the snapshot when ``make mem-check`` would refuse it.
+    """
+    settings, tables, run_id = run.settings, run.tables, run.run_id
     if (
         not _NAME.fullmatch(args.to)
         or snapshots.snapshot_path(args.to, snapshots.SNAPSHOT_DIR).exists()
@@ -532,39 +620,19 @@ def finish(args: argparse.Namespace, run: Run) -> int:
     memory = draft.model_copy(
         update={"lessons": (*draft.lessons, *draft.pushed_out), "pushed_out": ()}
     )
+    withheld, causes = checks.development_texts(_processed(settings) / "cases.parquet")
+    memory, dropped = drop_failing(memory, withheld, causes)
 
     applies, failed = run_apply(run, memory, cases, applier, role="apply")
     support = curate.count_support(memory.lessons, cases, applies)
-    revisable = [
-        lesson for lesson in memory.lessons if curate.needs_revision(support[lesson.lesson_id])
-    ]
-    revised = retired_by_revision = 0
-    if revisable:
-        calls = {
-            lesson.lesson_id: _revise_call(lesson, support, cases, applies, tables)
-            for lesson in revisable
-        }
-        _check_budget(settings, list(calls.values()), batch=False, label="revise")
-        for lesson in revisable:
-            reply = client.send(calls[lesson.lesson_id])
-            if not reply.ok or reply.text is None:
-                print(f"revision of {lesson.lesson_id} failed: {_reason(reply.error)}")
-                continue
-            try:
-                parsed = prompts.ReviseReply.model_validate_json(reply.text)
-            except ValidationError:
-                print(f"revision of {lesson.lesson_id} failed: reply did not parse")
-                continue
-            before = memory
-            memory, messages = merge_revision(memory, lesson.lesson_id, parsed, year, tables)
-            for message in messages:
-                print(message)
-            if memory is not before:
-                revised += parsed.action == "edit"
-                retired_by_revision += parsed.action == "retire"
-        if revised or retired_by_revision:
-            applies, failed = run_apply(run, memory, cases, applier, role="apply")
-            support = curate.count_support(memory.lessons, cases, applies)
+    memory, revised, retired_by_revision = _revise(
+        run, memory, support, cases=cases, applies=applies, year=year
+    )
+    if revised or retired_by_revision:
+        memory, dropped_again = drop_failing(memory, withheld, causes)
+        dropped += dropped_again
+        applies, failed = run_apply(run, memory, cases, applier, role="apply")
+        support = curate.count_support(memory.lessons, cases, applies)
     gone = {
         lesson.lesson_id for lesson in memory.lessons if curate.unused(support[lesson.lesson_id])
     }
@@ -580,7 +648,10 @@ def finish(args: argparse.Namespace, run: Run) -> int:
         pushed_out=pushed,
     )
     path = snapshots.save(saved, snapshots.SNAPSHOT_DIR)
+    for message in dropped:
+        print(message)
     counts = {
+        "dropped_by_checks": len(dropped),
         "applied_cases": len(cases),
         "failed_applies": failed,
         "revised": revised,

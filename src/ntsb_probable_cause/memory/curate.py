@@ -70,10 +70,13 @@ def with_support(lessons: Sequence[Lesson], support: Mapping[str, Support]) -> t
 def apply_cap(
     lessons: Sequence[Lesson], tables: CodeTables, cap_tokens: int
 ) -> tuple[tuple[Lesson, ...], tuple[Lesson, ...]]:
-    """Keep the best-supported lessons that fit in ``cap_tokens``; the rest are pushed out.
+    """Keep the best-supported lessons, in ranked order, until one does not fit in ``cap_tokens``.
 
     Order: most agreements, then most applies, then lesson id. Each lesson's size is its
-    rendered text's estimate (``estimated_tokens``), plus one for its line break.
+    rendered text's estimate (``estimated_tokens``), plus one for its line break. The first
+    lesson that does not fit is pushed out with every lower-ranked lesson, even a smaller one
+    that would fit: a lesson enters a full memory only by beating the weakest (decision 0201
+    item 5), never by being short.
     """
 
     def rank(lesson: Lesson) -> tuple[int, int, str]:
@@ -85,7 +88,7 @@ def apply_cap(
     used = 0
     for lesson in sorted(lessons, key=rank):
         size = estimated_tokens(render_lesson(lesson, tables)) + 1
-        if used + size <= cap_tokens:
+        if not pushed and used + size <= cap_tokens:
             kept.append(lesson)
             used += size
         else:

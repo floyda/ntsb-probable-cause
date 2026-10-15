@@ -28,7 +28,7 @@ def test_digits_and_unlisted_capitals_are_identifiers() -> None:
     found = checks.identifier_findings(
         _memory("when Smith stalls on approach, the NTSB codes loss of control")
     )
-    assert any("Smith" in f for f in found)
+    assert any("capitalised word" in f for f in found)
     quiet = _memory("when the pilot stalls under VFR, the NTSB codes loss of control")
     assert checks.identifier_findings(quiet) == []
 
@@ -98,7 +98,7 @@ def test_a_possessive_of_an_allowed_word_passes_and_a_name_does_not() -> None:
     assert checks.identifier_findings(_memory("the NTSB's code is loss of control")) == []
     assert checks.identifier_findings(_memory("the NTSB\u2019s code is loss of control")) == []
     found = checks.identifier_findings(_memory("Smith's stall is coded loss of control"))
-    assert any("Smith" in f for f in found)
+    assert any("capitalised word" in f for f in found)
 
 
 def test_a_pushed_out_lesson_is_checked_too() -> None:
@@ -106,3 +106,33 @@ def test_a_pushed_out_lesson_is_checked_too() -> None:
     pushed = memory.lessons[0].model_copy(update={"lesson_id": "L002", "statement": "Smith stalls"})
     memory = memory.model_copy(update={"pushed_out": (pushed,)})
     assert any("L002" in f for f in checks.identifier_findings(memory))
+
+
+def test_findings_name_the_lesson_and_the_kind_never_the_text() -> None:
+    # Final review M3: a finding is printed and put in errors, so it quotes no lesson text.
+    sentence = "did not maintain adequate airspeed during the approach, which resulted in a stall."
+    memory = _memory("when Smith of N123AB stalls", scope=f"the pilot {sentence}")
+    found = [
+        *checks.identifier_findings(memory),
+        *checks.withheld_findings(memory, [f"The pilot {sentence}"]),
+        *checks.copying_findings(memory, [f"The pilot {sentence}"]),
+    ]
+    assert {f.partition(": ")[2] for f in found} == {
+        "a digit",
+        "a capitalised word not on the allowed list",
+        "a sentence found in withheld text",
+        "8 or more words shared with a probable-cause sentence",
+    }
+    assert all(f.startswith("L001: ") for f in found)
+    for word in ("Smith", "N123AB", "airspeed"):
+        assert word not in " ".join(found)
+
+
+def test_lessons_failing_the_development_checks_are_named_with_their_checks() -> None:
+    sentence = "did not maintain adequate airspeed during the approach, which resulted in a stall."
+    copied = _memory(f"the pilot {sentence}")
+    clean = copied.lessons[0].model_copy(update={"lesson_id": "L002", "statement": "quiet"})
+    memory = copied.model_copy(update={"pushed_out": (clean,)})
+    assert checks.development_failures(memory, [f"The pilot {sentence}"], [sentence]) == {
+        "L001": ("copying", "withheld text")
+    }

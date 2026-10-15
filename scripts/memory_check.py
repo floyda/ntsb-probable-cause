@@ -7,60 +7,34 @@ Status
 
 What it reads
     The snapshot, and every development case's factual narrative, analysis narrative and
-    probable cause (through ``fields``, never a second assembler). Rows of any other split
-    are never read into the comparison.
+    probable cause (``checks.development_texts``, through ``fields``, never a second
+    assembler; the learner's ``finish`` reads the same). Rows of any other split are never
+    read into the comparison.
 
 What it writes
     ``<snapshot>.stamp.json`` beside the snapshot, only when all three checks pass: identifier
     (digits and unlisted capitalised words), withheld text (a lesson sentence found inside a
     withheld text) and copying (eight consecutive words shared with a probable-cause
-    sentence). Findings are printed and nothing is written when any is found. Exit 1 then.
+    sentence). Findings are printed, each as a lesson id and the kind of finding (never the
+    text), and nothing is written when any is found. Exit 1 then.
 
 Usage
     uv run python -m scripts.memory_check --snapshot NAME
 """
 
 import argparse
-import json
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
-from ntsb_probable_cause import fields, gitinfo
-from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.memory import checks, snapshots
 from ntsb_probable_cause.settings import Settings
-
-DEV_SPLIT = "dev"
 
 
 def processed_path() -> Path:
     """The processed case file."""
     return Settings().data_dir / "processed" / "cases.parquet"
-
-
-def _development_texts() -> tuple[list[str], list[str]]:
-    """The withheld texts and the probable-cause sentences of every development case."""
-    withheld: list[str] = []
-    causes: list[str] = []
-    columns = ["split", "raw_json"]
-    if not processed_path().exists():
-        raise ConfigurationError(f"{processed_path()} is missing: run make build")
-    with pq.ParquetFile(processed_path()) as parquet:
-        for batch in parquet.iter_batches(batch_size=512, columns=columns):
-            rows = zip(*(batch.column(c).to_pylist() for c in columns), strict=True)
-            for split, raw_json in rows:
-                if split != DEV_SPLIT:
-                    continue
-                raw = json.loads(raw_json)
-                cause = fields.probable_cause(raw)
-                texts = (fields.factual_narrative(raw), fields.analysis_narrative(raw), cause)
-                withheld.extend(t for t in texts if t)
-                if cause:
-                    causes.append(cause)
-    return withheld, causes
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -78,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if found:
         print("\n".join(f"- {f}" for f in found))
         return 1
-    withheld, causes = _development_texts()
+    withheld, causes = checks.development_texts(processed_path())
     found = checks.withheld_findings(memory, withheld) + checks.copying_findings(memory, causes)
     if found:
         print("\n".join(f"- {f}" for f in found))

@@ -5,6 +5,7 @@ run locally (``make mem-check``) and their result is the stamp.
 """
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pyarrow as pa
@@ -106,3 +107,37 @@ def test_main_names_make_build_when_the_data_is_missing(
     monkeypatch.setattr(memory_check, "processed_path", lambda: tmp_path / "none.parquet")
     with pytest.raises(ConfigurationError, match="make build"):
         memory_check.main(["--snapshot", "t"])
+
+
+def test_check_output_and_refusals_quote_no_lesson_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Final review M3: findings name the lesson and the kind only.
+    directory = _setup(tmp_path, monkeypatch)
+    copying = "the pilot's failure to maintain adequate airspeed during the approach leads"
+    snapshots.save(_memory(copying), directory)
+    assert memory_check.main(["--snapshot", "t"]) == 1
+    out = capsys.readouterr().out
+    assert "L001" in out
+    assert "airspeed" not in out
+    named = _memory("when Smith of N123AB stalls, the NTSB codes loss of control")
+    named = named.model_copy(update={"name": "u"})
+    path = snapshots.save(named, directory)
+    stamp = checks.Stamp(
+        snapshot="u",
+        sha256=snapshots.sha256_of(path),
+        withheld_texts_compared=1,
+        causes_compared=1,
+        checked_on=date(2026, 10, 15),
+        commit="abc1234",
+        dirty=False,
+    )
+    snapshots.stamp_path("u", directory).write_text(stamp.model_dump_json())
+    assert memory_check.main(["--snapshot", "u"]) == 1
+    out = capsys.readouterr().out
+    with pytest.raises(ConfigurationError) as caught:
+        snapshots.load_checked("u", directory)
+    for text in (out, str(caught.value)):
+        assert "L001" in text
+        assert "Smith" not in text
+        assert "N123AB" not in text

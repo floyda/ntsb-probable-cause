@@ -67,7 +67,8 @@ def load_checked(name: str, directory: Path = SNAPSHOT_DIR) -> Memory:
         raise ConfigurationError(f"snapshot {name} changed after its check; check it again")
     memory = load(name, directory)
     if found := checks.identifier_findings(memory):
-        raise ConfigurationError(f"snapshot {name} fails the identifier check: {found}")
+        # each finding is a lesson id and a kind, never the text (final review M3)
+        raise ConfigurationError(f"snapshot {name} fails the identifier check: {'; '.join(found)}")
     return memory
 
 

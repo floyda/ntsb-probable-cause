@@ -1,6 +1,8 @@
 """The learner script (decisions 0201-0204). Offline; made-up replies and a fake SDK."""
 
+import dataclasses
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,12 +10,14 @@ from typing import cast
 
 import anthropic
 import pytest
+from scripts import memory_check
 from scripts import memory_learn as ml
 from tests.conftest import coded_record, write_cases
 
 from ntsb_probable_cause import fields, gitinfo
 from ntsb_probable_cause.memory import claude, pool, snapshots
-from ntsb_probable_cause.memory.lessons import Lesson, Memory, Prediction
+from ntsb_probable_cause.memory.lessons import Lesson, Memory, Prediction, Support
+from ntsb_probable_cause.memory.pool import LearningCase
 from ntsb_probable_cause.memory.prompts import LessonDraft, LessonEdit, ProposeReply, ReviseReply
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.settings import Settings
@@ -456,3 +460,53 @@ def test_finish_refuses_an_agreement_file_with_no_chosen_applier(
     assert h.run("finish", "--resume", "run-x", "--to", "pilot-a") == 1
     assert "refused:" in capsys.readouterr().out
     assert h.messages.requests == {}
+
+
+def test_finish_drops_a_lesson_that_copies_a_cause_and_the_snapshot_then_passes_the_check(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Final review I1: finish removes what make mem-check would refuse, kept or pushed out.
+    monkeypatch.setattr(gitinfo, "is_committed", lambda *a, **k: True)
+    h = Harness(tmp_path, _applies({claude.HAIKU: ["L001", "L002"]}), ("2009",) * 4)
+    ml.AGREEMENT_FILE.write_text("chosen applier: haiku-low\n")
+    cause = fields.probable_cause(h.raw)
+    assert cause is not None
+    copied = "when " + " ".join(re.findall(r"[a-z0-9']+", cause.lower())[:8]) + " happens"
+    first = fields.occurrence_codes(h.raw)[0]
+    good = _lesson(predicts=Prediction(first_occurrence=(first,)))
+    bad = _lesson(lesson_id="L002", statement=copied)
+    draft = Memory(name="pilot-a", periods=(2009,), lessons=(good,), pushed_out=(bad,))
+    (h.run_folder("run-x") / "draft.json").write_text(draft.model_dump_json())
+    assert h.run("finish", "--resume", "run-x", "--to", "pilot-a") == 0
+    out = capsys.readouterr().out
+    assert "L002 dropped: copying check" in out
+    assert copied not in out
+    saved = snapshots.load("pilot-a", snapshots.SNAPSHOT_DIR)
+    assert [lesson.lesson_id for lesson in saved.lessons] == ["L001"]
+    assert saved.pushed_out == ()
+    counts = json.loads((h.settings.runs_dir / "run-x" / "finish.json").read_text())
+    assert counts["dropped_by_checks"] == 1
+    assert "dropped by checks 1" in out
+    cases_file = h.settings.data_dir / "processed" / "cases.parquet"
+    monkeypatch.setattr(memory_check, "processed_path", lambda: cases_file)
+    assert memory_check.main(["--snapshot", "pilot-a"]) == 0
+
+
+def test_the_2009_finish_with_sonnet_as_applier_projects_under_the_learning_line() -> None:
+    # Controller ruling I2: Sonnet apply calls get MAX_TOKENS_SONNET_APPLY, so a 2009 finish
+    # (1,201 learning cases) fits under the $90 learner line, both applies and every revision.
+    cause = fields.probable_cause(coded_record())
+    assert cause is not None
+    cases = [LearningCase(f"C{i:04d}", 2009, cause, ("552230",), ()) for i in range(1201)]
+    lessons = tuple(_lesson(lesson_id=f"L{i:03d}") for i in range(1, 6))
+    memory = Memory(name="d", periods=(2009,), lessons=lessons)
+    model, effort = ml.APPLIERS["sonnet-high"]
+    calls = [ml._call_for_apply("apply", model, effort, memory, c) for c in cases]
+    assert {c.max_tokens for c in calls} == {ml.MAX_TOKENS_SONNET_APPLY}
+    apply_usd = ml.projected_usd(calls, batch=True)
+    support = {lesson.lesson_id: Support(applies=0, agrees=0) for lesson in lessons}
+    revisions = [ml._revise_call(lesson, support, cases, {}, TABLES) for lesson in lessons]
+    total = 2 * apply_usd + ml.projected_usd(revisions, batch=False)
+    assert total < 90.0
+    at_old_limit = [dataclasses.replace(c, max_tokens=ml.MAX_TOKENS_SONNET) for c in calls]
+    assert ml.projected_usd(at_old_limit, batch=True) > 90.0  # one apply alone, before the ruling

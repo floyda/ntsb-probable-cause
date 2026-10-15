@@ -79,3 +79,17 @@ def test_agreement_counts_pairs_either_model_marks() -> None:
     a = {"A": frozenset({"L1", "L2"}), "B": frozenset()}
     b = {"A": frozenset({"L1"}), "B": frozenset({"L3"})}
     assert curate.agreement(a, b) == (1, 3)
+
+
+def test_the_cap_stops_at_the_first_lesson_that_does_not_fit() -> None:
+    # Decision 0201 item 5: a lesson enters a full memory only by beating the weakest.
+    strong = _lesson("L1").model_copy(
+        update={"statement": "the NTSB codes it so " * 20, "support": Support(applies=10, agrees=9)}
+    )
+    weak = _lesson("L2").model_copy(update={"support": Support(applies=10, agrees=3)})
+    small = curate.estimated_tokens(curate.render_lesson(weak, TABLES)) + 1
+    big = curate.estimated_tokens(curate.render_lesson(strong, TABLES)) + 1
+    assert small < big
+    kept, pushed = curate.apply_cap([weak, strong], TABLES, small)  # room for the weak one only
+    assert kept == ()
+    assert [lesson.lesson_id for lesson in pushed] == ["L1", "L2"]
