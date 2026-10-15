@@ -2473,7 +2473,7 @@ git commit -m "Coding memory: the pilot's registration, approved by Andy (decisi
 
 Before the first OpenRouter run, message the S4 session (as promised on 2026-10-14) that the side track will spend about $2–3 of the shared $40 development line, and wait for any objection. Every step below needs a clean tree; commit between steps. Log anything unexpected under Deviations as it happens.
 
-- [ ] **Step 1: The two tables runs.** `make mem-spend EST=0.80`, then `make mem-coding-answer REPEAT=a` and `make mem-coding-answer REPEAT=b`. Expected: 401 rows each; failures listed by reason.
+- [x] **Step 1: The two tables runs.** `make mem-spend EST=0.80`, then `make mem-coding-answer REPEAT=a` and `make mem-coding-answer REPEAT=b`. Expected: 401 rows each; failures listed by reason.
 - [ ] **Step 2: The two counts runs** over tables(a): `make mem-spend EST=0.80`, then `make mem-coding-tools SOURCE=<tables a> REPEAT=a` and `REPEAT=b`.
 - [ ] **Step 3: Learn 2009.** `make mem-learn-propose PERIOD=2009 FROM=empty TO=pilot-2009`; then `make mem-agreement RUN=<run id>`; commit `docs/results/memory-agreement-dev.txt`; then `make mem-learn-finish RUN=<run id> TO=pilot-2009`; `make mem-check SNAPSHOT=pilot-2009`; commit the snapshot and its stamp (`uv run pytest tests/test_memory_snapshots.py` passes first).
 - [ ] **Step 4: The memory condition after 2009.** `make mem-spend EST=0.40`; `make mem-coding-tools SOURCE=<tables a> REPEAT=a SNAPSHOT=pilot-2009`.
