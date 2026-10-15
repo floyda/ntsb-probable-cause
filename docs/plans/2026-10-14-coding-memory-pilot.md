@@ -1137,7 +1137,7 @@ git commit -m "Coding memory: the three checks, the stamp and checked loading (d
 - Consumes: `fields.probable_cause`, `fields.occurrence_codes`, `fields.finding_codes_in_cause`; `samples.sample_ids`; `coding_stats.POOL_EXCLUDED["mem"]`; `coding_stats.POOL_CLASSES` if public, else the literal `{"C", "F", "L"}` with a comment naming 0094.
 - Produces: `pool.LearningCase` (frozen dataclass: `case_id: str`, `year: int`, `cause: str`, `occurrence: tuple[str, ...]`, `findings: tuple[str, ...]`); `pool.learning_part(processed: Path, *, years: AbstractSet[int], excluded: AbstractSet[str] | None = None) -> list[LearningCase]` (sorted by `case_id`; `excluded` defaults to the ids of every sample in `POOL_EXCLUDED["mem"]`).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 """The learning part: development pool cases outside every sample (decisions 0200, 0203).
@@ -1205,12 +1205,12 @@ def test_a_case_without_a_cause_or_an_occurrence_code_is_left_out(tmp_path: Path
 
 If `fields.probable_cause` reads somewhere other than `narratives` (check `fields.py:301`), blank that path instead in `bare`. If the fixture records' event years differ from the rows' `event_date`, the reader must take the year from `event_date` (the parquet column), which these tests assume.
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_memory_pool.py -v`
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Implement `memory/pool.py`.**
+- [x] **Step 3: Implement `memory/pool.py`.**
 
 ```python
 """The learning part: what the learner may read (decisions 0200, 0203).
@@ -1276,12 +1276,12 @@ def learning_part(
 
 If `cases.parquet` is too large to read whole with these columns (S1's note in `samples.py:151` says `pyarrow` reads whole row groups), stream it the way `samples.load_cases` does instead, keeping this function's signature.
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `uv run pytest tests/test_memory_pool.py -v && uv run lint-imports`
 Expected: PASS; contracts KEPT.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/memory/pool.py tests/test_memory_pool.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2522,3 +2522,4 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 6: the grimp check that only `memory.claude` imports `anthropic` is two checks (controller ruling R1): grimp over the library, and a text scan of `src/`, `apps/` and `scripts/` that fails if it finds no file. Both pass vacuously until Task 10. Also added `memory` to the live-package contract's sources (the test holds it to the package's children), and two tests for the new contract and for memory not importing the agent or live. The brief's placeholder codes became real ones: `550240` (Landing / Loss of control in flight), `500240` (Approach, same event), category `010100`.
 - 2026-10-15, Task 7: the brief's seven-word copying test was an eight-word copy by its own rule ("pilot's failure to maintain adequate airspeed during the" is eight words), so the test's text now ends "during a flare" (seven shared words). The code is the brief's.
 - 2026-10-15, Task 7: `scripts/README.md` does not exist (no scripts table in the repo), so no row was added; the Makefile target `mem-check` and the script's docstring carry its description. `memory_check.main` reads `snapshots.SNAPSHOT_DIR` at call time and passes it explicitly, because the library functions' default arguments bind at definition and a monkeypatch would not reach them.
+- 2026-10-15, Task 8: `learning_part` streams row batches (256 rows, parsing `raw_json` only for rows passing the cheap filters) instead of the brief's whole-table read, as `samples.load_cases` does; the brief's `from collections.abc import AbstractSet` does not exist, so it imports `Set as AbstractSet` as `scripts/coding_stats.py` does; `POOL_CLASSES` stays a literal because the only public one lives in `scripts/`, which the library cannot import. `fields.occurrence_codes` and `finding_codes_in_cause` already return tuples, so no `tuple(...)` wrapping.
