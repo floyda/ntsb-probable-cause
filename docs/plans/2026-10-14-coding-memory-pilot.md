@@ -2149,7 +2149,7 @@ git commit -m "Coding memory: the shape probe's result (decision 0202 item 5)"
 - Consumes: everything in `memory.*`; `scoring.codes.load_tables`; `scoring.hypothesis.strict_schema`; `budget.check_learning_budget`; `gitinfo.commit_state`, `gitinfo.is_committed`; `Settings`.
 - Produces: subcommands `propose`, `agreement`, `finish`; pure helpers `chunks(cases, size=30) -> list[list[LearningCase]]`, `next_lesson_id(existing: Iterable[str]) -> str`, `merge_proposal(memory: Memory, reply: ProposeReply, year: int, tables: CodeTables, next_id: Callable[[], str]) -> tuple[Memory, list[str]]` (the merged memory, and messages for drafts dropped), `merge_revision(memory, lesson_id, reply: ReviseReply, year, tables) -> tuple[Memory, list[str]]`, `parse_applier(text: str) -> Applier`; `Applier = Literal["haiku-low", "haiku-medium", "sonnet-high"]`; `APPLIERS: dict[Applier, tuple[str, Effort]]`.
 
-- [ ] **Step 1: Write the failing tests for the pure helpers.**
+- [x] **Step 1: Write the failing tests for the pure helpers.**
 
 ```python
 """The learner script's pure parts (decisions 0201-0204). Offline; made-up replies."""
@@ -2222,14 +2222,14 @@ def test_cases_go_in_thirties_in_id_order() -> None:
 
 A draft is dropped (with a message) when any code in `first_occurrence` is not a six-digit code composable from `TABLES.phases` and `TABLES.events`, any code in `finding_categories` is not in `TABLES.categories`, or `Lesson` validation fails (for example a split with one code).
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_memory_learn.py -v`
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Implement the pure helpers** in `scripts/memory_learn.py` to make those tests pass. Docstring `Status`: "Live tool for the coding memory's pilot (decisions 0200-0204), paid from plan credits (0202, 207). Writes run folders under `NTSB_RUNS_DIR` (never committed) and, from `finish`, an unchecked snapshot." Sections `What it reads`, `What it writes`, `Usage` for the three subcommands.
+- [x] **Step 3: Implement the pure helpers** in `scripts/memory_learn.py` to make those tests pass. Docstring `Status`: "Live tool for the coding memory's pilot (decisions 0200-0204), paid from plan credits (0202, 207). Writes run folders under `NTSB_RUNS_DIR` (never committed) and, from `finish`, an unchecked snapshot." Sections `What it reads`, `What it writes`, `Usage` for the three subcommands.
 
-- [ ] **Step 4: Implement the three subcommands.** Shared setup for every subcommand: refuse a dirty tree (`gitinfo.commit_state()`); `tables = load_tables()`; `forbidden = pool.excluded_ids()`; the client is `LearningClient(anthropic.Anthropic(api_key=settings.require_anthropic_key()), settings.runs_dir, run_id, commit=..., forbidden=forbidden)` through a factory parameter on `main` so tests inject a fake. A new run's id is `f"{stamp}-{sha}-memory-{period}"`; `--resume RUN_ID` reuses one (its recorded replies are reused by the client). Before each phase, `budget.check_learning_budget` with that phase's projection: every planned call at its model's standard (sync) or batch price, priced at its estimated input tokens and its full `max_tokens` of output.
+- [x] **Step 4: Implement the three subcommands.** Shared setup for every subcommand: refuse a dirty tree (`gitinfo.commit_state()`); `tables = load_tables()`; `forbidden = pool.excluded_ids()`; the client is `LearningClient(anthropic.Anthropic(api_key=settings.require_anthropic_key()), settings.runs_dir, run_id, commit=..., forbidden=forbidden)` through a factory parameter on `main` so tests inject a fake. A new run's id is `f"{stamp}-{sha}-memory-{period}"`; `--resume RUN_ID` reuses one (its recorded replies are reused by the client). Before each phase, `budget.check_learning_budget` with that phase's projection: every planned call at its model's standard (sync) or batch price, priced at its estimated input tokens and its full `max_tokens` of output.
 
   **`propose --period YEAR --from {empty,NAME} --to NAME [--resume RUN_ID]`:**
   1. Start memory: `Memory(name=to, periods=())` for `empty`, else `snapshots.load_checked(from)`; the draft holds its kept lessons and its pushed-out lessons (both may re-enter under the cap at `finish`). `periods` becomes the start's periods plus `YEAR`.
@@ -2261,12 +2261,12 @@ mem-learn-finish: ## Apply, count, revise, cap and save a snapshot (0201; paid, 
 	scripts/with_pass_keys.sh uv run python -m scripts.memory_learn finish --resume $(RUN) --to $(TO)
 ```
 
-- [ ] **Step 5: Run the tests.**
+- [x] **Step 5: Run the tests.**
 
 Run: `uv run pytest tests/test_memory_learn.py -v && uv run mypy && uv run ruff check scripts/memory_learn.py`
 Expected: PASS; clean.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add scripts/memory_learn.py scripts/README.md Makefile tests/test_memory_learn.py tests/conftest.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2526,3 +2526,5 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 9: the brief's cap test gave the room as the strongest lesson's bare token estimate, but `apply_cap` (as its docstring specifies) charges one more token for the line break, so the strongest lesson could never fit and the test failed on the brief's code (RED evidence in the task report). The test's room now adds that one token; the implementation is the brief's. `test_memory_curate.py` also takes the real finding codes `02063000`+`44` (category 020630) and `01010000`+`00` via `compose_finding`, and `551240` and `600470` are real occurrence codes, so no code was replaced.
 - 2026-10-15, Task 10: `uv add anthropic` took 1.14.0 (`anthropic>=1.14.0`), the newest the repository allows; the repository sets no uv cooldown (no `exclude-newer`), so nothing was held back. `sdk_from_key(api_key)` (ruling R1) is added to `memory/claude.py`. Task 6's grimp check is now non-vacuous (it asserts `anthropic` is in the graph and `memory.claude` is among its importers). The brief's prompt placeholders are filled with f-strings instead of `.format` (ruff UP032), with the same rendered text; three prompt lines were re-wrapped at `\` continuations to fit 100 columns, text unchanged. `Call.params()` with `messages.create(**params)` needs `# type: ignore[call-overload]` (the SDK's overloads reject a `dict[str, object]`), and `_submit`'s `requests=` needs `# type: ignore[typeddict-item]`; a batch result's message is read with `getattr(result.result, "message", None)` because the result type is a union. Extra tests: recorded reply carries what its price needs, refusal category, mixed models refused, Haiku limit, `sdk_from_key`, placeholders filled.
 - 2026-10-15, Task 10: `memory.claude` imports `scoring.budget` (the brief's `write_spend`), and that module reaches `records.verdict` through `scoring.records` and `scoring.metrics`, which broke the contract "Only the splitter constructs synthesis and verdict" (`memory` is one of its sources). Added `memory.claude -> scoring.budget` to that contract's `ignore_imports` beside the recorder's exemption, with a comment; for the controller to confirm.
+- 2026-10-15, Task 12: `merge_proposal` and `merge_revision` also drop (with a message) any draft whose statement or scope fails `checks.identifier_findings` on a one-lesson memory, so a lesson with a name, a digit or an unlisted capital never enters the draft (controller addition; decision 0201's identifier rule). An edit clears the lesson's stale support until the next count.
+- 2026-10-15, Task 12: the script calls `memory.claude.sdk_from_key(settings.require_anthropic_key())` through a `client_factory` parameter on `main`, never `anthropic.Anthropic(...)` (ruling R1, decision 0207 item 1). Subcommands share one frozen `Run` context to stay inside the argument limits. `Memory`'s `pushed_out` lessons ride in the draft and rejoin the working memory at `finish`. Each phase prints its projected cost (estimated input plus full `max_tokens` output, at sync or batch price) before `check_learning_budget`; the propose projection prices every chunk at the starting memory, which grows as lessons are added. `scripts/README.md` does not exist, so no row was added. `_write` and `_coded_record` moved from `tests/test_memory_pool.py` to `tests/conftest.py` as plain functions (`write_cases`, `coded_record`).

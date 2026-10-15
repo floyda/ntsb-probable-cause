@@ -3,39 +3,13 @@
 A made-up parquet under tmp_path built from the redacted fixture records; offline.
 """
 
-import json
 from pathlib import Path
 
-import pyarrow as pa
-import pyarrow.parquet as pq
-from tests.conftest import FIXTURES
+from tests.conftest import coded_record as _coded_record
+from tests.conftest import write_cases as _write
 
 from ntsb_probable_cause import fields
 from ntsb_probable_cause.memory import pool
-
-
-def _write(processed: Path, rows: list[tuple[str, str, str, str, dict[str, object]]]) -> None:
-    processed.mkdir(parents=True)
-    pq.write_table(
-        pa.table(
-            {
-                "ntsb_number": [r[0] for r in rows],
-                "event_date": [r[1] for r in rows],
-                "split": [r[2] for r in rows],
-                "investigation_class": [r[3] for r in rows],
-                "raw_json": [json.dumps(r[4]) for r in rows],
-            }
-        ),
-        processed / "cases.parquet",
-    )
-
-
-def _coded_record() -> dict[str, object]:
-    for path in sorted((FIXTURES / "records").glob("*.json")):
-        raw = json.loads(path.read_text())["record"]
-        if fields.probable_cause(raw) and fields.occurrence_codes(raw):
-            return raw  # type: ignore[no-any-return]
-    raise AssertionError("no coded fixture record")
 
 
 def test_only_development_pool_cases_of_the_years_asked_and_outside_samples(

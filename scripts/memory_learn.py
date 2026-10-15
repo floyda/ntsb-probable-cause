@@ -1,0 +1,650 @@
+"""The coding memory's learner: propose lessons, choose the applier, finish a snapshot.
+
+Status
+    Live tool for the coding memory's pilot (decisions 0200-0204), paid from plan credits (0202,
+    0207). Writes run folders under ``NTSB_RUNS_DIR`` (never committed) and, from ``finish``, an
+    unchecked snapshot. It refuses a dirty tree, so every run names a clean commit, and it
+    checks the month's learner line (``NTSB_LEARNING_MONTHLY_BUDGET_USD``) before each phase.
+
+What it reads
+    The learning part (``memory.pool``: development cases of the statistics pool, outside every
+    sample), each case's probable-cause sentence and codes, and, for ``propose --from NAME``,
+    a stamped snapshot. The Claude key comes from the environment (``ANTHROPIC_API_KEY``).
+
+What it writes
+    ``<runs>/<run id>/``: ``calls.jsonl`` and ``batches.jsonl`` (the client's record, so a
+    repeated call is never paid for twice), ``draft.json`` (the lessons so far) and
+    ``finish.json`` (counts). ``agreement`` writes a counts-only file, committed by hand;
+    ``finish`` saves ``memory/snapshots/NAME.json`` without a stamp (``make mem-check`` stamps
+    it). Only counts are printed.
+
+Usage
+    uv run python -m scripts.memory_learn propose --period YEAR --from {empty,NAME} --to NAME
+        [--resume RUN_ID]
+    uv run python -m scripts.memory_learn agreement --resume RUN_ID
+        --out docs/results/memory-agreement-dev.txt
+    uv run python -m scripts.memory_learn finish --resume RUN_ID --to NAME
+"""
+
+import argparse
+import json
+import random
+import re
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Final, Literal
+
+from pydantic import ValidationError
+
+from ntsb_probable_cause import gitinfo, sources
+from ntsb_probable_cause.errors import BudgetError, ConfigurationError
+from ntsb_probable_cause.memory import checks, claude, curate, pool, prompts, snapshots
+from ntsb_probable_cause.memory.claude import HAIKU, SONNET, Call, Effort, LearningClient
+from ntsb_probable_cause.memory.lessons import (
+    Lesson,
+    Memory,
+    Prediction,
+    Support,
+    estimated_tokens,
+    render_for_apply,
+    render_lesson,
+    render_memory,
+)
+from ntsb_probable_cause.memory.pool import LearningCase
+from ntsb_probable_cause.scoring import budget
+from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
+from ntsb_probable_cause.scoring.hypothesis import strict_schema
+from ntsb_probable_cause.settings import Settings
+
+Applier = Literal["haiku-low", "haiku-medium", "sonnet-high"]
+APPLIERS: Final[dict[Applier, tuple[str, Effort]]] = {
+    "haiku-low": (HAIKU, "low"),
+    "haiku-medium": (HAIKU, "medium"),
+    "sonnet-high": (SONNET, "high"),
+}
+ClientFactory = Callable[[Settings, str, tuple[str, bool], frozenset[str]], LearningClient]
+
+CHUNK: Final = 30
+AGREEMENT_YEAR: Final = 2009
+AGREEMENT_SAMPLE: Final = 100
+AGREEMENT_SEED: Final = 20261014
+AGREEMENT_BAR: Final = 0.90
+AGREEMENT_FILE: Path = Path("docs/results/memory-agreement-dev.txt")
+MAX_TOKENS_HAIKU: Final = 2048
+MAX_TOKENS_SONNET: Final = 16000
+DISAGREEING_SHOWN: Final = 10
+AGREEING_SHOWN: Final = 5
+_NAME: Final = re.compile(r"[a-z0-9][a-z0-9-]*")
+_CODE: Final = re.compile(r"\d{6}")
+_ID: Final = re.compile(r"L(\d+)")
+
+# Pure helpers. -----------------------------------------------------------------------------
+
+
+def chunks[T](cases: Sequence[T], size: int = CHUNK) -> list[list[T]]:
+    """``cases`` in order, in lists of ``size``; the last may be shorter."""
+    return [list(cases[i : i + size]) for i in range(0, len(cases), size)]
+
+
+def next_lesson_id(existing: Iterable[str]) -> str:
+    """The id after the highest ``L<number>`` in ``existing``; ``L001`` for none."""
+    numbers = [int(m.group(1)) for i in existing if (m := _ID.fullmatch(i))]
+    return f"L{max(numbers, default=0) + 1:03d}"
+
+
+def parse_applier(text: str) -> Applier:
+    """The applier named by the agreement file's ``chosen applier:`` line.
+
+    Raises:
+        ValueError: the text has no such line, or names an unknown applier.
+    """
+    for line in reversed(text.splitlines()):
+        if line.startswith("chosen applier:"):
+            name = line.partition(":")[2].strip()
+            if name in APPLIERS:
+                return name
+            raise ValueError(f"unknown applier {name!r}")
+    raise ValueError("no 'chosen applier:' line (no applier chosen)")
+
+
+def _problems(draft: prompts.LessonDraft, tables: CodeTables) -> str | None:
+    """Why a draft cannot become a lesson, or None."""
+    for code in draft.first_occurrence:
+        if not (_CODE.fullmatch(code) and code[:3] in tables.phases and code[3:] in tables.events):
+            return f"first occurrence code {code!r} is not a phase and event in the tables"
+    for category in draft.finding_categories:
+        if category not in tables.categories:
+            return f"finding category {category!r} is not in the tables"
+    return None
+
+
+def _lesson_from(
+    draft: prompts.LessonDraft,
+    lesson_id: str,
+    tables: CodeTables,
+    *,
+    written_in: int,
+    history: tuple[str, ...] = (),
+) -> tuple[Lesson | None, str | None]:
+    """A lesson from a draft, or why not: codes, validation, then the identifier rule (0201)."""
+    if (why := _problems(draft, tables)) is not None:
+        return None, why
+    try:
+        lesson = Lesson(
+            lesson_id=lesson_id,
+            kind=draft.kind,
+            statement=draft.statement,
+            scope=draft.scope,
+            predicts=Prediction(
+                first_occurrence=tuple(draft.first_occurrence),
+                finding_categories=tuple(draft.finding_categories),
+            ),
+            written_in=written_in,
+            history=history,
+        )
+    except ValidationError as exc:
+        return None, f"invalid lesson: {exc.errors()[0]['msg']}"
+    found = checks.identifier_findings(Memory(name="one", periods=(), lessons=(lesson,)))
+    if found:
+        return None, f"identifier check: {found[0]}"
+    return lesson, None
+
+
+def _replace(lessons: tuple[Lesson, ...], new: Lesson) -> tuple[Lesson, ...]:
+    return tuple(new if lesson.lesson_id == new.lesson_id else lesson for lesson in lessons)
+
+
+def _edited(
+    old: Lesson, draft: prompts.LessonDraft, year: int, tables: CodeTables, verb: str
+) -> tuple[Lesson | None, str | None]:
+    return _lesson_from(
+        draft,
+        old.lesson_id,
+        tables,
+        written_in=old.written_in,
+        history=(*old.history, f"{verb} in {year}"),
+    )
+
+
+def merge_proposal(
+    memory: Memory,
+    reply: ProposeReplyType,
+    year: int,
+    tables: CodeTables,
+    next_id: Callable[[], str],
+) -> tuple[Memory, list[str]]:
+    """Apply a propose reply to a memory: edits, retirements, then new lessons.
+
+    A draft is dropped, with a message, when a code is not in the tables, the lesson does not
+    validate, or its text fails the identifier check; at most ``MAX_NEW_PER_CALL`` new lessons
+    are kept. An edit drops the lesson's counted support (it is stale until recounted).
+
+    Returns:
+        The merged memory and one message per draft or instruction dropped.
+    """
+    lessons = memory.lessons
+    dropped: list[str] = []
+    known = {lesson.lesson_id: lesson for lesson in lessons}
+    for edit in reply.edits:
+        if edit.lesson_id not in known:
+            dropped.append(f"edit of {edit.lesson_id}: no such lesson")
+            continue
+        new, why = _edited(known[edit.lesson_id], edit, year, tables, "edited")
+        if new is None:
+            dropped.append(f"edit of {edit.lesson_id} dropped: {why}")
+            continue
+        lessons = _replace(lessons, new)
+    for lesson_id in reply.retire:
+        if lesson_id not in known:
+            dropped.append(f"retire {lesson_id}: no such lesson")
+        else:
+            lessons = tuple(lesson for lesson in lessons if lesson.lesson_id != lesson_id)
+    added: list[Lesson] = []
+    for position, draft in enumerate(reply.new):
+        if len(added) >= prompts.MAX_NEW_PER_CALL:
+            dropped.append(f"new lesson {position + 1} dropped: over {prompts.MAX_NEW_PER_CALL}")
+            continue
+        new, why = _lesson_from(draft, next_id(), tables, written_in=year)
+        if new is None:
+            dropped.append(f"new lesson {position + 1} dropped: {why}")
+        else:
+            added.append(new)
+    return memory.model_copy(update={"lessons": (*lessons, *added)}), dropped
+
+
+def merge_revision(
+    memory: Memory, lesson_id: str, reply: ReviseReplyType, year: int, tables: CodeTables
+) -> tuple[Memory, list[str]]:
+    """Apply a revise reply to one lesson: retire it, or replace it with the edited one.
+
+    A bad edit leaves the old lesson in place, with a message.
+    """
+    old = next((lesson for lesson in memory.lessons if lesson.lesson_id == lesson_id), None)
+    if old is None:
+        return memory, [f"revision of {lesson_id}: no such lesson"]
+    if reply.action == "retire":
+        kept = tuple(lesson for lesson in memory.lessons if lesson.lesson_id != lesson_id)
+        return memory.model_copy(update={"lessons": kept}), []
+    new, why = _edited(old, reply, year, tables, "revised")
+    if new is None:
+        return memory, [f"revision of {lesson_id} dropped: {why}"]
+    return memory.model_copy(update={"lessons": _replace(memory.lessons, new)}), []
+
+
+# Shared setup and cost projection. -----------------------------------------------------------
+
+ProposeReplyType = prompts.ProposeReply
+ReviseReplyType = prompts.ReviseReply
+
+
+def projected_usd(calls: Sequence[Call], *, batch: bool) -> float:
+    """The calls' cost at their estimated input and full ``max_tokens`` of output (0207)."""
+    total = 0.0
+    for call in calls:
+        price = sources.claude_price(call.model, batch=batch)
+        tokens = estimated_tokens(call.system + call.user)
+        total += (
+            tokens * price.input_usd_per_mtok + call.max_tokens * price.output_usd_per_mtok
+        ) / 1e6
+    return total
+
+
+def _check_budget(settings: Settings, calls: Sequence[Call], *, batch: bool, label: str) -> None:
+    """Refuse a phase that would pass the month's learner line; print its projection."""
+    projection = projected_usd(calls, batch=batch)
+    print(f"{label}: {len(calls)} calls, projected at most ${projection:.4f}")
+    budget.check_learning_budget(
+        settings.runs_dir,
+        projection,
+        settings.learning_monthly_budget_usd,
+        now=datetime.now(UTC),
+    )
+
+
+def _default_factory(
+    settings: Settings, run_id: str, commit: tuple[str, bool], forbidden: frozenset[str]
+) -> LearningClient:
+    return LearningClient(
+        claude.sdk_from_key(settings.require_anthropic_key()),
+        settings.runs_dir,
+        run_id,
+        commit=commit,
+        forbidden=forbidden,
+    )
+
+
+@dataclass(frozen=True)
+class Run:
+    """What every subcommand shares: settings, tables, the client, the run and what is forbidden."""
+
+    settings: Settings
+    tables: CodeTables
+    client: LearningClient
+    run_id: str
+    forbidden: frozenset[str]
+    commit: str
+
+    @property
+    def folder(self) -> Path:
+        """The run folder."""
+        return self.settings.runs_dir / self.run_id
+
+
+def _draft_path(settings: Settings, run_id: str) -> Path:
+    return settings.runs_dir / run_id / "draft.json"
+
+
+def _load_draft(settings: Settings, run_id: str) -> Memory:
+    path = _draft_path(settings, run_id)
+    if not path.exists():
+        raise ConfigurationError(f"{path} is missing: run propose first")
+    return Memory.model_validate_json(path.read_text())
+
+
+def _call_for_apply(
+    role: str, model: str, effort: Effort, memory: Memory, case: LearningCase
+) -> Call:
+    return Call(
+        role=role,
+        model=model,
+        effort=effort,
+        system=prompts.SYSTEM_APPLY + render_for_apply(memory),
+        user=prompts.apply_user(case.cause),
+        schema=strict_schema(prompts.ApplyReply),
+        max_tokens=MAX_TOKENS_HAIKU if model == HAIKU else MAX_TOKENS_SONNET,
+        case_ids=(case.case_id,),
+    )
+
+
+def run_apply(
+    run: Run,
+    memory: Memory,
+    cases: Sequence[LearningCase],
+    applier: Applier,
+    *,
+    role: str,
+) -> tuple[dict[str, frozenset[str]], int]:
+    """Which lessons the applier says cover each case, in one batch, and how many replies failed.
+
+    Unknown lesson ids are dropped; a failed or unparsable reply counts as an empty set.
+    """
+    if not memory.lessons or not cases:
+        return {}, 0
+    model, effort = APPLIERS[applier]
+    calls = [_call_for_apply(role, model, effort, memory, c) for c in cases]
+    _check_budget(run.settings, calls, batch=True, label=f"apply ({applier})")
+    replies = run.client.send_batch(calls)
+    known = {lesson.lesson_id for lesson in memory.lessons}
+    found: dict[str, frozenset[str]] = {}
+    failed = 0
+    for case, call in zip(cases, calls, strict=True):
+        reply = replies[call.key()]
+        ids: frozenset[str] = frozenset()
+        if reply.ok and reply.text is not None:
+            try:
+                ids = frozenset(prompts.ApplyReply.model_validate_json(reply.text).applies) & known
+            except ValidationError:
+                failed += 1
+        else:
+            failed += 1
+        found[case.case_id] = ids
+    return found, failed
+
+
+def _processed(settings: Settings) -> Path:
+    return settings.data_dir / "processed"
+
+
+# The subcommands. ----------------------------------------------------------------------------
+
+
+def propose(args: argparse.Namespace, run: Run) -> int:
+    """Write and edit lessons from one period's cases, thirty at a time."""
+    settings, tables, client, run_id = run.settings, run.tables, run.client, run.run_id
+    year = int(args.period)
+    if args.from_ == "empty":
+        start = Memory(name=args.to, periods=())
+    else:
+        start = snapshots.load_checked(args.from_, snapshots.SNAPSHOT_DIR)
+    if year in start.periods:
+        raise ConfigurationError(f"{year} is already one of the periods of {args.from_}")
+    draft = Memory(
+        name=args.to,
+        periods=(*start.periods, year),
+        lessons=start.lessons,
+        pushed_out=start.pushed_out,
+    )
+    cases = pool.learning_part(_processed(settings), years={year}, excluded=run.forbidden)
+    batches = chunks(cases)
+    folder = run.folder
+
+    def make_call(batch: list[LearningCase]) -> Call:
+        view = draft.model_copy(update={"pushed_out": ()})
+        return Call(
+            role="propose",
+            model=SONNET,
+            effort="high",
+            system=prompts.SYSTEM_PROPOSE,
+            user=prompts.propose_user(render_memory(view, tables), batch, tables),
+            schema=strict_schema(prompts.ProposeReply),
+            max_tokens=MAX_TOKENS_SONNET,
+            case_ids=tuple(c.case_id for c in batch),
+        )
+
+    # The memory grows with each chunk, so the projection prices every chunk at today's memory.
+    _check_budget(settings, [make_call(b) for b in batches], batch=False, label="propose")
+    used = {lesson.lesson_id for lesson in (*draft.lessons, *draft.pushed_out)}
+
+    def next_id() -> str:
+        new_id = next_lesson_id(used)
+        used.add(new_id)
+        return new_id
+
+    failed = dropped_total = 0
+    for batch in batches:
+        reply = client.send(make_call(batch))
+        if not reply.ok or reply.text is None:
+            failed += 1
+            print(f"chunk failed: {reply.error}")
+        else:
+            try:
+                parsed = prompts.ProposeReply.model_validate_json(reply.text)
+            except ValidationError:
+                failed += 1
+                print("chunk failed: reply did not parse")
+            else:
+                draft, dropped = merge_proposal(draft, parsed, year, tables, next_id)
+                dropped_total += len(dropped)
+                for message in dropped:
+                    print(message)
+        (folder / "draft.json").write_text(draft.model_dump_json(indent=1) + "\n")
+    (folder / "draft.json").write_text(draft.model_dump_json(indent=1) + "\n")
+    print(
+        f"run {run_id}: {len(batches)} chunks, {failed} failed, {len(draft.lessons)} lessons, "
+        f"{dropped_total} drafts dropped"
+    )
+    print(f"next: make mem-agreement RUN={run_id} (2009 only), or the next period's propose")
+    return 0
+
+
+def _rate(both: int, either: int) -> float:
+    return both / either if either else 0.0
+
+
+def agreement(args: argparse.Namespace, run: Run) -> int:
+    """Haiku against Sonnet on 100 cases of 2009; the applier is the cheapest that reaches 90%."""
+    settings, run_id = run.settings, run.run_id
+    draft = _load_draft(settings, run_id)
+    if draft.periods != (AGREEMENT_YEAR,):
+        raise ConfigurationError(f"agreement runs on the 2009 draft only, not {draft.periods}")
+    pool_cases = pool.learning_part(
+        _processed(settings), years={AGREEMENT_YEAR}, excluded=run.forbidden
+    )
+    sample = random.Random(AGREEMENT_SEED).sample(  # noqa: S311 -- a fixed, recorded sample
+        pool_cases, min(AGREEMENT_SAMPLE, len(pool_cases))
+    )
+    rows: list[str] = []
+    reference, ref_failed = run_apply(run, draft, sample, "sonnet-high", role="agreement")
+    chosen: Applier = "sonnet-high"
+    nothing_covered = False
+    for name in ("haiku-low", "haiku-medium"):
+        marked, failed = run_apply(run, draft, sample, name, role="agreement")
+        both, either = curate.agreement(marked, reference)
+        rate = _rate(both, either)
+        rows.append(
+            f"{name}: failed replies {failed}; pairs both marked {both}; "
+            f"pairs either marked {either}; agreement {rate * 100:.1f}%"
+        )
+        if either == 0:
+            nothing_covered = True
+            break
+        if rate >= AGREEMENT_BAR:
+            chosen = name
+            break
+    header = [
+        f"run: {run_id}",
+        f"commit: {run.commit}",
+        f"lessons in the draft: {len(draft.lessons)}",
+        f"sample: {len(sample)} cases of {AGREEMENT_YEAR}, seed {AGREEMENT_SEED}",
+        f"reference sonnet-high: failed replies {ref_failed}",
+        *rows,
+        f"bar: {AGREEMENT_BAR * 100:.0f}% agreement",
+    ]
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if nothing_covered:
+        lines = [*header, "no lesson covered any case: the pilot cannot proceed"]
+        out.write_text("\n".join(lines) + "\n")
+        print("\n".join(lines))
+        return 1
+    out.write_text("\n".join([*header, f"chosen applier: {chosen}"]) + "\n")
+    print("\n".join([*header, f"chosen applier: {chosen}"]))
+    return 0
+
+
+def _retire(lessons: tuple[Lesson, ...], gone: set[str]) -> tuple[Lesson, ...]:
+    return tuple(lesson for lesson in lessons if lesson.lesson_id not in gone)
+
+
+def finish(args: argparse.Namespace, run: Run) -> int:
+    """Apply, count support, revise, retire, cap and save an unchecked snapshot."""
+    settings, tables, client, run_id = run.settings, run.tables, run.client, run.run_id
+    if (
+        not _NAME.fullmatch(args.to)
+        or snapshots.snapshot_path(args.to, snapshots.SNAPSHOT_DIR).exists()
+    ):
+        raise ConfigurationError(f"snapshot name {args.to!r} is invalid or already taken")
+    if not gitinfo.is_committed(AGREEMENT_FILE):
+        raise ConfigurationError(f"{AGREEMENT_FILE} is not committed: commit it before finish")
+    applier = parse_applier(AGREEMENT_FILE.read_text())
+    draft = _load_draft(settings, run_id)
+    year = max(draft.periods)
+    cases = pool.learning_part(
+        _processed(settings), years=set(draft.periods), excluded=run.forbidden
+    )
+    memory = draft.model_copy(
+        update={"lessons": (*draft.lessons, *draft.pushed_out), "pushed_out": ()}
+    )
+
+    applies, failed = run_apply(run, memory, cases, applier, role="apply")
+    support = curate.count_support(memory.lessons, cases, applies)
+    revisable = [
+        lesson for lesson in memory.lessons if curate.needs_revision(support[lesson.lesson_id])
+    ]
+    revised = retired_by_revision = 0
+    if revisable:
+        calls = {
+            lesson.lesson_id: _revise_call(lesson, support, cases, applies, tables)
+            for lesson in revisable
+        }
+        _check_budget(settings, list(calls.values()), batch=False, label="revise")
+        for lesson in revisable:
+            reply = client.send(calls[lesson.lesson_id])
+            if not reply.ok or reply.text is None:
+                print(f"revision of {lesson.lesson_id} failed: {reply.error}")
+                continue
+            try:
+                parsed = prompts.ReviseReply.model_validate_json(reply.text)
+            except ValidationError:
+                print(f"revision of {lesson.lesson_id} failed: reply did not parse")
+                continue
+            before = memory
+            memory, messages = merge_revision(memory, lesson.lesson_id, parsed, year, tables)
+            for message in messages:
+                print(message)
+            if memory is not before:
+                revised += parsed.action == "edit"
+                retired_by_revision += parsed.action == "retire"
+        if revised or retired_by_revision:
+            applies, failed = run_apply(run, memory, cases, applier, role="apply")
+            support = curate.count_support(memory.lessons, cases, applies)
+    gone = {
+        lesson.lesson_id for lesson in memory.lessons if curate.unused(support[lesson.lesson_id])
+    }
+    memory = memory.model_copy(update={"lessons": _retire(memory.lessons, gone)})
+    kept, pushed = curate.apply_cap(
+        curate.with_support(memory.lessons, support), tables, draft.cap_tokens
+    )
+    saved = Memory(
+        name=args.to,
+        periods=draft.periods,
+        cap_tokens=draft.cap_tokens,
+        lessons=kept,
+        pushed_out=pushed,
+    )
+    path = snapshots.save(saved, snapshots.SNAPSHOT_DIR)
+    counts = {
+        "applied_cases": len(cases),
+        "failed_applies": failed,
+        "revised": revised,
+        "retired": len(gone) + retired_by_revision,
+        "kept": len(kept),
+        "pushed_out": len(pushed),
+        "cap_tokens": draft.cap_tokens,
+    }
+    (settings.runs_dir / run_id / "finish.json").write_text(json.dumps(counts, indent=1) + "\n")
+    print(", ".join(f"{k.replace('_', ' ')} {v}" for k, v in counts.items()))
+    print(f"saved {path.name} (unchecked); next: make mem-check SNAPSHOT={args.to}, then commit")
+    print("the snapshot and its stamp")
+    return 0
+
+
+def _revise_call(
+    lesson: Lesson,
+    support: dict[str, Support],
+    cases: Sequence[LearningCase],
+    applies: dict[str, frozenset[str]],
+    tables: CodeTables,
+) -> Call:
+    covered = [c for c in cases if lesson.lesson_id in applies.get(c.case_id, frozenset())]
+    bad = [c for c in covered if not curate.agrees(lesson, c)]
+    good = [c for c in covered if curate.agrees(lesson, c)]
+    shown = lesson.model_copy(update={"support": support[lesson.lesson_id]})
+    return Call(
+        role="revise",
+        model=SONNET,
+        effort="high",
+        system=prompts.SYSTEM_REVISE,
+        user=prompts.revise_user(
+            render_lesson(shown, tables), bad[:DISAGREEING_SHOWN], good[:AGREEING_SHOWN], tables
+        ),
+        schema=strict_schema(prompts.ReviseReply),
+        max_tokens=MAX_TOKENS_SONNET,
+        case_ids=tuple(c.case_id for c in (*bad[:DISAGREEING_SHOWN], *good[:AGREEING_SHOWN])),
+    )
+
+
+def _require_clean(dirty: bool) -> None:
+    if dirty:
+        raise ConfigurationError("the tree has uncommitted changes: commit first")
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    settings: Settings | None = None,
+    client_factory: ClientFactory = _default_factory,
+) -> int:
+    """Run one subcommand.
+
+    Returns:
+        0 on success, 1 on a refusal (dirty tree, budget, missing file) or a failed result.
+    """
+    parser = argparse.ArgumentParser(prog="memory_learn")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("propose")
+    p.add_argument("--period", type=int, required=True)
+    p.add_argument("--from", dest="from_", required=True, help="'empty' or a snapshot name")
+    p.add_argument("--to", required=True, help="name of the snapshot this draft is for")
+    p.add_argument("--resume", help="reuse a run folder")
+    a = sub.add_parser("agreement")
+    a.add_argument("--resume", required=True)
+    a.add_argument("--out", default=str(AGREEMENT_FILE))
+    f = sub.add_parser("finish")
+    f.add_argument("--resume", required=True)
+    f.add_argument("--to", required=True)
+    args = parser.parse_args(argv)
+    settings = settings or Settings()
+    try:
+        commit, dirty = gitinfo.commit_state()
+        _require_clean(dirty)
+        tables = load_tables()
+        forbidden = pool.excluded_ids()
+        if args.command == "propose" and not args.resume:
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            run_id = f"{stamp}-{commit}-memory-{args.period}"
+        else:
+            run_id = args.resume
+        client = client_factory(settings, run_id, (commit, dirty), forbidden)
+        run = Run(settings, tables, client, run_id, forbidden, commit)
+        commands = {"propose": propose, "agreement": agreement, "finish": finish}
+        return commands[args.command](args, run)
+    except (ConfigurationError, BudgetError) as exc:
+        print(f"refused: {exc}")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

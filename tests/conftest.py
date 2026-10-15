@@ -4,9 +4,12 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from hypothesis import settings
 
+from ntsb_probable_cause import fields
 from ntsb_probable_cause.agent.rendered import rendered_sha256
 from ntsb_probable_cause.scoring.metrics import CaseScores
 from ntsb_probable_cause.scoring.records import CaseResult, RunRecord
@@ -24,6 +27,32 @@ def load_record_fixtures() -> list[dict[str, object]]:
     return [
         json.loads(p.read_text())["record"] for p in sorted((FIXTURES / "records").glob("*.json"))
     ]
+
+
+def write_cases(processed: Path, rows: list[tuple[str, str, str, str, dict[str, object]]]) -> None:
+    """A made-up ``cases.parquet`` of (case id, event date, split, class, raw record) rows."""
+    processed.mkdir(parents=True)
+    pq.write_table(
+        pa.table(
+            {
+                "ntsb_number": [r[0] for r in rows],
+                "event_date": [r[1] for r in rows],
+                "split": [r[2] for r in rows],
+                "investigation_class": [r[3] for r in rows],
+                "raw_json": [json.dumps(r[4]) for r in rows],
+            }
+        ),
+        processed / "cases.parquet",
+    )
+
+
+def coded_record() -> dict[str, object]:
+    """The first redacted fixture record that has a probable cause and an occurrence code."""
+    for path in sorted((FIXTURES / "records").glob("*.json")):
+        raw = json.loads(path.read_text())["record"]
+        if fields.probable_cause(raw) and fields.occurrence_codes(raw):
+            return raw  # type: ignore[no-any-return]
+    raise AssertionError("no coded fixture record")
 
 
 @pytest.fixture
