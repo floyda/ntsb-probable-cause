@@ -2084,7 +2084,7 @@ git commit -m "Coding memory: the learner's prompts and the gated Claude client 
 **Interfaces:**
 - Produces: `scripts/with_pass_keys.sh <command...>` exports `OPENROUTER_API_KEY` (from `pass` entry `${NTSB_PASS_OPENROUTER:-api/openrouter}`) and `ANTHROPIC_API_KEY` (from `${NTSB_PASS_ANTHROPIC:-api/anthropic}`), prints neither, then `exec`s the command. Every paid `mem-` target runs through it.
 
-- [ ] **Step 1: Write the wrapper and its test.**
+- [x] **Step 1: Write the wrapper and its test.**
 
 ```bash
 #!/usr/bin/env bash
@@ -2099,12 +2099,12 @@ exec "$@"
 
 Test it the way `tests/test_paid_run.py` tests `paid_run.sh`'s key reading: a fake `pass` on `PATH` that echoes a known secret per entry, run `scripts/with_pass_keys.sh env`, and assert both variables are set in the child's environment while neither secret appears in stderr; and that `NTSB_PASS_ANTHROPIC` overrides the entry name. Make the script executable (`chmod +x`).
 
-- [ ] **Step 2: Run the test.**
+- [x] **Step 2: Run the test.**
 
 Run: `uv run pytest tests/test_with_pass_keys.py -v` (or the `test_paid_run.py` addition)
 Expected: PASS.
 
-- [ ] **Step 3: Write `scripts/memory_shape_probe.py`.** Docstring `Status`: "One-shot probe (decision 0202 item 5, rule 2), paid: a few cents of plan credit. Invented text only; no case is read." `main(argv) -> int`, all output also to `--out`:
+- [x] **Step 3: Write `scripts/memory_shape_probe.py`.** Docstring `Status`: "One-shot probe (decision 0202 item 5, rule 2), paid: a few cents of plan credit. Invented text only; no case is read." `main(argv) -> int`, all output also to `--out`:
   1. Refuse a dirty tree (`gitinfo.commit_state()`), and check the learning line (`budget.check_learning_budget(runs_dir, 0.10, settings.learning_monthly_budget_usd, now=...)`).
   2. `sdk = anthropic.Anthropic(api_key=Settings().require_anthropic_key())`. For `SONNET` and `HAIKU`: `sdk.models.retrieve(id)`; print `id`, `display_name`, `max_input_tokens`, `max_tokens` (each through `getattr(..., None)`).
   3. One `LearningClient.send` of a `Call(role="probe", model=SONNET, effort="high", system=<an invented two-lesson memory>, user=<an invented cause>, schema=strict_schema(prompts.ProposeReply), max_tokens=16000, case_ids=())`; print `stop_reason`, the content block types seen, the four usage counts, the priced cost, and whether `ProposeReply.model_validate_json(reply.text)` succeeds.
@@ -2117,7 +2117,7 @@ mem-shape-probe: ## The Claude API shape probe, ONCE (0202 item 5; paid, cents o
 	scripts/with_pass_keys.sh uv run python -m scripts.memory_shape_probe --out docs/results/memory-shape-probe.txt
 ```
 
-- [ ] **Step 4: Run the tests.**
+- [x] **Step 4: Run the tests.**
 
 Run: `uv run pytest tests/test_memory_shape_probe.py -v`
 Expected: PASS.
