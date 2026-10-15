@@ -815,7 +815,7 @@ git commit -m "Coding memory: the package, its boundaries and the lesson format 
   - `checks.Stamp(BaseModel)`: `snapshot: str`, `sha256: str`, `withheld_texts_compared: int`, `causes_compared: int`, `checked_on: date`, `commit: str`, `dirty: bool`
   - `snapshots.SNAPSHOT_DIR: Path`; `snapshots.snapshot_path(name) -> Path`; `snapshots.stamp_path(name) -> Path`; `snapshots.sha256_of(path: Path) -> str`; `snapshots.save(memory: Memory, directory: Path = SNAPSHOT_DIR) -> Path` (refuses to overwrite); `snapshots.load(name, directory=SNAPSHOT_DIR) -> Memory`; `snapshots.load_checked(name, directory=SNAPSHOT_DIR) -> Memory` (raises `ConfigurationError`); `snapshots.names(directory=SNAPSHOT_DIR) -> list[str]`
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```python
 """The coding memory's three checks and its stamp (decision 0201). Offline; made-up lessons."""
@@ -901,14 +901,14 @@ def test_every_committed_snapshot_is_stamped_and_names_no_one(name: str) -> None
 
 (With no snapshots yet, pytest reports the parametrised test as skipped with an empty parameter set; that is expected until Task 16.)
 
-- [ ] **Step 2: Run them to see them fail.**
+- [x] **Step 2: Run them to see them fail.**
 
 Run: `uv run pytest tests/test_memory_checks.py tests/test_memory_snapshots.py -v`
 Expected: FAIL (`ImportError`).
 
-- [ ] **Step 3: Write `allowed_words.txt`.** One word per line, with a header comment line starting `#`: `NTSB`, `FAA`, `ATC`, `VFR`, `IFR`, `IMC`, `VMC`, `CFIT`, `ELT`, `AGL`, `MSL`, `GPS`, `CFI`. Andy reviews additions; a word is added only when a lesson needs it and it names no person, place or operator.
+- [x] **Step 3: Write `allowed_words.txt`.** One word per line, with a header comment line starting `#`: `NTSB`, `FAA`, `ATC`, `VFR`, `IFR`, `IMC`, `VMC`, `CFIT`, `ELT`, `AGL`, `MSL`, `GPS`, `CFI`. Andy reviews additions; a word is added only when a lesson needs it and it names no person, place or operator.
 
-- [ ] **Step 4: Implement `memory/checks.py`.**
+- [x] **Step 4: Implement `memory/checks.py`.**
 
 ```python
 """The three checks every coding-memory snapshot passes before use (decision 0201).
@@ -1021,7 +1021,7 @@ class Stamp(BaseModel):
     dirty: bool
 ```
 
-- [ ] **Step 5: Implement `memory/snapshots.py`.**
+- [x] **Step 5: Implement `memory/snapshots.py`.**
 
 ```python
 """Coding-memory snapshots on disk, and the refusal of any that is unchecked (decision 0201)."""
@@ -1099,7 +1099,7 @@ def names(directory: Path = SNAPSHOT_DIR) -> list[str]:
     )
 ```
 
-- [ ] **Step 6: Implement `scripts/memory_check.py`.** Docstring with a `Status` block ("Live tool, free, local: needs `data/processed/cases.parquet`. Writes the stamp of decision 0201."), `What it reads`, `What it writes`, `Usage` (`uv run python -m scripts.memory_check --snapshot NAME`). `main(argv) -> int`:
+- [x] **Step 6: Implement `scripts/memory_check.py`.** Docstring with a `Status` block ("Live tool, free, local: needs `data/processed/cases.parquet`. Writes the stamp of decision 0201."), `What it reads`, `What it writes`, `Usage` (`uv run python -m scripts.memory_check --snapshot NAME`). `main(argv) -> int`:
   1. `memory = snapshots.load(name)`; print and return 1 if `checks.identifier_findings(memory)` finds anything.
   2. Stream every development row of `cases.parquet` (columns `split`, `raw_json`, as `scripts/check_guidance.py` does) and collect `fields.factual_narrative(raw)`, `fields.analysis_narrative(raw)`, `fields.probable_cause(raw)` (non-empty) as the withheld texts; collect `fields.probable_cause(raw)` as the causes. Development only: refuse any row whose `split` is not `dev` from entering either list.
   3. Run `withheld_findings` and `copying_findings`; print every finding and return 1 if any.
@@ -1113,12 +1113,12 @@ mem-check: ## Check a coding-memory snapshot against development text and stamp 
 
   Add the script to `scripts/README.md`'s table.
 
-- [ ] **Step 7: Run the tests.**
+- [x] **Step 7: Run the tests.**
 
 Run: `uv run pytest tests/test_memory_checks.py tests/test_memory_snapshots.py -v`
 Expected: PASS (the committed-snapshot test reports no parameters).
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.**
 
 ```bash
 git add src/ntsb_probable_cause/memory scripts/memory_check.py scripts/README.md Makefile tests/test_memory_checks.py tests/test_memory_snapshots.py docs/plans/2026-10-14-coding-memory-pilot.md
@@ -2520,3 +2520,5 @@ Each entry: date, task, what changed and why.
 - 2026-10-15, Task 4: the claude-api skill's model summary (read 2026-10-15) gives Sonnet 5.5 cache reads as $0.20 (0.1x), against the pricing page's $0.10 (0.05x, read 2026-10-08). The plan's $0.10 is kept, since the pricing page is the primary source (rule 2). The difference touches only cached-prompt reads; the learning line's spend rows record what was priced.
 - 2026-10-15, Task 5: the new `TypeError` message also touched two files the plan did not name: `tests/fixtures/rendered/not_model_text.toml` (which classifies that exception literal as not model text, keyed by its text, and now also lists the new payload key `ntsb_probable_cause`, which no loop or arm B request carries) and `tests/test_model_client.py` (which matched the old message). Both now carry the new message. `+t` is unchanged.
 - 2026-10-15, Task 6: the grimp check that only `memory.claude` imports `anthropic` is two checks (controller ruling R1): grimp over the library, and a text scan of `src/`, `apps/` and `scripts/` that fails if it finds no file. Both pass vacuously until Task 10. Also added `memory` to the live-package contract's sources (the test holds it to the package's children), and two tests for the new contract and for memory not importing the agent or live. The brief's placeholder codes became real ones: `550240` (Landing / Loss of control in flight), `500240` (Approach, same event), category `010100`.
+- 2026-10-15, Task 7: the brief's seven-word copying test was an eight-word copy by its own rule ("pilot's failure to maintain adequate airspeed during the" is eight words), so the test's text now ends "during a flare" (seven shared words). The code is the brief's.
+- 2026-10-15, Task 7: `scripts/README.md` does not exist (no scripts table in the repo), so no row was added; the Makefile target `mem-check` and the script's docstring carry its description. `memory_check.main` reads `snapshots.SNAPSHOT_DIR` at call time and passes it explicitly, because the library functions' default arguments bind at definition and a monkeypatch would not reach them.

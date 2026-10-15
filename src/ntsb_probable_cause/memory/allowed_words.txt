@@ -1,0 +1,15 @@
+# Capitalised words a lesson may use. Andy reviews additions; add a word only when a lesson
+# needs it and it names no person, place or operator.
+NTSB
+FAA
+ATC
+VFR
+IFR
+IMC
+VMC
+CFIT
+ELT
+AGL
+MSL
+GPS
+CFI
