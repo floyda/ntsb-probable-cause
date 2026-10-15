@@ -75,11 +75,12 @@ STAGES: Mapping[str, Stage] = {
         count_rule="decisions 0128 item 2, 0135",
     ),
     # The coding-memory side track's own $10 of OpenRouter spend (decision 0207): its commits are
-    # those on coding-memory* branches since its first commit. Counts ``coding-test`` rows and
+    # those on coding-memory* branches not on main: base is "main" so commits merged in from
+    # main (S3.3's, and any after S4) never count. Counts ``coding-test`` rows and
     # run records, never ``learning`` rows (Claude credit, its own line).
     "mem": Stage(
         "mem",
-        base="832a121",
+        base="main",
         first="938bd83",
         line_usd=10.0,
         prefix="coding-memory",

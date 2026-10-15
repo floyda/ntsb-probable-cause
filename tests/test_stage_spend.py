@@ -1,5 +1,6 @@
 """scripts/stage_spend.py: a stage's spend against its line (0098 item 6, 0107, 0128)."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -233,3 +234,35 @@ def test_the_side_track_has_its_own_ten_dollar_line() -> None:
     assert stage.line_usd == 10.0
     assert stage.first == "938bd83"
     assert stage.prefix == "coding-memory"
+
+
+def test_commits_merged_in_from_main_are_not_the_side_tracks(tmp_path: Path) -> None:
+    def git(*args: str) -> str:
+        return subprocess.run(  # noqa: S603 -- fixed argv in a tmp repo
+            ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607 -- git on PATH
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    def commit(name: str) -> str:
+        (tmp_path / name).write_text(name)
+        git("add", name)
+        git("commit", "-q", "-m", name)
+        return git("rev-parse", "HEAD")
+
+    git("init", "-q", "-b", "main")
+    commit("m1")
+    git("checkout", "-q", "-b", "coding-memory-x")
+    first = commit("b1")
+    git("checkout", "-q", "main")
+    commit("m2")
+    git("checkout", "-q", "coding-memory-x")
+    git("merge", "-q", "--no-ff", "-m", "merge main", "main")
+    last = commit("b2")
+    stage = ss.STAGES["mem"]
+    assert stage.base == "main"
+    own = ss.stage_commits(stage, ["coding-memory-x"], tmp_path)
+    merge = git("rev-parse", "HEAD~1")
+    assert own == frozenset({first, merge, last})
+    assert len(own) == 3  # the branch's two commits and its own merge commit, never main's m2
