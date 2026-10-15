@@ -109,14 +109,19 @@ def parse_applier(text: str) -> Applier:
     raise ValueError("no 'chosen applier:' line (no applier chosen)")
 
 
+def _id_text(lesson_id: str) -> str:
+    """A model-supplied id as printable text: only if it has the shape of an id."""
+    return lesson_id if _ID.fullmatch(lesson_id) else "an id of the wrong shape"
+
+
 def _problems(draft: prompts.LessonDraft, tables: CodeTables) -> str | None:
     """Why a draft cannot become a lesson, or None."""
     for code in draft.first_occurrence:
         if not (_CODE.fullmatch(code) and code[:3] in tables.phases and code[3:] in tables.events):
-            return f"first occurrence code {code!r} is not a phase and event in the tables"
+            return "a first occurrence code is not a phase and event in the tables"
     for category in draft.finding_categories:
         if category not in tables.categories:
-            return f"finding category {category!r} is not in the tables"
+            return "a finding category is not in the tables"
     return None
 
 
@@ -148,7 +153,8 @@ def _lesson_from(
         return None, f"invalid lesson: {exc.errors()[0]['msg']}"
     found = checks.identifier_findings(Memory(name="one", periods=(), lessons=(lesson,)))
     if found:
-        return None, f"identifier check: {found[0]}"
+        # fixed words: the finding quotes the text that failed, and that text must not be printed
+        return None, "identifier check: a digit or an unlisted capitalised word"
     return lesson, None
 
 
@@ -170,7 +176,7 @@ def _edited(
 
 def merge_proposal(
     memory: Memory,
-    reply: ProposeReplyType,
+    reply: prompts.ProposeReply,
     year: int,
     tables: CodeTables,
     next_id: Callable[[], str],
@@ -189,16 +195,16 @@ def merge_proposal(
     known = {lesson.lesson_id: lesson for lesson in lessons}
     for edit in reply.edits:
         if edit.lesson_id not in known:
-            dropped.append(f"edit of {edit.lesson_id}: no such lesson")
+            dropped.append(f"edit of {_id_text(edit.lesson_id)}: no such lesson")
             continue
         new, why = _edited(known[edit.lesson_id], edit, year, tables, "edited")
         if new is None:
-            dropped.append(f"edit of {edit.lesson_id} dropped: {why}")
+            dropped.append(f"edit of {_id_text(edit.lesson_id)} dropped: {why}")
             continue
         lessons = _replace(lessons, new)
     for lesson_id in reply.retire:
         if lesson_id not in known:
-            dropped.append(f"retire {lesson_id}: no such lesson")
+            dropped.append(f"retire {_id_text(lesson_id)}: no such lesson")
         else:
             lessons = tuple(lesson for lesson in lessons if lesson.lesson_id != lesson_id)
     added: list[Lesson] = []
@@ -215,7 +221,7 @@ def merge_proposal(
 
 
 def merge_revision(
-    memory: Memory, lesson_id: str, reply: ReviseReplyType, year: int, tables: CodeTables
+    memory: Memory, lesson_id: str, reply: prompts.ReviseReply, year: int, tables: CodeTables
 ) -> tuple[Memory, list[str]]:
     """Apply a revise reply to one lesson: retire it, or replace it with the edited one.
 
@@ -223,7 +229,7 @@ def merge_revision(
     """
     old = next((lesson for lesson in memory.lessons if lesson.lesson_id == lesson_id), None)
     if old is None:
-        return memory, [f"revision of {lesson_id}: no such lesson"]
+        return memory, [f"revision of {_id_text(lesson_id)}: no such lesson"]
     if reply.action == "retire":
         kept = tuple(lesson for lesson in memory.lessons if lesson.lesson_id != lesson_id)
         return memory.model_copy(update={"lessons": kept}), []
@@ -234,9 +240,6 @@ def merge_revision(
 
 
 # Shared setup and cost projection. -----------------------------------------------------------
-
-ProposeReplyType = prompts.ProposeReply
-ReviseReplyType = prompts.ReviseReply
 
 
 def projected_usd(calls: Sequence[Call], *, batch: bool) -> float:
@@ -361,7 +364,13 @@ def _processed(settings: Settings) -> Path:
 
 
 def propose(args: argparse.Namespace, run: Run) -> int:
-    """Write and edit lessons from one period's cases, thirty at a time."""
+    """Write and edit lessons from one period's cases, thirty at a time.
+
+    Resume: replies that succeeded are recorded and reused; failed replies are not cached. A
+    resume after a failed chunk sends that chunk again, and because the memory text then
+    changes, later chunks are sent again too (within the projected cost, which prices every
+    chunk). The draft is written after every chunk.
+    """
     settings, tables, client, run_id = run.settings, run.tables, run.client, run.run_id
     year = int(args.period)
     if args.from_ == "empty":
@@ -393,6 +402,8 @@ def propose(args: argparse.Namespace, run: Run) -> int:
             case_ids=tuple(c.case_id for c in batch),
         )
 
+    draft_file = _draft_path(settings, run_id)
+    print(f"{_recorded_calls(folder)} calls already recorded in this run")
     # The memory grows with each chunk, so the projection prices every chunk at today's memory.
     _check_budget(settings, [make_call(b) for b in batches], batch=False, label="propose")
     used = {lesson.lesson_id for lesson in (*draft.lessons, *draft.pushed_out)}
@@ -407,7 +418,7 @@ def propose(args: argparse.Namespace, run: Run) -> int:
         reply = client.send(make_call(batch))
         if not reply.ok or reply.text is None:
             failed += 1
-            print(f"chunk failed: {reply.error}")
+            print(f"chunk failed: {_reason(reply.error)}")
         else:
             try:
                 parsed = prompts.ProposeReply.model_validate_json(reply.text)
@@ -419,14 +430,25 @@ def propose(args: argparse.Namespace, run: Run) -> int:
                 dropped_total += len(dropped)
                 for message in dropped:
                     print(message)
-        (folder / "draft.json").write_text(draft.model_dump_json(indent=1) + "\n")
-    (folder / "draft.json").write_text(draft.model_dump_json(indent=1) + "\n")
+        draft_file.write_text(draft.model_dump_json(indent=1) + "\n")
+    if not batches:
+        draft_file.write_text(draft.model_dump_json(indent=1) + "\n")
     print(
         f"run {run_id}: {len(batches)} chunks, {failed} failed, {len(draft.lessons)} lessons, "
         f"{dropped_total} drafts dropped"
     )
     print(f"next: make mem-agreement RUN={run_id} (2009 only), or the next period's propose")
     return 0
+
+
+def _reason(error: str | None) -> str:
+    """A failed reply's cause as its exception or stop name only, never any quoted text."""
+    return (error or "no text").split(":")[0]
+
+
+def _recorded_calls(folder: Path) -> int:
+    path = folder / claude.CALLS_FILE
+    return len(path.read_text().splitlines()) if path.exists() else 0
 
 
 def _rate(both: int, either: int) -> float:
@@ -457,7 +479,7 @@ def agreement(args: argparse.Namespace, run: Run) -> int:
             f"{name}: failed replies {failed}; pairs both marked {both}; "
             f"pairs either marked {either}; agreement {rate * 100:.1f}%"
         )
-        if either == 0:
+        if either == 0 and name == "haiku-low":
             nothing_covered = True
             break
         if rate >= AGREEMENT_BAR:
@@ -498,7 +520,10 @@ def finish(args: argparse.Namespace, run: Run) -> int:
         raise ConfigurationError(f"snapshot name {args.to!r} is invalid or already taken")
     if not gitinfo.is_committed(AGREEMENT_FILE):
         raise ConfigurationError(f"{AGREEMENT_FILE} is not committed: commit it before finish")
-    applier = parse_applier(AGREEMENT_FILE.read_text())
+    try:
+        applier = parse_applier(AGREEMENT_FILE.read_text())
+    except ValueError as exc:
+        raise ConfigurationError(f"{AGREEMENT_FILE}: {exc}") from exc
     draft = _load_draft(settings, run_id)
     year = max(draft.periods)
     cases = pool.learning_part(
@@ -523,7 +548,7 @@ def finish(args: argparse.Namespace, run: Run) -> int:
         for lesson in revisable:
             reply = client.send(calls[lesson.lesson_id])
             if not reply.ok or reply.text is None:
-                print(f"revision of {lesson.lesson_id} failed: {reply.error}")
+                print(f"revision of {lesson.lesson_id} failed: {_reason(reply.error)}")
                 continue
             try:
                 parsed = prompts.ReviseReply.model_validate_json(reply.text)

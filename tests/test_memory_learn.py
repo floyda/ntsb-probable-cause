@@ -80,6 +80,24 @@ def test_a_bad_category_a_bad_split_and_an_identifier_are_dropped() -> None:
     assert len(dropped) == 4
 
 
+def test_a_dropped_identifier_draft_names_no_text_in_its_message() -> None:
+    reply = ProposeReply(
+        new=[_draft(statement="the pilot of N123AB lost control"), _draft(scope="at N123AB")],
+        edits=[LessonEdit(lesson_id="L001", **_draft(statement="N123AB again").model_dump())],
+        retire=["N123AB"],
+    )
+    memory, dropped = ml.merge_proposal(
+        Memory(name="d", periods=(2009,), lessons=(_lesson(),)), reply, 2009, TABLES, lambda: "L002"
+    )
+    assert len(dropped) == 4
+    assert "N123AB" not in " ".join(dropped)
+    assert [lesson.statement for lesson in memory.lessons] == ["old"]
+    revise = ReviseReply(action="edit", **_draft(statement="N123AB").model_dump())
+    _, messages = ml.merge_revision(memory, "L001", revise, 2009, TABLES)
+    assert messages
+    assert "N123AB" not in " ".join(messages)
+
+
 def test_more_than_five_new_lessons_are_cut_to_five() -> None:
     counter = iter(f"L{i:03d}" for i in range(1, 20))
     reply = ProposeReply(new=[_draft()] * 7, edits=[], retire=[])
@@ -326,6 +344,8 @@ def test_finish_refuses_while_the_agreement_file_is_uncommitted(
     _write_draft(h, "run-x", lesson, (2009,))
     assert h.run("finish", "--resume", "run-x", "--to", "pilot-a") == 1
     assert snapshots.names(snapshots.SNAPSHOT_DIR) == []
+    assert h.messages.created == []
+    assert h.messages.requests == {}
 
 
 def test_finish_counts_support_and_saves_an_unchecked_snapshot(
@@ -353,13 +373,13 @@ def test_finish_revises_a_lesson_that_disagrees_and_applies_again(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(gitinfo, "is_committed", lambda *a, **k: True)
-    wrong = fields.occurrence_codes(coded_record())[0]
-    other = "552230" if wrong != "552230" else "551230"
+    first_code = fields.occurrence_codes(coded_record())[0]
+    other = "552230" if first_code != "552230" else "551230"
 
     def respond(params: dict[str, object]) -> str:
         if params["model"] == claude.HAIKU:
             return json.dumps({"applies": ["L001"]})
-        edit = _draft(statement="revised", first_occurrence=[wrong]).model_dump()
+        edit = _draft(statement="revised", first_occurrence=[first_code]).model_dump()
         return json.dumps({"action": "edit", **edit})
 
     h = Harness(tmp_path, respond, ("2009",) * 4)
@@ -386,3 +406,53 @@ def test_finish_retires_a_lesson_no_case_falls_under(
     assert saved.lessons == ()
     counts = json.loads((h.settings.runs_dir / "run-x" / "finish.json").read_text())
     assert counts["retired"] == 1
+
+
+def test_propose_prints_no_draft_text_when_it_drops_a_draft(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = _draft(statement="the pilot of N123AB lost control").model_dump()
+    h = Harness(
+        tmp_path, lambda p: json.dumps({"new": [bad], "edits": [], "retire": []}), ("2009",)
+    )
+    assert h.run("propose", "--period", "2009", "--from", "empty", "--to", "pilot-a") == 0
+    out = capsys.readouterr().out
+    assert "1 drafts dropped" in out
+    assert "N123AB" not in out
+
+
+def test_a_resumed_propose_makes_no_new_calls(tmp_path: Path) -> None:
+    h = Harness(
+        tmp_path,
+        lambda p: json.dumps({"new": [_draft().model_dump()], "edits": [], "retire": []}),
+        ("2009",) * 31,
+    )
+    assert h.run("propose", "--period", "2009", "--from", "empty", "--to", "pilot-a") == 0
+    run_id = next(p.name for p in h.settings.runs_dir.iterdir() if p.is_dir())
+    sent = len(h.messages.created)
+    assert sent == 2
+    first = (h.settings.runs_dir / run_id / "draft.json").read_text()
+    args = ("propose", "--period", "2009", "--from", "empty", "--to", "pilot-a")
+    assert h.run(*args, "--resume", run_id) == 0
+    assert len(h.messages.created) == sent
+    assert (h.settings.runs_dir / run_id / "draft.json").read_text() == first
+
+
+def test_a_phase_over_the_learning_line_is_refused_before_any_call(tmp_path: Path) -> None:
+    h = Harness(tmp_path, lambda p: "{}", ("2009",) * 3)
+    h.settings = Settings(data_dir=tmp_path / "data", learning_monthly_budget_usd=0.0)
+    assert h.run("propose", "--period", "2009", "--from", "empty", "--to", "pilot-a") == 1
+    assert h.messages.created == []
+    assert h.messages.requests == {}
+
+
+def test_finish_refuses_an_agreement_file_with_no_chosen_applier(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda *a, **k: True)
+    h = Harness(tmp_path, _applies({claude.HAIKU: []}), ("2009",))
+    ml.AGREEMENT_FILE.write_text("no lesson covered any case: the pilot cannot proceed\n")
+    _write_draft(h, "run-x", _lesson(), (2009,))
+    assert h.run("finish", "--resume", "run-x", "--to", "pilot-a") == 1
+    assert "refused:" in capsys.readouterr().out
+    assert h.messages.requests == {}
