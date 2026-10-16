@@ -84,6 +84,9 @@ to bottom. Each stop is a short form of a page in the table above and links to t
 A slim rail of the six stops stays in view and marks the stop being read: at the left on a
 wide screen, across the top on a phone.
 
+*Note, 2026-10-16 (Andy, step 6 brainstorm):* the rail sits in the **right** margin on a wide
+screen, and every long page has one, not only the first. See §21's note.
+
 **The caveat sits in stop 1, above the board.** This meets the roadmap's rule that caveats
 come before results, without burying the board. Wording approved by Andy on 2026-10-05, written after
 S3.2's held-out reading was known, so it is not a registered prediction:
@@ -1101,6 +1104,53 @@ Each step ends in a private preview.
 
 The site works after step 5, without animation or preview cards; whether to launch then or after
 step 6 is Andy's choice.
+
+*Note, 2026-10-16 (Andy, step 6 brainstorm):* after step 5's preview Andy judged the site "a bit
+rubbish as is, especially in terms of navigation": it had no header, no footer and no way back,
+and the first page held three of its six stops. Step 6 is split in three, each with its own plan,
+preview and review, in this order.
+
+- **6a. Navigation and the look.**
+  - **The top bar**, the same on every page, holds the site's separate pages:
+    **ELLERY** (the first page) · The path · Methods · Open cases. The page being read is
+    marked. On a phone it wraps; nothing hides behind a menu button. "Board" was dropped from
+    the mock-up's bar, because the first page holds more than the board and ELLERY already
+    leads there.
+  - **A rail of places within the page** on every long page: the first page's six stops, the
+    Path's ladder and eight questions, Methods' sections. It sits in the right margin on a wide
+    screen and is a strip of tabs across the top on a phone. It marks where the reader is.
+  - **Case and trail pages** open with "← All closed cases"; the trail adds "← This case".
+  - **The footer**, on every page, is §3.1's: "Built by Andy Floyd", the repository, Methods
+    and Open cases.
+  - **The look stays Quiet** (§10; Andy chose it over a "Terminal" variant, where every
+    heading is a departure-board line):
+    - one dark header and footer, the board's dark, with the name ELLERY in the board's dot
+      font, the only other use of that font;
+    - an amber wayfinding sign as each section's label above a plain heading;
+    - a pale page ground with figures and code lists on white panels with a thin edge, and the
+      same layering in dark mode;
+    - one type scale, more space between sections, and running text no wider than about 65
+      characters;
+    - no new colour for meaning (§11).
+- **6b. The first page as a route** (§3.1):
+  - stops 4 to 6: its trail as four blocks, the ladder with its sentence, and the eight
+    questions with one-line answers;
+  - the rail and the arrival motion. The one-line answers are written from the Path's measured
+    answers, guarded like every worded claim, and Andy reads them before they go in.
+- **6c. The rest:**
+  - the Open cases page, counts only, from S4's export (§8);
+  - the preview cards (§12, item 12);
+  - the site's test sample brought up to S4's later additions to `board/1` (`5c16e0d`,
+    `65a5244` on S4's branch);
+  - the Open cases link added to the top bar and footer.
+
+**Set aside: snapping each stop to the top.** Tried in the mock-up as a gentle CSS snap
+(`scroll-snap-type: y proximity`). Andy found it "not very smooth". §3.1's rule stands for now:
+the reader keeps control of the scroll. It can return when a version is smooth on a phone.
+
+Mock-up: `docs/specs/2026-10-04-s5-mockups/route-v2.html`
+(<https://claude.ai/artifact/45h5oxFhQj4yPTchLZbVgc>), with switches for the theme and the snap.
+Its board, case and trail are invented; its ladder figures are S3.2's.
 
 ## 22. What this asks of S4
 
