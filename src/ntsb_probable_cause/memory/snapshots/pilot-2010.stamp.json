@@ -1,0 +1,9 @@
+{
+ "snapshot": "pilot-2010",
+ "sha256": "92a40e63ef1f87f6ddec6f9365176e688b0e796ff10889ac7bcc1718292f55c2",
+ "withheld_texts_compared": 40671,
+ "causes_compared": 13560,
+ "checked_on": "2026-10-16",
+ "commit": "500fae7",
+ "dirty": true
+}
