@@ -32,6 +32,11 @@ ROLES: Final = frozenset({"propose", "apply", "revise", "agreement", "probe"})
 CALLS_FILE: Final = "calls.jsonl"
 BATCHES_FILE: Final = "batches.jsonl"
 FAILED_STOPS: Final = frozenset({"refusal", "max_tokens"})
+# The Message Batches API takes up to 100,000 requests or 256 MB per batch (the claude-api
+# skill's batches page, read 2026-10-16, and the 413 the 2010 apply met). Parts are kept under
+# 200 MB, measured as the requests' JSON, to leave room for the SDK's own envelope.
+BATCH_MAX_REQUESTS: Final = 100_000
+BATCH_MAX_BYTES: Final = 200_000_000
 Effort = Literal["low", "medium", "high"]
 
 
@@ -202,6 +207,35 @@ def _reply(call: Call, message: object | None, *, batch: bool, error: str | None
     )
 
 
+def batch_parts(
+    calls: Sequence[Call],
+    *,
+    max_bytes: int = BATCH_MAX_BYTES,
+    max_requests: int = BATCH_MAX_REQUESTS,
+) -> list[list[Call]]:
+    """The calls in order, cut into parts each within one batch's limits.
+
+    Raises:
+        ConfigurationError: a single request is larger than a part may be.
+    """
+    parts: list[list[Call]] = []
+    part: list[Call] = []
+    size = 0
+    for call in calls:
+        request = {"custom_id": call.key(), "params": call.params()}
+        bytes_ = len(json.dumps(request).encode())
+        if bytes_ > max_bytes:
+            raise ConfigurationError(f"one request of {bytes_} bytes passes a batch's limit")
+        if part and (size + bytes_ > max_bytes or len(part) == max_requests):
+            parts.append(part)
+            part, size = [], 0
+        part.append(call)
+        size += bytes_
+    if part:
+        parts.append(part)
+    return parts
+
+
 class LearningClient:
     """Learner calls, sync or in batches, refused outside their role and the learning part.
 
@@ -324,29 +358,37 @@ class LearningClient:
         every_seconds: float = 60.0,
         sleep: Callable[[float], None] = time.sleep,
     ) -> dict[str, Reply]:
-        """Calls in one batch at the batch price; a recorded unfinished batch is waited on."""
+        """Calls in batches at the batch price, one part at a time within a batch's limits.
+
+        The parts are cut from every call, answered or not, so a resumed run cuts the same parts
+        and waits on a recorded unfinished one rather than sending it again.
+        """
         for call in calls:
             self._check(call)
         if len({c.model for c in calls}) > 1:
             raise ConfigurationError("one batch holds one model, so its spend row names one")
-        todo = {c.key(): c for c in calls if c.key() not in self._replies}
-        if todo:
-            batch_id = self._open_batch(set(todo)) or self._submit(list(todo.values()))
-            while self._sdk.messages.batches.retrieve(batch_id).processing_status != "ended":
-                sleep(every_seconds)
-            got: list[Reply] = []
-            for result in self._sdk.messages.batches.results(batch_id):
-                call = todo[result.custom_id]
-                kind = result.result.type
-                message = getattr(result.result, "message", None) if kind == "succeeded" else None
-                error = (
-                    None if message else (_errored(result.result) if kind == "errored" else kind)
-                )
-                got.append(_reply(call, message, batch=True, error=error))
-            missing = set(todo) - {r.key for r in got}
-            got.extend(
-                _reply(todo[k], None, batch=True, error="no result") for k in sorted(missing)
-            )
-            self._record(got, model=calls[0].model)
-            self._mark_finished(batch_id)
+        unique = list({c.key(): c for c in calls}.values())
+        for part in batch_parts(unique):
+            self._send_part(part, every_seconds=every_seconds, sleep=sleep)
         return {c.key(): self._replies.get(c.key()) or self._failed(c) for c in calls}
+
+    def _send_part(
+        self, calls: Sequence[Call], *, every_seconds: float, sleep: Callable[[float], None]
+    ) -> None:
+        todo = {c.key(): c for c in calls if c.key() not in self._replies}
+        if not todo:
+            return
+        batch_id = self._open_batch(set(todo)) or self._submit(list(todo.values()))
+        while self._sdk.messages.batches.retrieve(batch_id).processing_status != "ended":
+            sleep(every_seconds)
+        got: list[Reply] = []
+        for result in self._sdk.messages.batches.results(batch_id):
+            call = todo[result.custom_id]
+            kind = result.result.type
+            message = getattr(result.result, "message", None) if kind == "succeeded" else None
+            error = None if message else (_errored(result.result) if kind == "errored" else kind)
+            got.append(_reply(call, message, batch=True, error=error))
+        missing = set(todo) - {r.key for r in got}
+        got.extend(_reply(todo[k], None, batch=True, error="no result") for k in sorted(missing))
+        self._record(got, model=calls[0].model)
+        self._mark_finished(batch_id)

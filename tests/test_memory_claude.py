@@ -46,7 +46,7 @@ class FakeMessages:
 
     def _create_batch(self, *, requests: list[dict[str, object]]) -> SimpleNamespace:
         self.batch_requests.append(requests)
-        return SimpleNamespace(id="batch-1")
+        return SimpleNamespace(id=f"batch-{len(self.batch_requests)}")
 
     def _retrieve(self, batch_id: str) -> SimpleNamespace:
         return SimpleNamespace(id=batch_id, processing_status="ended")
@@ -201,6 +201,51 @@ def test_a_recorded_unfinished_batch_is_waited_on_not_sent_again(tmp_path: Path)
     assert all(r.ok for r in replies.values())
     rows = [json.loads(x) for x in (tmp_path / "run-1" / "batches.jsonl").read_text().splitlines()]
     assert rows[-1]["finished"] is True
+
+
+def test_batch_parts_keep_order_and_stay_within_both_limits() -> None:
+    calls = [_call(role="apply", user=f"u{i}") for i in range(5)]
+    by_count = claude.batch_parts(calls, max_requests=2)
+    assert [len(p) for p in by_count] == [2, 2, 1]
+    assert [c for p in by_count for c in p] == calls
+    one = len(json.dumps({"custom_id": calls[0].key(), "params": calls[0].params()}).encode())
+    by_size = claude.batch_parts(calls, max_bytes=one * 3)
+    assert [len(p) for p in by_size] == [3, 2]
+    with pytest.raises(ConfigurationError):
+        claude.batch_parts(calls, max_bytes=one - 1)
+
+
+def test_a_large_batch_is_sent_in_parts_and_every_reply_comes_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = claude.batch_parts
+    monkeypatch.setattr(claude, "batch_parts", lambda calls: real(calls, max_requests=2))
+    client, messages = _client(tmp_path, [])
+    calls = [_call(role="apply", user=f"u{i}") for i in range(5)]
+    replies = client.send_batch(calls, sleep=lambda _: None)
+    assert [len(b) for b in messages.batch_requests] == [2, 2, 1]
+    assert all(replies[c.key()].ok for c in calls)
+    rows = [json.loads(x) for x in (tmp_path / "run-1" / "batches.jsonl").read_text().splitlines()]
+    assert sum(r["finished"] for r in rows) == 3
+
+
+def test_a_resumed_run_waits_on_the_unfinished_part_and_skips_answered_ones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = claude.batch_parts
+    monkeypatch.setattr(claude, "batch_parts", lambda calls: real(calls, max_requests=2))
+    calls = [_call(role="apply", user=f"u{i}") for i in range(4)]
+    first, _ = _client(tmp_path, [])
+    first.send_batch(calls[:2], sleep=lambda _: None)
+    keys = sorted(c.key() for c in calls[2:])
+    line = {"batch_id": "batch-9", "keys": keys, "finished": False}
+    with (tmp_path / "run-1" / "batches.jsonl").open("a") as handle:
+        handle.write(json.dumps(line) + "\n")
+    client, messages = _client(tmp_path, [])
+    messages.recorded_keys = keys
+    replies = client.send_batch(calls, sleep=lambda _: None)
+    assert messages.batch_requests == []
+    assert all(replies[c.key()].ok for c in calls)
 
 
 def test_mixed_models_in_one_batch_are_refused(tmp_path: Path) -> None:
