@@ -458,6 +458,20 @@ e7811b387b31 on `fd6053f` and on the pilot's last commit). `make check` passes a
 periods to 2019, the coding test on `dev-400`, the transfer check), or stop here and keep the code
 as the record.
 
+**Added 2026-10-16: a counting defect, and a lookup test.** After the result above, a defect was
+found in the support count (decision
+[0209](../decisions/0209-a-lessons-finding-categories-are-alternatives-and-the-2010-lessons-are-recounted.md)).
+A lesson counted as fitting a case only when every finding category it names was flagged, but
+lessons name categories as alternatives. Of the 106 `pilot-2010` lessons that apply to at least 10
+cases, the median fit was 0% by that rule and 48% when one listed category is enough. The count
+chose which lessons the cap kept, sent most lessons to revision, and was shown to the coding model
+with each lesson. The verdict above stands as read; it tested a memory chosen by that count. The
+2010 lessons were recounted from the learner's saved answers, with no call, into
+`pilot-2010-recount`. Andy chose to test, next, a design that looks up the lessons matching each
+case's first answer instead of one capped note for every case (decision
+[0210](../decisions/0210-a-lookup-test-gives-each-case-the-lessons-that-match-its-first-answer.md),
+registration `docs/rounds/memory-lookup.md`).
+
 ## Glossary
 
 - **Coding memory**: a short file of written lessons about how the NTSB codes accidents,
