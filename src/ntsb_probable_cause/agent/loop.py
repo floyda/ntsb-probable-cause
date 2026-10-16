@@ -380,6 +380,8 @@ class CaseLoop:
                 batch_id=batch_id,
                 commit_sha=self._config.commit[0],
                 dirty=self._config.commit[1],
+                reply_model=None if reply is None else reply.model or None,
+                reply_provider=None if reply is None else reply.provider,
             )
         )
 

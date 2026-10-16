@@ -5,7 +5,7 @@ Decisions 0041, 0042, 0044; 0046 (owner/operator names) is the largest thing in 
 
 import copy
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from ntsb_probable_cause.data.redaction import REDACTED_FIELDS
@@ -125,19 +125,28 @@ def redact_known_names(text: str, raw: Mapping[str, object]) -> tuple[str, int]:
     person-looking surnames in the development split are also ordinary dictionary words, so
     replacing surnames alone would corrupt real evidence roughly one time in four.
 
+    Writes ``OWNER_OPERATOR_LABEL``; ``replace_values`` holds the matching rule, shared with the
+    live board's names step (decision 0182).
+    """
+    return replace_values(text, owner_operator_values(raw), OWNER_OPERATOR_LABEL)
+
+
+def replace_values(text: str, values: Iterable[str], marker: str) -> tuple[str, int]:
+    """Replace each of ``values`` in ``text`` with ``marker``: whole string, any case, counted.
+
     Longest value first, so a trading name that contains an operator's name is replaced whole
     rather than leaving a fragment of it behind.
     """
     # Fix round 1, finding 2: a total order, not just length -- `set` iteration order over str
     # is process-randomised, so two equal-length values would otherwise break the tie
     # differently run to run, making the output and count non-reproducible for the same input.
-    values = sorted(set(owner_operator_values(raw)), key=lambda v: (-len(v), v.lower()))
+    ordered = sorted(set(values), key=lambda v: (-len(v), v.lower()))
     count = 0
-    for value in values:
+    for value in ordered:
         # Same anchoring as amateur_built_replace, for the same reason: a recorded name can
         # begin or end with punctuation, which `\b` handles inconsistently.
         pattern = re.compile(rf"(?<!\w){re.escape(value)}(?!\w)", re.IGNORECASE)
-        text, n = pattern.subn(OWNER_OPERATOR_LABEL, text)
+        text, n = pattern.subn(lambda _m: marker, text)
         count += n
     return text, count
 

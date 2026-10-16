@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from ntsb_probable_cause.docket.title_vocab import (
     PROPER_NOUN_MARKER,
     capitalised_words,
@@ -88,3 +90,12 @@ def test_redact_title_counts_every_replacement() -> None:
     redacted, count = redact_title("Statement of Thackerson and Winsloe", known)
     assert redacted == f"Statement of {PROPER_NOUN_MARKER} and {PROPER_NOUN_MARKER}"
     assert count == 2
+
+
+def test_known_title_words_finds_the_packaged_list_from_any_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    words, found = known_title_words()
+    assert found is True
+    assert "cessna" in words

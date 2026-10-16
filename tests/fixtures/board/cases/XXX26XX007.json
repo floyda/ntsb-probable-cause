@@ -1,0 +1,23 @@
+{
+  "format": "board/1",
+  "case_number": "XXX26XX007",
+  "mkey": 900107,
+  "closed_on": "2026-10-01",
+  "took_days": 57,
+  "aircraft": {
+    "category": null,
+    "engines": null,
+    "engine_type": null
+  },
+  "grade": "not_coded",
+  "facts": null,
+  "withheld": null,
+  "answer": null,
+  "verdict": null,
+  "comparison": null,
+  "trail": null,
+  "not_coded": {
+    "kind": "unreachable",
+    "sentence": "The case's record or docket could not be read on seven nights."
+  }
+}

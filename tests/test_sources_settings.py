@@ -88,6 +88,19 @@ def test_openrouter_key_is_required_when_used(monkeypatch: pytest.MonkeyPatch) -
     assert Settings(_env_file=None).require_openrouter_key() == "or-key"
 
 
+def test_a_key_is_stripped_of_surrounding_whitespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-key\n")
+    monkeypatch.setenv("NTSB_API_KEY", " ntsb-key \r\n")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "\tts-key\n")
+    settings = Settings(_env_file=None)
+    assert settings.require_openrouter_key() == "or-key"
+    assert settings.require_api_key() == "ntsb-key"
+    assert settings.require_typesafe_key() == "ts-key"
+    monkeypatch.setenv("OPENROUTER_API_KEY", " \n")
+    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY"):
+        Settings(_env_file=None).require_openrouter_key()
+
+
 def test_openrouter_defaults() -> None:
     s = Settings(_env_file=None)
     assert s.openrouter_base_url == "https://openrouter.ai"
@@ -229,10 +242,15 @@ def test_no_module_but_sources_names_a_luna_model() -> None:
     package_root = Path(__file__).resolve().parent.parent / "src" / "ntsb_probable_cause"
     paths = list(package_root.rglob("*.py"))
     assert paths, f"no source files found under {package_root} -- the glob resolved wrong"
+    # live/morning.py spells version 1's model as a literal on purpose (decision 0169): the pin
+    # must not move when the constant does. A test in test_live_morning.py holds its value.
+    allowed = {"sources.py", "morning.py"}
     offenders = [
-        str(path) for path in paths if path.name != "sources.py" and "-luna" in path.read_text()
+        str(path) for path in paths if path.name not in allowed and "-luna" in path.read_text()
     ]
     assert offenders == []
+    morning = (package_root / "live" / "morning.py").read_text()
+    assert morning.count("-luna") == 1
 
 
 def test_the_development_budget_is_forty_dollars(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -283,3 +301,14 @@ def test_training_cutoff_for_the_default_model() -> None:
     assert cutoff.read_on == date(2026, 10, 7)
     assert cutoff.source.startswith("https://")
     assert sources.DEFAULT_MODEL in sources.TRAINING_CUTOFFS
+
+
+def test_live_bucket_and_topic_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NTSB_LIVE_BUCKET", raising=False)
+    monkeypatch.delenv("NTSB_LIVE_ALERT_TOPIC_ARN", raising=False)
+    assert Settings().live_bucket is None
+    assert Settings().live_alert_topic_arn is None
+    monkeypatch.setenv("NTSB_LIVE_BUCKET", "a-bucket")
+    monkeypatch.setenv("NTSB_LIVE_ALERT_TOPIC_ARN", "arn:aws:sns:us-east-1:1:t")
+    assert Settings().live_bucket == "a-bucket"
+    assert Settings().live_alert_topic_arn == "arn:aws:sns:us-east-1:1:t"

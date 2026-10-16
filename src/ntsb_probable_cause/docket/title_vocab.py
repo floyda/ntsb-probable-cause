@@ -19,7 +19,7 @@ as ``Of`` or ``By`` does not either.
 script's own docstring says how and when to regenerate it. ``known_title_words`` adds the
 vendored dictionary (decision 0070) on top. ``is_ordinary_word`` is the membership test itself.
 A title's capitalised word that fails it
-is what ``check_fixtures_redacted.title_looks_like_a_name`` flags, and what ``redact_title``
+is what ``title_looks_like_a_name`` flags, and what ``redact_title``
 replaces -- the hand-check sheet (``scripts/make_docket_fixture.py``'s ``handcheck``
 subcommand) cannot be committed with the flagged word left in place, since several of the
 words it flags on real titles are genuine surnames.
@@ -45,9 +45,10 @@ from pathlib import Path
 #: strict Title Case. See the module docstring for why ALL-CAPS acronyms are excluded.
 CAPITALISED_WORD = re.compile(r"[A-Z][a-z]{2,}")
 
-#: The vendored word list, committed to the repository (decision 0070). Removes the need
-#: for CI to install a system dictionary.
-VENDORED_DICTIONARY_PATH = Path("tests/fixtures/words.txt")
+#: The vendored word list, shipped as package data under ``docket/vocab`` (decisions 0070, 0180):
+#: found from any working directory, with no ``tests/`` folder. Removes the need for CI or the
+#: cloud container to install a system dictionary.
+VENDORED_DICTIONARY_PATH = Path(__file__).parent / "vocab" / "words.txt"
 
 #: The minimum number of distinct dockets a word must appear in to be "ordinary NTSB title
 #: vocabulary" rather than a proper noun specific to one case (scripts/build_title_vocab.py).
@@ -135,3 +136,15 @@ def known_title_words(
     if dictionary is None:
         return vocabulary, False
     return vocabulary | dictionary, True
+
+
+def title_looks_like_a_name(title: str, known: frozenset[str]) -> bool:
+    """True if ``title`` carries a capitalised word (3+ letters) absent from ``known``.
+
+    Replaces an earlier heuristic that matched ``of|by|with|from|signed`` followed by Title
+    Case words -- measured on real data, every one of its 16 flags across six drawn listings
+    and 5 of 60 hand-check rows was a false positive (ordinary NTSB title grammar). ``known``
+    is normally ``known_title_words()``'s combined committed vocabulary and word list -- passed
+    in rather than recomputed per title, so a whole check run reads the list once.
+    """
+    return any(not is_ordinary_word(word, known) for word in capitalised_words(title))

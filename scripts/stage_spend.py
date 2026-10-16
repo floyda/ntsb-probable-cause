@@ -1,7 +1,8 @@
 """A stage's spend, counted by commit on the stage's own branches, against the stage's line.
 
 Status
-    Live check for S2.7 (decision 0098 item 6), S3 (decision 0128 item 2) and S3.3 (decision 163),
+    Live check for S2.7 (decision 0098 item 6), S3 (decision 0128 item 2), S3.3 (decision 163)
+    and S4 (decision 0170 item 6),
     chosen with ``--stage`` (default ``s27``). Every paid ``make`` target of a stage runs it first
     with the step's estimate; it exits 1 when the stage's spend plus the estimate would pass the
     line.
@@ -18,7 +19,7 @@ Why
     (decision 0128 item 3).
 
 Usage
-    uv run python -m scripts.stage_spend [--stage {s27,s3,s33}] [--estimate USD]
+    uv run python -m scripts.stage_spend [--stage {s27,s3,s33,s4}] [--estimate USD]
 """
 
 import argparse
@@ -72,6 +73,17 @@ STAGES: Mapping[str, Stage] = {
         line_usd=21.46,
         prefix="s3-",
         line_rule="decision 163",
+        count_rule="decisions 0128 item 2, 0135",
+    ),
+    # S4's development line is $10 on the development key (decision 0170 item 6). S4's first
+    # commit is its specification's first draft; the live key's own spend is outside it.
+    "s4": Stage(
+        "S4",
+        base="ebb16cb",
+        first="4f952cd",
+        line_usd=10.0,
+        prefix="s4-",
+        line_rule="decision 0170 item 6",
         count_rule="decisions 0128 item 2, 0135",
     ),
 }

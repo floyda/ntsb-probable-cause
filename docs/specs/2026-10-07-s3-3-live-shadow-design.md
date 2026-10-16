@@ -271,9 +271,9 @@ label), amending decision 0133, as 0143 provided.
 - **Continuity:** `+t` computed on `fd6053f`'s code equals `+t` on S3.3's code. Decision 0142 kept
   the ten text files unchanged through S3.2, so they must match; if they do not, work stops and Andy
   decides. Version 1's old and new labels stand side by side in `docs/results/s33-fingerprint-continuity.txt` and in code (`agent/version.py`), and decision 0161 cites both.
-- **It cannot miss a text:** a mutation test changes each string that builds model text, in turn,
+- **It covers the cases its invented inputs exercise:** a mutation test changes each string that builds model text, in turn,
   and checks that `+t` moves or a test fails. A string that is not model text (an exception
-  message, a log line) is listed with its reason.
+  message, a log line) is listed with its reason. *(Amended 2026-10-10, decision 0168.)*
 - **The frozen-label test changes form:** `tests/test_s32_frozen.py` pins `+t` and the mapping, not
   the source hash. A dependency update that leaves the rendered text unchanged then passes; one that
   changes it fails, which is when it changes what the model sees (0143 item 6).

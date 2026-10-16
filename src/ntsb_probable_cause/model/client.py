@@ -176,6 +176,9 @@ class ModelReply(BaseModel):
     # choices[0].message.reasoning_details, as the provider sent them; passed back on the next
     # call only when ``ModelSettings.pass_reasoning`` is set (S3.1 spec §5.5 check 4).
     reasoning_details: tuple[dict[str, object], ...] = ()
+    # The completion body's top-level "provider": who served the reply (decision 0176); None when
+    # the body names none.
+    provider: str | None = None
 
 
 class ModelSettings(BaseModel):
@@ -382,6 +385,7 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
         cached_tokens = None
         if isinstance(prompt_details, Mapping) and prompt_details.get("cached_tokens") is not None:
             cached_tokens = _as_int(prompt_details["cached_tokens"])
+        provider = body.get("provider")
         raw_reasoning = message.get("reasoning_details")
         if not isinstance(raw_reasoning, Sequence) or isinstance(raw_reasoning, str | bytes):
             raw_reasoning = ()
@@ -400,6 +404,7 @@ def parse_chat_completion(body: Mapping[str, object]) -> ModelReply:
             ),
             model=str(body.get("model", "")),
             response_id=str(body.get("id", "")),
+            provider=provider if isinstance(provider, str) else None,
             reasoning_details=tuple(
                 dict(detail) for detail in raw_reasoning if isinstance(detail, Mapping)
             ),

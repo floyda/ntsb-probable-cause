@@ -40,6 +40,7 @@ Case ids are public NTSB numbers, so the refusals below may name them. They neve
 a payload or provider text.
 """
 
+import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence, Set
 from datetime import datetime
@@ -50,6 +51,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ntsb_probable_cause import sources
 from ntsb_probable_cause.agent.loop import PendingCall
+from ntsb_probable_cause.agent.rendered import MODEL_FACING_KEYS
 from ntsb_probable_cause.errors import (
     BatchCancelledError,
     BatchNotFoundError,
@@ -58,6 +60,7 @@ from ntsb_probable_cause.errors import (
 )
 from ntsb_probable_cause.model.batch import BatchRequest, BatchStatus
 from ntsb_probable_cause.model.client import ModelClient, ModelReply, Turn
+from ntsb_probable_cause.model.openrouter import request_body
 from ntsb_probable_cause.scoring.records import CONTEXT_FAILURE, read_jsonl, write_jsonl
 from ntsb_probable_cause.scoring.runner import BatchRunner
 
@@ -125,6 +128,8 @@ class ReplyRow(_Row):
         sent_at: when the call was sent (a batch call: when its round was submitted).
         returned_at: when the reply, or the failure, came back.
         batch_id: the batch the call went in; None for a synchronous call.
+        request_sha256: the hash of what the call sent the model (:func:`request_sha256`); None
+            in a row written before decision 0176.
     """
 
     case_id: str
@@ -134,6 +139,7 @@ class ReplyRow(_Row):
     sent_at: datetime
     returned_at: datetime
     batch_id: str | None
+    request_sha256: str | None = None
 
 
 class RoundRow(_Row):
@@ -214,6 +220,18 @@ def _stop_over_context(loops: Sequence[DrivenLoop], *, skip: Set[str] = frozense
             loop.stop(CONTEXT_FAILURE)
 
 
+def request_sha256(call: PendingCall) -> str:
+    """SHA-256 (hex) of what the request sends the model (decision 0176).
+
+    The request body cut to ``rendered.MODEL_FACING_KEYS``, dumped with sorted keys, as
+    ``rendered_sha256`` hashes its requests, so the two agree on what "sent" means.
+    """
+    body = request_body(call.payload, call.settings, system=call.system, history=call.history)
+    cut = {key: body[key] for key in MODEL_FACING_KEYS if key in body}
+    text = json.dumps(cut, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def custom_id(case_id: str, call_index: int) -> str:
     """The name of one call in a batch: the case, then the call's place in it."""
     return f"{case_id}{_SEPARATOR}{call_index}"
@@ -225,6 +243,7 @@ def drive_sync(
     *,
     folder: Path,
     now: Callable[[], datetime],
+    on_reply: Callable[[], None] | None = None,
 ) -> None:
     """Run every loop to its end, one call at a time, each loop in turn.
 
@@ -242,6 +261,13 @@ def drive_sync(
         client: the model client.
         folder: the run folder; ``replies.jsonl`` is appended to.
         now: the clock; the only source of times.
+        on_reply: an observer, told (with no arguments) once before the first request this call
+            sends, and again after each ``replies.jsonl`` row is written, before that reply is
+            given to its loop. The cloud night copies the folder to its bucket with it, so the
+            folder a resume needs is there before every request (S4 Task 10). It is told
+            nothing else and changes no request or its order; if it raises, the run stops there
+            and no further request is sent. A resume with nothing left to send tells it
+            nothing. None tells no one.
 
     Raises:
         ConfigurationError: the folder does not match these loops, or holds a batch round that
@@ -252,12 +278,17 @@ def drive_sync(
             f"cannot continue: {folder / ROUNDS_FILE} holds a batch round that was never "
             "finished, so its calls may already be paid for. Resume it with drive_batch."
         )
+    told_before_first = False
     for loop in loops:
         while (call := loop.next_call()) is not None:
             if estimated_prompt_tokens(call) > sources.PROMPT_TOKEN_CEILING:
                 loop.stop(CONTEXT_FAILURE)
                 break
+            if on_reply is not None and not told_before_first:
+                told_before_first = True
+                on_reply()
             sent_at = now()
+            sha = request_sha256(call)
             reply: ModelReply | None = None
             error: str | None = None
             try:
@@ -274,8 +305,11 @@ def drive_sync(
                 sent_at=sent_at,
                 returned_at=now(),
                 batch_id=None,
+                request_sha256=sha,
             )
             write_jsonl(folder / REPLIES_FILE, [row])
+            if on_reply is not None:
+                on_reply()
             _accept(loop, row)
 
 
@@ -664,6 +698,7 @@ def _take(
                 sent_at=row.submitted_at,
                 returned_at=returned_at,
                 batch_id=row.batch_id,
+                request_sha256=request_sha256(c.call),
             )
         )
     write_jsonl(folder / REPLIES_FILE, rows)
