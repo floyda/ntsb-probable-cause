@@ -9,16 +9,24 @@ import { caseCount, oneIn } from "../lib/numbers";
 const { index, cases } = loadExport(exportDir());
 const newest = index.rows[0];
 const newestCase = newest === undefined ? undefined : cases.get(newest.case_number);
+
+// The first page's rail (spec §21 note, 2026-10-16): the three stops built so far; step 6b adds
+// its trail, the ladder and the path taken.
+const places = [
+    { id: "question", label: "1 · The question" },
+    { id: "board", label: "2 · Closed cases" },
+    ...(newestCase === undefined ? [] : [{ id: "case", label: "3 · One case" }]),
+];
 ---
 
 <Base
     title="Ellery"
     description="An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's."
-
     current="home"
+    places={places}
 >
     <h1>Ellery</h1>
-    <section class="caveat" aria-labelledby="caveat-heading">
+    <section id="question" class="caveat" aria-labelledby="caveat-heading">
         <h2 id="caveat-heading">Read this first</h2>
         <p>
             The board runs Ellery, version 1, an AI agent. It reads the same evidence, with the same
@@ -33,9 +41,12 @@ const newestCase = newest === undefined ? undefined : cases.get(newest.case_numb
             <a href={methodsLink("ladder")}>how these were measured</a>
         </p>
     </section>
-    <Board index={index} />
+    <section id="board" aria-labelledby="board-heading">
+        <h2 id="board-heading">Closed cases</h2>
+        <Board index={index} />
+    </section>
     {newestCase !== undefined && (
-        <section aria-labelledby="one-case">
+        <section id="case" aria-labelledby="one-case">
             <h2 id="one-case">One case</h2>
             <OpenedCase kase={newestCase} />
         </section>

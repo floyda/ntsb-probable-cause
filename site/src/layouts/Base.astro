@@ -4,17 +4,20 @@ import "@fontsource/atkinson-hyperlegible-next/700.css";
 import "@fontsource/doto/700.css";
 import "../styles/tokens.css";
 import SiteFooter from "../components/SiteFooter.astro";
+import Rail from "../components/Rail.astro";
 import SiteHeader from "../components/SiteHeader.astro";
-import type { PageId } from "../lib/site";
+import type { PageId, Place } from "../lib/site";
 
 interface Props {
     title: string;
     description: string;
     /** The top bar's page this is; none on case and trail pages. */
     current?: PageId;
+    /** The places within the page that its rail names; no rail when absent. */
+    places?: readonly Place[];
 }
 
-const { title, description, current } = Astro.props;
+const { title, description, current, places } = Astro.props;
 ---
 
 <!doctype html>
@@ -27,7 +30,8 @@ const { title, description, current } = Astro.props;
     </head>
     <body>
         <SiteHeader current={current} />
-        <div class="page">
+        <div class={places === undefined ? "page" : "page with-rail"}>
+            {places !== undefined && <Rail places={places} />}
             <main id="content" tabindex="-1">
                 <slot />
             </main>
@@ -35,3 +39,8 @@ const { title, description, current } = Astro.props;
         <SiteFooter />
     </body>
 </html>
+
+<script>
+    // Bundled to a file by Astro, under the CSP; it does nothing on a page without a rail.
+    import "../scripts/rail.ts";
+</script>

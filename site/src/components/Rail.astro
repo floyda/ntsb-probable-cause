@@ -1,0 +1,118 @@
+---
+// The rail of places within a page (spec §21 note, 2026-10-16): in the right margin from 1000px,
+// a strip of tabs across the top below that. It is a list of real links, complete without script;
+// scripts/rail.ts only marks the place being read. The mark is bold, the ink colour and a bar or a
+// filled tab, never colour alone.
+import { checkPlaces, type Place } from "../lib/site";
+
+interface Props {
+    places: readonly Place[];
+}
+
+const places = checkPlaces(Astro.props.places);
+---
+
+<nav class="rail" aria-label="On this page">
+    <p class="rail-title" aria-hidden="true">
+        On this page
+    </p>
+    <ol>
+        {places.map((p) => (
+            <li>
+                <a href={`#${p.id}`} data-place={p.id}>
+                    {p.label}
+                </a>
+            </li>
+        ))}
+    </ol>
+</nav>
+
+<style>
+    /* Below 1000px: a strip of tabs, sticky at the top, scrolling sideways inside itself. */
+    .rail {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        margin-inline: -1rem;
+        padding: 0.45rem 1rem;
+        background: var(--ground);
+        border-bottom: 1px solid var(--rule);
+    }
+    .rail-title {
+        display: none;
+    }
+    ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        gap: 0.4rem;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    a {
+        display: block;
+        white-space: nowrap;
+        min-height: 2rem;
+        padding: 0.35rem 0.6rem;
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        color: var(--ink-muted);
+        font-size: 0.88rem;
+        text-decoration: none;
+    }
+    a:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
+    }
+    a.on {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: var(--ground);
+        font-weight: 700;
+    }
+
+    /* From 1000px: a column in the right margin, sticky, with a rule and a bar for the mark. */
+    @media (min-width: 1000px) {
+        .rail {
+            grid-column: 2;
+            grid-row: 1;
+            align-self: start;
+            top: 1.5rem;
+            margin: 0;
+            padding: 0.5rem 0 0;
+            background: none;
+            border: 0;
+        }
+        .rail-title {
+            display: block;
+            margin: 0 0 0.6rem;
+            color: var(--ink-muted);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        ol {
+            display: grid;
+            gap: 0;
+            overflow: visible;
+            border-left: 2px solid var(--rule);
+        }
+        a {
+            white-space: normal;
+            min-height: 0;
+            margin-left: -2px;
+            padding: 0.4rem 0 0.4rem 0.8rem;
+            border: 0;
+            border-left: 2px solid transparent;
+            border-radius: 0;
+            font-size: 0.92rem;
+        }
+        a.on {
+            background: none;
+            color: var(--ink);
+            border-left-color: var(--ink);
+        }
+    }
+</style>

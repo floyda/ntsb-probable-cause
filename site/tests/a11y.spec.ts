@@ -127,3 +127,39 @@ test("the skip link is the first stop and moves focus to the content", async ({ 
     await page.keyboard.press("Enter");
     await expect(page.locator("main#content")).toBeFocused();
 });
+
+// The rail marks the place being read, and a link to a place keeps its heading in view on a
+// phone (S5 step 6a, Task 3; plan Review Focus 1).
+test("the rail marks the place being read", async ({ page }) => {
+    await page.goto("/methods/");
+    await page.locator("#history").scrollIntoViewIfNeeded();
+    await page.evaluate(() => {
+        const h = document.getElementById("history");
+        if (h !== null) window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - 200);
+    });
+    await expect(page.locator('nav.rail a[data-place="history"]')).toHaveAttribute(
+        "aria-current",
+        "location",
+    );
+    await expect(page.locator('nav.rail a[aria-current="location"]')).toHaveCount(1);
+});
+
+test("a link to a place leaves its heading below the phone's strip", async ({ page }, info) => {
+    test.skip(info.project.name !== "phone", "the strip is the phone's; wide screens use a column");
+    await page.goto("/path/#choosing");
+    await page.waitForTimeout(300);
+    const { strip, heading } = await page.evaluate(() => ({
+        strip: document.querySelector("nav.rail")?.getBoundingClientRect().bottom ?? 0,
+        heading: document.querySelector("#choosing h2")?.getBoundingClientRect().top ?? -1,
+    }));
+    expect(heading).toBeGreaterThanOrEqual(strip);
+});
+
+test.describe("with scripts off", () => {
+    test.use({ javaScriptEnabled: false });
+    test("the rail is a complete list of links, with nothing marked", async ({ page }) => {
+        await page.goto("/path/");
+        await expect(page.locator("nav.rail a")).toHaveCount(9);
+        await expect(page.locator("nav.rail a[aria-current]")).toHaveCount(0);
+    });
+});

@@ -484,3 +484,25 @@ describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () =>
         for (const page of all) expect(read(page), page).not.toContain('href="/open/"');
     });
 });
+
+describe.skipIf(!built)("the rail of places (S5 step 6a, Task 3)", () => {
+    const RAILS: Record<string, number> = {
+        "index.html": 3,
+        "path/index.html": 9,
+        "methods/index.html": 9,
+    };
+    it.each(Object.entries(RAILS))("%s has a rail of %i places, each on the page", (page, n) => {
+        const html = readFileSync(join(DIST, page), "utf8");
+        const rail = /<nav[^>]*class="rail[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
+        const ids = [...rail.matchAll(/href="#([^"]+)"/g)].map((m) => m[1] ?? "");
+        expect(ids).toHaveLength(n);
+        const positions = ids.map((id) => html.search(new RegExp(`\\sid="${id}"`)));
+        for (const [i, at] of positions.entries()) expect(at, ids[i]).toBeGreaterThan(-1);
+        expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    });
+    it("draws no rail on a case or trail page", () => {
+        for (const page of htmlFiles().filter((p) => p.includes(`${sep}case${sep}`))) {
+            expect(readFileSync(page, "utf8"), page).not.toMatch(/<nav[^>]*class="rail/);
+        }
+    });
+});

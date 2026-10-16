@@ -64,6 +64,34 @@ main:focus {
     outline: none;
 }
 
+/* A page with a rail: the rail takes the right margin from 1000px (components/Rail.astro). */
+@media (min-width: 1000px) {
+    .page.with-rail {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 13rem;
+        gap: 3rem;
+    }
+    .page.with-rail main {
+        grid-column: 1;
+        grid-row: 1;
+        min-width: 0;
+    }
+}
+
+/* A heading reached by a link stays below the phone's sticky strip. scripts/rail.ts measures
+   the strip; this is its height before the script runs, or without it. */
+:root {
+    --strip-h: 3.25rem;
+}
+@media (min-width: 1000px) {
+    :root {
+        --strip-h: 0px;
+    }
+}
+main [id] {
+    scroll-margin-top: calc(var(--strip-h) + 0.75rem);
+}
+
 /* Reading text keeps about 65 characters a line; the board is wider (board.css). */
 main > * {
     max-width: 44rem;

@@ -147,7 +147,7 @@ Decided here, so no question is needed; each can be changed at the preview:
 - Consumes `Base`'s `current`.
 - Produces `interface Place { id: string; label: string }`, a new optional `Base` prop `places?: readonly Place[]`, and `checkPlaces(places)`, which throws on an empty list, an empty label, or an id used twice.
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
   - `site.test.ts`: `checkPlaces` refuses each of those three.
   - `dist.test.ts`: on every page with a rail, each rail link's `#id` exists on that page, in the rail's order.
   - `dist.test.ts`: the first page's rail names three places, Path's nine, and Methods' nine.
@@ -155,18 +155,18 @@ Decided here, so no question is needed; each can be changed at the preview:
     - scrolling to the third place marks that link `aria-current="location"`;
     - on the phone, `/path/#choosing` puts its heading below the strip, not under it (Review Focus 1);
     - with JavaScript off, every rail link is present and none is marked (Review Focus 2).
-- [ ] **Step 2: Run them.** They fail.
-- [ ] **Step 3: `Rail.astro`.** One `nav` labelled "On this page" with an ordered list of links. The same list is styled two ways by CSS:
+- [x] **Step 2: Run them.** They fail.
+- [x] **Step 3: `Rail.astro`.** One `nav` labelled "On this page" with an ordered list of links. The same list is styled two ways by CSS:
   - **from 1000px**, a column in the right margin, sticky, with a number and a label per place, and a left rule;
   - **below 1000px**, a strip of tabs across the top, sticky at `top: 0`, scrolling sideways inside itself.
 
   The "you are here" mark is bold text, the ink colour and a 2px bar (wide) or a filled tab (phone): never colour alone. The page grid becomes `minmax(0, 1fr) 13rem` only when a rail is passed.
-- [ ] **Step 4: `scripts/rail.ts`.** It finds the rail's links and their places, and watches the places with an `IntersectionObserver` (`rootMargin: "-35% 0px -60% 0px"`). It marks the one in view with `aria-current="location"` and the class `on`, and on the phone scrolls that tab into view inside the strip with `block: "nearest"`, so the page itself never moves. It sets the CSS variable `--strip-h` to the strip's height. Each place gets `scroll-margin-top: calc(var(--strip-h, 0px) + 0.75rem)`, so a heading reached by a link is not hidden. With no rail on the page it does nothing. It is loaded from `Base.astro` as `<script>import "../scripts/rail.ts";</script>`, so Astro bundles it to a file under the CSP.
-- [ ] **Step 5: The places.**
+- [x] **Step 4: `scripts/rail.ts`.** It finds the rail's links and their places, and watches the places with an `IntersectionObserver` (`rootMargin: "-35% 0px -60% 0px"`). It marks the one in view with `aria-current="location"` and the class `on`, and on the phone scrolls that tab into view inside the strip with `block: "nearest"`, so the page itself never moves. It sets the CSS variable `--strip-h` to the strip's height. Each place gets `scroll-margin-top: calc(var(--strip-h, 0px) + 0.75rem)`, so a heading reached by a link is not hidden. With no rail on the page it does nothing. It is loaded from `Base.astro` as `<script>import "../scripts/rail.ts";</script>`, so Astro bundles it to a file under the CSP.
+- [x] **Step 5: The places.**
   - `index.astro`: wrap its parts in sections with the ids `question` (the h1 and the caveat), `board` and `case`, keeping the existing heading ids, and pass three places.
   - `path.astro`: `ladder-heading`'s section, then the eight stop ids, with short labels from a list in the page (for example `{ id: "docket", label: "3 · The docket" }`).
   - `methods.astro`: its nine section ids. The page's own "On this page" contents list is removed, because the rail does its job.
-- [ ] **Step 6:** Run the tests and `make check`. Take one phone screenshot of each page to check the strip. Commit `S5 step 6a Task 3: a rail of places on the long pages`.
+- [x] **Step 6:** Run the tests and `make check`. Take one phone screenshot of each page to check the strip. Commit `S5 step 6a Task 3: a rail of places on the long pages`.
 
 ## Task 4: The way back on case and trail pages
 
@@ -219,6 +219,13 @@ Decided here, so no question is needed; each can be changed at the preview:
   - The page's width and padding moved from `body` to a `.page` wrapper, so the top bar and footer run the full width. The holding page is a separate static page and is unchanged.
   - The 404 page gets the top bar and footer like every other page, with no page marked.
   - The tests were written beside the code, not first. They were then proved able to fail: on a built Path page with its skip link, its current mark and its author line each changed, the skip-link, top-bar and footer checks failed. A keyboard test in all three projects checks that Tab reaches the skip link first, that it shows, and that Enter moves focus to `main`.
+- **Task 3 (2026-10-16):**
+  - The rail script is loaded on every page, not only on pages with a rail, and does nothing without one. Astro bundles a `<script>` into a file only when it is at the top level of the template; inside a condition it would be inline, which the CSP blocks.
+  - The script sets one CSS variable (`--strip-h`) through the CSSOM, which `style-src 'self'` allows. Before it runs, or with scripts off, `tokens.css` gives the strip's height as 3.25rem below 1000px and 0 above, so a heading reached by a link is clear of the strip either way.
+  - A place named by its heading (Methods' sections, the Path's ladder) is watched through the section that heading opens.
+  - The first page's three stops are now sections with the ids `question`, `board` and `case`. The board gains a visible heading, "Closed cases", so that it has a heading for its sign in Task 5. The case stop is left out of the rail when there is no case to show.
+  - Methods' own contents list is removed, as planned.
+  - The phone test of a link to a place runs on the phone project only; on a wide screen the rail is a side column and the test does not apply. It was shown to fail with the scroll margin removed from the built CSS.
 
 ## Glossary
 
