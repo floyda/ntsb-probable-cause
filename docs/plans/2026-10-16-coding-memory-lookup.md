@@ -49,12 +49,12 @@ coding test. No learner (Claude) call anywhere in this plan.
 
 ### Task 2: The recount (decision 0209)
 
-- [ ] `scripts/memory_recount.py --run RUN --from SNAPSHOT --to NAME`: rebuild the final apply's
+- [x] `scripts/memory_recount.py --run RUN --from SNAPSHOT --to NAME`: rebuild the final apply's
   memory text from the run's `draft.json` order and the snapshot's lessons, find the one retired
   lesson by trying each lesson the snapshot lacks, refuse unless every case's key is saved, count
   support with the fixed rule, cap, save unchecked. `make mem-recount`.
-- [ ] Tests on a small invented run folder.
-- [ ] Run it to `pilot-2010-recount`; `make mem-check SNAPSHOT=pilot-2010-recount`; commit the
+- [x] Tests on a small invented run folder.
+- [x] Run it to `pilot-2010-recount`; `make mem-check SNAPSHOT=pilot-2010-recount`; commit the
   snapshot and stamp.
 
 ### Task 3: The lookup (decision 0210)

@@ -352,9 +352,10 @@ def _load_draft(settings: Settings, run_id: str) -> Memory:
     return Memory.model_validate_json(path.read_text())
 
 
-def _call_for_apply(
+def call_for_apply(
     role: str, model: str, effort: Effort, memory: Memory, case: LearningCase
 ) -> Call:
+    """One case's apply request; ``scripts.memory_recount`` rebuilds its key (decision 0209)."""
     return Call(
         role=role,
         model=model,
@@ -382,7 +383,7 @@ def run_apply(
     if not memory.lessons or not cases:
         return {}, 0
     model, effort = APPLIERS[applier]
-    calls = [_call_for_apply(role, model, effort, memory, c) for c in cases]
+    calls = [call_for_apply(role, model, effort, memory, c) for c in cases]
     _check_budget(run.settings, calls, batch=True, label=f"apply ({applier})")
     replies = run.client.send_batch(calls)
     known = {lesson.lesson_id for lesson in memory.lessons}

@@ -567,7 +567,7 @@ def test_the_2009_finish_with_sonnet_as_applier_projects_under_the_learning_line
     lessons = tuple(_lesson(lesson_id=f"L{i:03d}") for i in range(1, 6))
     memory = Memory(name="d", periods=(2009,), lessons=lessons)
     model, effort = ml.APPLIERS["sonnet-high"]
-    calls = [ml._call_for_apply("apply", model, effort, memory, c) for c in cases]
+    calls = [ml.call_for_apply("apply", model, effort, memory, c) for c in cases]
     assert {c.max_tokens for c in calls} == {ml.MAX_TOKENS_SONNET_APPLY}
     apply_usd = ml.projected_usd(calls, batch=True)
     support = {lesson.lesson_id: Support(applies=0, agrees=0) for lesson in lessons}

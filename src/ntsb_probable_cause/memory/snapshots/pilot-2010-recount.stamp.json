@@ -1,0 +1,9 @@
+{
+ "snapshot": "pilot-2010-recount",
+ "sha256": "c596721c237f4bcbea10966471edf43d06fa9e866bcd09e6c4bcbfd8044ed023",
+ "withheld_texts_compared": 40671,
+ "causes_compared": 13560,
+ "checked_on": "2026-10-16",
+ "commit": "cabe724",
+ "dirty": true
+}
