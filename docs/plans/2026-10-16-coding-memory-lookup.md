@@ -67,9 +67,9 @@ coding test. No learner (Claude) call anywhere in this plan.
 
 ### Task 4: The reading
 
-- [ ] `scripts/memory_lookup_result.py`: tables(a), counts(a), counts(b), the refilled notebook
+- [x] `scripts/memory_lookup_result.py`: tables(a), counts(a), counts(b), the refilled notebook
   run and the lookup run; the registered rule on lookup − counts(a); `make mem-lookup-result`.
-- [ ] Tests.
+- [x] Tests.
 
 ### Task 5: The records
 
