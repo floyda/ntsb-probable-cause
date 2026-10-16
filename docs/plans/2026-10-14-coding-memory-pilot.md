@@ -2491,9 +2491,9 @@ Expected costs (estimates, from the published prices and the token sizes in the 
 **Files:**
 - Modify: `docs/specs/2026-10-08-coding-memory-design.md` (a "Pilot result" section, counts and the stop rule's verdict, citing `docs/results/memory-pilot-dev.txt`), `CLAUDE.md` (a short section: the side track, its decisions 0200–0207, the `mem-*` targets, `NTSB_LEARNING_MONTHLY_BUDGET_USD`, `ANTHROPIC_API_KEY` and `NTSB_PASS_ANTHROPIC`), `scripts/README.md`
 
-- [ ] **Step 1: Write the pilot's result into the note and `CLAUDE.md`**, in simplified technical English; the stop rule's verdict as it came out, passed or not.
-- [ ] **Step 2: Report to Andy**: one decision per message, the next being whether to run the full pass (if passed) or to stop and keep the code as the record (if not, 0201's alternative of removing it by a record).
-- [ ] **Step 3: Final checks and commit.**
+- [x] **Step 1: Write the pilot's result into the note and `CLAUDE.md`**, in simplified technical English; the stop rule's verdict as it came out, passed or not.
+- [x] **Step 2: Report to Andy**: one decision per message, the next being whether to run the full pass (if passed) or to stop and keep the code as the record (if not, 0201's alternative of removing it by a record).
+- [x] **Step 3: Final checks and commit.**
 
 Run: `make check && uv run python -m scripts.check_docs`
 Expected: PASS.

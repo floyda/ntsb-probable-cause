@@ -605,6 +605,36 @@ make s33-morning [LIMIT=N] # one live morning: at most 50 cases a UTC day (0167)
 make s33-report            # docs/results/s33-live-shadow.txt, counts only; free; never through paid_run.sh
 ```
 
+**The coding memory** (a side track beside S4, on branches named `coding-memory*`; decisions
+0200 to 0208; design note `docs/specs/2026-10-08-coding-memory-design.md`, registration
+`docs/rounds/memory-pilot.md`). A learner (Sonnet 5.5 through the Claude API, paid from Andy's plan
+credits, 0202) reads development verdicts and writes short coding lessons into a memory file,
+capped at 6,000 estimated tokens (`memory/` package; `memory/claude.py` is the only importer of
+`anthropic`, 0207). A coding test on `dev-steer-400` (GPT-6 Luna, counts only) reads the memory as
+guidance. Nothing connects the memory to the agent, the harness or the board (0201). **The pilot
+passed its stop rule on 2026-10-16, by a thin margin** (`docs/results/memory-pilot-dev.txt`): after
+2010, finding recall@10 +0.7 points [−1.4, +2.7] over the counts condition, against a noise of
+0.3; top-1 +0.2, top-3 +2.2. Learner spend $33.1308 of credit; coding tests $0.81. Whether to run
+the full pass is Andy's decision. Learner spend rows are kind `learning`, on their own monthly line
+`NTSB_LEARNING_MONTHLY_BUDGET_USD` (default $90, never counted by the $40 guard; raised for one
+command by 0208); coding-test rows are kind `coding-test`, on the $40 guard and the side track's
+$10 line. The learner reads `ANTHROPIC_API_KEY`, which `scripts/with_pass_keys.sh` takes from `pass`
+(`NTSB_PASS_ANTHROPIC`, default `api/anthropic`) with the OpenRouter key, printing neither.
+
+```bash
+make mem-spend EST=<usd>        # the side track's $10 line; exit 1 past it; free
+make mem-draw-steer             # draws dev-steer-400 once (seed 20261014); free
+make mem-coding-stats           # S3's pool less dev-steer-400, coding_stats_mem.json; free
+make mem-check SNAPSHOT=<name>  # withheld-text, copying and identifier checks; stamps it; free
+make mem-shape-probe            # the Claude API shape probe, ONCE (paid, cents of credit)
+make mem-learn-propose PERIOD=<year> FROM=<snapshot|empty> TO=<name>  # propose (paid, credit)
+make mem-agreement RUN=<id>     # Haiku against Sonnet on 100 cases of 2009 (paid, credit)
+make mem-learn-finish RUN=<id> TO=<name>  # apply, count, revise, cap, save (paid, credit)
+make mem-coding-answer REPEAT=a|b         # the coding test's tables condition (paid, OpenRouter)
+make mem-coding-tools SOURCE=<id> REPEAT=a|b | SNAPSHOT=<name>  # counts, or memory (paid)
+make mem-pilot-result TA= TB= CA= CB= MEM="<a> <b>" LEARN="<a> <b>"  # the reading; free
+```
+
 The targets from `s3-miss-kinds` on run exploratory scripts (decision 0059, `scripts/exploratory/`):
 no model call, and they decide nothing. What any `s3-*` target commits is counts only; the
 reading pages and case lists go under `NTSB_RUNS_DIR`, never committed.

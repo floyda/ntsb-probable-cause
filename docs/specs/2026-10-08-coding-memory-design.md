@@ -1,6 +1,6 @@
 # A coding memory learned from closed cases: design note
 
-Status: Approved (Andy, 2026-10-14). Drafted 2026-10-08; refreshed 2026-10-14. A declared
+Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). Drafted 2026-10-08; refreshed 2026-10-14. A declared
 experiment on development cases: Andy chose on 2026-10-14 to run its pilot now, as a side track
 beside S4 (§11, question 1), answered the other questions in §11 the same day, and the decisions
 in §10 are recorded. The implementation plan is in `docs/plans/`. The memory reaches the agent
@@ -352,6 +352,8 @@ to 189). Written 2026-10-14 (0205 to 0207 added 2026-10-15):
 7. [0206](../decisions/0206-the-steering-slice-is-named-dev-steer-400.md): the steering slice is
    named `dev-steer-400`.
 8. [0207](../decisions/0207-the-pilots-money-and-tooling.md): the pilot's money and tooling.
+9. [0208](../decisions/0208-the-learning-line-is-raised-for-the-2010-finish-only.md): the learning
+   line raised to $175 for the 2010 finish step only (added 2026-10-16).
 
 ## 11. Open questions for Andy
 
@@ -383,6 +385,78 @@ to 189). Written 2026-10-14 (0205 to 0207 added 2026-10-15):
    eleven. Why: two points show a change, not a curve, and the extra cost is time, not money. If
    the full pass is too slow, it may move to two-year periods, with the pilot's timings as the
    reason.
+
+## 12. Pilot result (2026-10-16)
+
+**The pilot passed its registered stop rule, by a thin margin.** Every figure here is from
+`docs/results/memory-pilot-dev.txt` (`make mem-pilot-result`), on the steering slice
+`dev-steer-400` (401 cases), GPT-6 Luna in the coding test. No run had a failed case.
+
+**What was measured.** Six coding-test runs on the same 401 cause sentences:
+
+| condition | occurrence top-1 | occurrence top-3 | finding recall@10 |
+|---|---|---|---|
+| tables (a) | 23.2% | 29.7% | 33.4% |
+| counts (a) | 25.7% | 30.2% | 41.7% |
+| memory after 2009 (`pilot-2009`) | 25.2% | 33.4% | 42.6% |
+| memory after 2010 (`pilot-2010`) | 25.9% | 32.4% | 42.4% |
+
+The second tables run and the second counts run are in the results file. The two counts runs
+differ by top-1 +0.2 points, top-3 +0.7 and finding recall@10 −0.3: that difference is the noise
+the stop rule reads.
+
+**The stop rule** (§7 step 5; registration §8, point estimates). The memory after 2010, minus
+counts (a), paired on 401 cases:
+
+- finding recall@10 **+0.7 points** [−1.4, +2.7]. This is greater than the noise of 0.3, so it
+  passes.
+- top-1 +0.2 points [−1.7, +2.2], and top-3 +2.2 points [+0.0, +4.5]. Neither is worse than its
+  noise, so both pass.
+
+Verdict, as printed: `stop rule on the last memory run (memory-2): PASS`.
+
+**What the pass does and does not show.** It is the registered result, and it is published as it
+stands. Three facts limit it:
+
+1. **The finding gain is small and not distinguishable from zero.** Its 95% interval, −1.4 to
+   +2.7, includes zero. The registration decides on point estimates, and the intervals do not
+   decide, so the pass stands. But one pair of counts runs is a thin measure of noise.
+2. **The curve did not rise from 2009 to 2010.** Finding recall@10 was 42.6% after one period and
+   42.4% after two. Top-3 rose by +3.2 points [+1.2, +5.2] after 2009 and by +2.2 [+0.0, +4.5]
+   after 2010. Two points do not show a trend either way.
+3. **The large step is the statistics, not the memory.** Adding the pool's counts to the tables raises
+   finding recall@10 from 33.4% to 41.7%. The memory adds under 1 point on top of that.
+
+**The memory came out smaller than planned.** The 6,000-token cap held 18 lessons after 2009 (87
+pushed out) and 15 after 2010 (183 pushed out). §11 question 3 estimated about 60. The lessons are
+longer than the estimate assumed, so a full pass may need a larger cap or shorter lessons. That
+choice is Andy's, and the pushed-out support counts in each snapshot are its evidence.
+
+**What it cost.** The learner spent $33.1308 of plan credit in October
+(`budget.learning_month_spent`), against the registration's estimate of $10–20. Sonnet was the
+applier, because neither Haiku level reached the 90% agreement bar (62.8% at `low`, 80.3% at
+`medium`, `docs/results/memory-agreement-dev.txt`). The 2010 finish step applied over both periods
+(2,370 cases) twice. The coding tests cost $0.81 of the side track's $10 line (`scripts.stage_spend
+--stage mem`).
+
+**What went wrong on the way**, each logged in the plan's Deviations:
+
+- The first 2009 propose run kept 1 lesson of 203. The prompt did not say that a finding category
+  is the first six digits of a finding code. Fixed in `0efdd63` and run again from empty. The failed
+  run's $1.5971 stays on the learning line.
+- The 2010 finish step's worst-case projection, $135.9010, passed the $90 learning line. Andy raised
+  the line for that one command, by decision
+  [0208](../decisions/0208-the-learning-line-is-raised-for-the-2010-finish-only.md).
+- The 2010 apply batch passed the Message Batches API's 256 MB limit. The learner now sends batches
+  in parts (`500fae7`). Nothing was charged for the refused batch.
+
+**Boundaries held.** Version 1's fingerprint `+t` is unchanged (`make s33-continuity`:
+e7811b387b31 on `fd6053f` and on the pilot's last commit). `make check` passes apart from the known
+`test_store_sync` boto3 failure.
+
+**Next** (§7 step 6). The pilot passed, so the next choice is Andy's: run the full pass (learn the
+periods to 2019, the coding test on `dev-400`, the transfer check), or stop here and keep the code
+as the record.
 
 ## Glossary
 
