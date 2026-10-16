@@ -2475,7 +2475,7 @@ Before the first OpenRouter run, message the S4 session (as promised on 2026-10-
 
 - [x] **Step 1: The two tables runs.** `make mem-spend EST=0.80`, then `make mem-coding-answer REPEAT=a` and `make mem-coding-answer REPEAT=b`. Expected: 401 rows each; failures listed by reason.
 - [x] **Step 2: The two counts runs** over tables(a): `make mem-spend EST=0.80`, then `make mem-coding-tools SOURCE=<tables a> REPEAT=a` and `REPEAT=b`.
-- [ ] **Step 3: Learn 2009.** `make mem-learn-propose PERIOD=2009 FROM=empty TO=pilot-2009`; then `make mem-agreement RUN=<run id>`; commit `docs/results/memory-agreement-dev.txt`; then `make mem-learn-finish RUN=<run id> TO=pilot-2009`; `make mem-check SNAPSHOT=pilot-2009`; commit the snapshot and its stamp (`uv run pytest tests/test_memory_snapshots.py` passes first).
+- [x] **Step 3: Learn 2009.** `make mem-learn-propose PERIOD=2009 FROM=empty TO=pilot-2009`; then `make mem-agreement RUN=<run id>`; commit `docs/results/memory-agreement-dev.txt`; then `make mem-learn-finish RUN=<run id> TO=pilot-2009`; `make mem-check SNAPSHOT=pilot-2009`; commit the snapshot and its stamp (`uv run pytest tests/test_memory_snapshots.py` passes first).
 - [ ] **Step 4: The memory condition after 2009.** `make mem-spend EST=0.40`; `make mem-coding-tools SOURCE=<tables a> REPEAT=a SNAPSHOT=pilot-2009`.
 - [ ] **Step 5: Learn 2010.** `make mem-learn-propose PERIOD=2010 FROM=pilot-2009 TO=pilot-2010`; `make mem-learn-finish RUN=<run id> TO=pilot-2010` (the applier is the one already chosen); `make mem-check SNAPSHOT=pilot-2010`; commit the snapshot and stamp.
 - [ ] **Step 6: The memory condition after 2010.** `make mem-spend EST=0.40`; `make mem-coding-tools SOURCE=<tables a> REPEAT=a SNAPSHOT=pilot-2010`.

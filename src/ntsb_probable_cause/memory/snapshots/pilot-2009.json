@@ -1,0 +1,4016 @@
+{
+ "name": "pilot-2009",
+ "periods": [
+  2009
+ ],
+ "cap_tokens": 6000,
+ "lessons": [
+  {
+   "lesson_id": "L001",
+   "kind": "split",
+   "statement": "when the pilot fails to hold directional control in landing and the airplane veers or ground loops, the first code is usually loss of control on ground, but it divides between the landing-roll phase, the flare or touchdown phase, and the unspecified landing phase, and occasionally the generic landing loss of control in flight code, while directional control and aircraft control findings are flagged nearly every time.",
+   "scope": "the phase the narrative gives decides the code: loss after the wheels are down and rolling points to the landing roll code, loss at the moment of flare or touchdown points to the flare or touchdown code, a bare mention of landing points to the generic landing ground code, and a narrative that treats the upset as airborne points to the generic landing loss of control in flight code, with a student pilot variant of the aircraft control finding when a student was flying.",
+   "predicts": {
+    "first_occurrence": [
+     "552230",
+     "551230",
+     "550230",
+     "550240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 151,
+    "agrees": 111,
+    "first_codes": [
+     [
+      "552230",
+      93
+     ],
+     [
+      "551230",
+      15
+     ],
+     [
+      "551240",
+      8
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L002",
+   "kind": "split",
+   "statement": "when the pilot fails to maintain directional control during the takeoff run, the NTSB leads with takeoff loss of control on ground and flags directional control not maintained together with pilot aircraft control, while the runway excursion or object collision that ends the run is usually coded after the lead rather than first.",
+   "scope": "the lead is loss of control on ground when the narrative describes a veer or loss of directional control on the runway, loss of control in flight when the narrative describes a general loss of control in crosswinds or after liftoff, with a crosswind or surface environmental finding added when the wind or surface is named as contributing, and a general control not maintained finding in place of the directional one when the cause says only control was lost.",
+   "predicts": {
+    "first_occurrence": [
+     "300230",
+     "300240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 57,
+    "agrees": 41,
+    "first_codes": [
+     [
+      "300230",
+      37
+     ],
+     [
+      "300240",
+      7
+     ],
+     [
+      "552230",
+      4
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L012",
+   "kind": "split",
+   "statement": "when gusty or crosswind conditions make the pilot lose directional control on the runway or taxiway, the first code is the loss of control on ground code for the phase, most often the landing roll and then the takeoff run, usually followed by a runway excursion or other weather encounter and sometimes by a nose over, and the findings flag pilot aircraft control, a directional or crosswind control performance item and a wind item.",
+   "scope": "the phase decides the first code: the landing roll, the generic landing, the flare or touchdown, the takeoff run and taxi each have their own loss of control on ground code, and only a takeoff or flare narrative that describes the aircraft as airborne points to a loss of control in flight code; a hard touchdown or a wind-driven undershoot blamed on flare or power timing is coded as a hard landing instead, and the wind item is gusts, crosswind or high wind depending on what the narrative names.",
+   "predicts": {
+    "first_occurrence": [
+     "552230",
+     "300230",
+     "551230",
+     "550230",
+     "251230",
+     "252230",
+     "551240",
+     "300240"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 79,
+    "agrees": 40,
+    "first_codes": [
+     [
+      "552230",
+      27
+     ],
+     [
+      "300230",
+      10
+     ],
+     [
+      "551230",
+      9
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L123",
+   "kind": "split",
+   "statement": "when the pilot is blamed for failing to maintain directional control or for inadequate compensation in crosswind or gusty wind during landing, the NTSB flags a pilot aircraft control finding with a directional or crosswind control performance finding, adds a wind finding mainly when the cause speaks of compensation, and the first code divides between loss of control on ground in the landing roll, loss of control on ground in the flare and loss of control in flight in the flare.",
+   "scope": "the phase decides the code: a veer after the wheels are rolling points most often to the landing roll loss of control on ground code, usually followed by an other weather encounter and a runway excursion, a veer at the moment of flare or touchdown points to the flare loss of control on ground code, often followed by an other weather encounter, and a narrative that only says the pilot lost control in gusty wind without describing ground handling can instead be coded as loss of control in flight in the flare, while a cause that speaks of directional control rather than compensation often carries no wind finding.",
+   "predicts": {
+    "first_occurrence": [
+     "552230",
+     "551230",
+     "551240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 86,
+    "agrees": 23,
+    "first_codes": [
+     [
+      "552230",
+      41
+     ],
+     [
+      "551230",
+      9
+     ],
+     [
+      "551240",
+      7
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L040",
+   "kind": "split",
+   "statement": "when the pilot fails to hold airspeed or angle of attack while manoeuvring, in the landing or in a go-around and the airplane stalls, the NTSB flags a performance or control parameter finding with a pilot aircraft control finding, but the first code follows whichever event the narrative reaches first, either loss of control in flight or aerodynamic stall in that phase, or an earlier landing event such as an overshoot, an undershoot or an abnormal runway contact when the stall follows a poor landing.",
+   "scope": "the first code is loss of control in flight or aerodynamic stall in the phase of flight when the narrative names the upset or the stall as the event, including low-altitude manoeuvring, the pattern, a go-around and an approach with icing, and it is a landing flare or touchdown code such as overshoot, undershoot or abnormal runway contact when the narrative starts with a badly flown landing that turns into an aborted landing or go-around and a stall; the pilot aircraft control finding is nearly constant, the airspeed or angle-of-attack finding is usual, an incorrect action or delayed action finding is added only when the recovery or the timing is blamed, and a capability-exceeded or recent-experience finding is added only when the narrative cites it.",
+   "predicts": {
+    "first_occurrence": [
+     "450240",
+     "450241",
+     "452240",
+     "551370",
+     "551380",
+     "551090",
+     "300241",
+     "509241",
+     "507241",
+     "508240",
+     "501240",
+     "509240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 41,
+    "agrees": 20,
+    "first_codes": [
+     [
+      "450240",
+      7
+     ],
+     [
+      "509240",
+      3
+     ],
+     [
+      "300241",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L048",
+   "kind": "evidence",
+   "statement": "when a pilot's lack of experience is named as contributing, the NTSB flags an experience and qualifications finding, and the specific item depends on whether the narrative blames overall flight time, time in that make and model, or lack of recent flying.",
+   "scope": "read the narrative for total experience, experience with the equipment type including unusual aircraft such as trikes, or recency of experience, and the experience finding is typically paired with a pilot aircraft control finding and never leads the cause.",
+   "predicts": {
+    "first_occurrence": [],
+    "finding_categories": [
+     "020310",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 27,
+    "agrees": 20,
+    "first_codes": [
+     [
+      "552230",
+      6
+     ],
+     [
+      "551092",
+      3
+     ],
+     [
+      "350241",
+      2
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L033",
+   "kind": "split",
+   "statement": "when the cause is the pilot's improper flare, poor recovery from a bounce or failure to maintain control in the landing, the NTSB flags pilot aircraft control and a performance parameter finding, but the first occurrence is most often a hard landing, otherwise abnormal runway contact or a loss of control in the flare or landing phase.",
+   "scope": "an improper flare or a bounced landing points to a hard landing code, in the flare phase when the touchdown is described and in the general landing phase when it is not, rough contact without a hard landing description points to the abnormal runway contact code, an upset while still airborne points to loss of control in flight, and a veer after touchdown points to loss of control on ground, usually followed by a runway excursion, terrain collision or nose over, with a landing flare or directional control performance item and an incorrect action finding added when the narrative stresses the flare technique or heading.",
+   "predicts": {
+    "first_occurrence": [
+     "550092",
+     "551092",
+     "551090",
+     "551240",
+     "551230",
+     "550240"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620",
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 101,
+    "agrees": 13,
+    "first_codes": [
+     [
+      "551092",
+      40
+     ],
+     [
+      "551090",
+      21
+     ],
+     [
+      "552230",
+      10
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L019",
+   "kind": "evidence",
+   "statement": "when the cause is the pilot's inadequate preflight planning and the narrative shows the fuel was not planned or the airplane was not refuelled, the NTSB codes a fuel exhaustion occurrence with a fuel planning finding and a fuel quantity finding.",
+   "scope": "applies when the narrative says the engine lost power because the fuel ran out after the pilot did not plan fuel or did not refuel; the occurrence phase follows where the power was lost, and a density altitude or surface environmental finding is added only when takeoff performance was left uncomputed and the narrative cites high density altitude.",
+   "predicts": {
+    "first_occurrence": [
+     "400192",
+     "402192",
+     "404192"
+    ],
+    "finding_categories": [
+     "020610",
+     "010710"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 34,
+    "agrees": 12,
+    "first_codes": [
+     [
+      "402192",
+      6
+     ],
+     [
+      "400192",
+      5
+     ],
+     [
+      "404192",
+      4
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L026",
+   "kind": "split",
+   "statement": "when the pilot fails to hold airspeed on the approach or landing, the NTSB flags an airspeed performance finding with a pilot aircraft control finding, but the first occurrence code follows the phase the narrative names and the outcome it stresses, usually an aerodynamic stall but sometimes an undershoot, an overshoot, an abnormal runway contact or a collision during landing.",
+   "scope": "the first code is a stall in the pattern final, go-around, takeoff, flare or generic landing phase when the narrative says the airplane stalled in that phase, an undershoot or overshoot when the narrative stresses the missed touchdown point or the short or long arrival, an abnormal runway contact or collision during takeoff or landing when it stresses the contact itself, and a hard landing usually appears later in the chain rather than first.",
+   "predicts": {
+    "first_occurrence": [
+     "508241",
+     "509241",
+     "300241",
+     "551241",
+     "550241",
+     "550370",
+     "551380",
+     "551090",
+     "508490"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 27,
+    "agrees": 12,
+    "first_codes": [
+     [
+      "508241",
+      4
+     ],
+     [
+      "508240",
+      3
+     ],
+     [
+      "550241",
+      3
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L008",
+   "kind": "split",
+   "statement": "when the pilot fails to maintain airspeed and the airplane stalls during takeoff or the initial climb, the first code is loss of control in flight or an aerodynamic stall in the takeoff or initial climb phase, with an airspeed not maintained finding and usually an aircraft control finding, and a collision with terrain or an uncontrolled descent follows.",
+   "scope": "applies to stalls from inadequate airspeed in the takeoff and initial climb phases only: the phase at the time of the upset picks the takeoff or initial climb code, and the loss of control code or the aerodynamic stall code comes first depending on whether the narrative treats the stall itself as the defining event, so low flying and climb to cruise are not covered.",
+   "predicts": {
+    "first_occurrence": [
+     "350240",
+     "350241",
+     "300240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 23,
+    "agrees": 10,
+    "first_codes": [
+     [
+      "350241",
+      6
+     ],
+     [
+      "350240",
+      5
+     ],
+     [
+      "300241",
+      4
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L050",
+   "kind": "evidence",
+   "statement": "when the narrative names the pilot as impaired or incapacitated by alcohol, a drug or medication, or a lack of oxygen, the NTSB flags a pilot impairment finding whose specific item matches the substance or cause, while a deteriorated health condition or fatigue is coded as its own physical finding instead.",
+   "scope": "applies when the cause or contributing factors cite impairment, incapacitation or hypoxia; the first occurrence depends on the phase of flight and is not predictable, and the pilot aircraft control and decision findings are common but not reliable here, while a health condition with no impairment wording or simple fatigue does not get the impairment finding.",
+   "predicts": {
+    "first_occurrence": [],
+    "finding_categories": [
+     "020120"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 11,
+    "agrees": 10,
+    "first_codes": [
+     [
+      "402240",
+      2
+     ],
+     [
+      "300240",
+      1
+     ],
+     [
+      "400120",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L027",
+   "kind": "split",
+   "statement": "when the pilot or a student recovers badly from a bounced landing, the NTSB leads with a flare-phase runway code, hard landing or abnormal runway contact in about equal measure, less often loss of control on ground, and pairs a landing flare performance finding with an aircraft control finding.",
+   "scope": "a lead that stresses the firm contact after the bounce points to the hard landing code, usually in the flare phase and sometimes the generic landing phase, a lead that stresses the bounce or the rebound itself points to the abnormal runway contact code, usually in the flare phase and sometimes the generic landing phase, and a lead on the veer or ground loop after the bounce points to the loss of control on ground code in the flare or landing roll phase; follow-on codes such as abnormal runway contact, runway excursion, nose over or collision with terrain or an object are common, a landing flare finding is flagged with an aircraft control finding on the pilot or student, an incorrect action finding is added when the recovery itself is blamed, and a delayed-action instructor finding is added when an instructor was slow to take over.",
+   "predicts": {
+    "first_occurrence": [
+     "551092",
+     "551090",
+     "552230",
+     "551230",
+     "550090",
+     "550092"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 37,
+    "agrees": 9,
+    "first_codes": [
+     [
+      "551092",
+      14
+     ],
+     [
+      "551090",
+      12
+     ],
+     [
+      "552230",
+      3
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L067",
+   "kind": "split",
+   "statement": "when a flight instructor is blamed for acting too late to take over a student's landing, the NTSB flags a delayed-action finding against the instructor, and the first code is most often a hard landing in the flare and touchdown phase, with loss of control on ground in that same phase when a veer at touchdown is stressed, and the landing roll version only when control is lost during the rollout.",
+   "scope": "the lead follows the phase the narrative names: a firm touchdown or failed flare or bounce recovery points to the flare hard landing code, a bounce or pitch control problem may instead point to abnormal runway contact or loss of control in flight, a veer at touchdown points to loss of control on ground in the flare phase, a crosswind loss of control in the rollout points to the landing roll version, and a runway excursion follows as a later code, with performance and aircraft control findings added for the student's handling.",
+   "predicts": {
+    "first_occurrence": [
+     "551092",
+     "551230",
+     "552230",
+     "551090",
+     "551240"
+    ],
+    "finding_categories": [
+     "020410",
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 18,
+    "agrees": 8,
+    "first_codes": [
+     [
+      "551092",
+      6
+     ],
+     [
+      "552230",
+      3
+     ],
+     [
+      "551230",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L018",
+   "kind": "convention",
+   "statement": "when the pilot lets airspeed decay and the airplane stalls, the NTSB codes the event in the phase of flight where it began, usually as a loss of control in flight followed by the aerodynamic stall or spin and then a collision with terrain, and flags an airspeed performance finding with pilot aircraft control.",
+   "scope": "applies to stalls from decayed airspeed in maneuvering, low-altitude flying, initial climb or pattern flight, including turn-backs after a power problem, where a power loss or other malfunction is coded as its own event that may come before the stall, and an attempted-recovery code appears only when the recovery itself is described as a failure.",
+   "predicts": {
+    "first_occurrence": [
+     "450240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 51,
+    "agrees": 7,
+    "first_codes": [
+     [
+      "450240",
+      9
+     ],
+     [
+      "450241",
+      5
+     ],
+     [
+      "350240",
+      4
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L014",
+   "kind": "convention",
+   "statement": "when a dual instruction landing ends in a hard landing during the flare, the NTSB codes the instructor's delayed action alongside the trainee's flare and aircraft control shortfalls.",
+   "scope": "applies to dual instruction landings where the trainee flares improperly and the instructor does not take over in time, so the first event is a hard landing in the flare, and not to simulated emergencies, stalls or autorotations, which start with other events.",
+   "predicts": {
+    "first_occurrence": [
+     "551092"
+    ],
+    "finding_categories": [
+     "020410",
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 9,
+    "agrees": 4,
+    "first_codes": [
+     [
+      "551092",
+      4
+     ],
+     [
+      "508241",
+      1
+     ],
+     [
+      "550240",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L065",
+   "kind": "convention",
+   "statement": "when investigators cannot establish why directional control was lost on landing, the NTSB codes loss of control on ground in the landing roll phase and flags only a not-determined finding with no pilot or aircraft finding.",
+   "scope": "applies to landing roll veers with no mechanical, weather or pilot cause identified, and a narrative that names the pilot's control moves to the directional control pattern instead.",
+   "predicts": {
+    "first_occurrence": [
+     "552230"
+    ],
+    "finding_categories": [
+     "050000"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 9,
+    "agrees": 4,
+    "first_codes": [
+     [
+      "552230",
+      5
+     ],
+     [
+      "300240",
+      1
+     ],
+     [
+      "550230",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L066",
+   "kind": "split",
+   "statement": "when the pilot or student is slow to abandon a takeoff and the airplane overruns the runway, the NTSB flags only a delayed-action finding, but the first code divides between a runway excursion in the rejected-takeoff phase, loss of control on ground in the takeoff phase and a runway excursion in the takeoff phase.",
+   "scope": "a narrative that treats the run as an abandoned takeoff points to the rejected-takeoff runway excursion code, a narrative stressing the veer or loss of directional control during the run points to takeoff loss of control on ground followed by the runway excursion and an object collision, and a control or equipment malfunction that prompted the abort may be coded first as a flight control malfunction followed by an attempted-recovery code.",
+   "predicts": {
+    "first_occurrence": [
+     "301300",
+     "300230",
+     "300300"
+    ],
+    "finding_categories": [
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 8,
+    "agrees": 4,
+    "first_codes": [
+     [
+      "300230",
+      2
+     ],
+     [
+      "301300",
+      2
+     ],
+     [
+      "300333",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L117",
+   "kind": "split",
+   "statement": "when the pilot is blamed for failing to keep control of a glider during a tow launch, the NTSB flags a pilot aircraft control finding together with a performance and control parameters finding, and the first occurrence is a takeoff-phase code if the trouble comes during the launch roll but the initial climb glider tow event code if it comes after liftoff.",
+   "scope": "a narrative about the launch roll or aero-tow start points to the takeoff glider tow event or takeoff loss of control code, a narrative about a release or line failure at low height after liftoff points to the initial climb glider tow event code, and a tow equipment finding is added only when the equipment itself failed, was misused or was overloaded.",
+   "predicts": {
+    "first_occurrence": [
+     "300510",
+     "300240",
+     "350510"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 7,
+    "agrees": 4,
+    "first_codes": [
+     [
+      "300240",
+      2
+     ],
+     [
+      "300093",
+      1
+     ],
+     [
+      "300510",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  }
+ ],
+ "pushed_out": [
+  {
+   "lesson_id": "L080",
+   "kind": "convention",
+   "statement": "when the pilot's inadequate preflight inspection leaves the fuel supply unchecked and the engine quits in cruise, the NTSB leads with fuel starvation in cruise, follows it with a preflight event and total loss of engine power, and flags a pilot preflight inspection finding with an inadequate-inspection item on the fuel system.",
+   "scope": "applies when the narrative blames the failure to verify fuel quantity or fuel system condition before flight, and a stall after the power loss is only a later code unless the cause opens with the airspeed failure.",
+   "predicts": {
+    "first_occurrence": [
+     "402191"
+    ],
+    "finding_categories": [
+     "020615",
+     "010228"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 22,
+    "agrees": 3,
+    "first_codes": [
+     [
+      "404192",
+      4
+     ],
+     [
+      "402191",
+      3
+     ],
+     [
+      "402192",
+      3
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L089",
+   "kind": "convention",
+   "statement": "when the pilot fails to clear trees or other obstacles during the initial climb after takeoff, the NTSB most often codes a collision during takeoff or landing in the initial climb phase, sometimes controlled flight into terrain instead, and flags a pilot aircraft control or climb rate performance finding, adding light and terrain findings only when the narrative names them as contributing.",
+   "scope": "applies to departures where the airplane did not climb enough to clear obstacles or rising terrain ahead; the collision code is typical when the narrative describes striking trees or objects, the controlled flight into terrain code is less common, and darkness or terrain findings appear only when named as contributing.",
+   "predicts": {
+    "first_occurrence": [
+     "350490"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 12,
+    "agrees": 3,
+    "first_codes": [
+     [
+      "350490",
+      6
+     ],
+     [
+      "300490",
+      2
+     ],
+     [
+      "350120",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L044",
+   "kind": "convention",
+   "statement": "when two aircraft collide because a pilot did not see the other, the NTSB codes a midair collision in the phase being flown, most often VFR pattern final, adds an uncontrolled descent collision with terrain when an aircraft then falls, and flags a monitoring-other-aircraft attention finding on the pilot and on the pilot of the other aircraft.",
+   "scope": "applies to see-and-avoid midair collisions between two piloted aircraft, mainly in the traffic pattern or while maneuvering; the attention finding is coded for the other aircraft's pilot even when the cause names only one pilot, and a lack-of-action or traffic-pattern-procedure finding may be added.",
+   "predicts": {
+    "first_occurrence": [
+     "508250"
+    ],
+    "finding_categories": [
+     "020215"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 8,
+    "agrees": 3,
+    "first_codes": [
+     [
+      "508250",
+      3
+     ],
+     [
+      "450250",
+      2
+     ],
+     [
+      "251200",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L082",
+   "kind": "split",
+   "statement": "when the pilot performs aerobatics or other low-level manoeuvring at low altitude and loses control, the NTSB's first occurrence follows the type of flying and the loss of control, either loss of control in flight or an aerodynamic stall or spin, and the findings flag the pilot's decision making and judgment, with other items such as capability exceeded, impairment or airspeed added only when the narrative names them.",
+   "scope": "applies to low aerobatic or low-level manoeuvring accidents where the narrative blames the pilot's choice to manoeuvre low; the first code is aerobatics with loss of control or stall when aerobatics were flown, low-altitude flying when the flight was not aerobatic, and a low altitude operations or uncontrolled descent collision item follows only in some cases.",
+   "predicts": {
+    "first_occurrence": [
+     "451240",
+     "451241",
+     "452241"
+    ],
+    "finding_categories": [
+     "020415",
+     "010610"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 9,
+    "agrees": 2,
+    "first_codes": [
+     [
+      "451240",
+      2
+     ],
+     [
+      "451241",
+      2
+     ],
+     [
+      "350330",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L093",
+   "kind": "convention",
+   "statement": "when the cause names failure to maintain directional control on landing as the main factor and improper brake application only as a contributing one, the NTSB leads with loss of control on ground in the landing roll, sometimes followed by abnormal runway contact, and flags directional control, brake incorrect-use, pilot aircraft control and incorrect action findings.",
+   "scope": "applies to landing rollouts where the cause puts directional control first and brake misuse second as a contributing factor and no mechanical brake fault is found, while causes that lead with excessive braking or excessive speed and end in a runway departure belong to the runway excursion pattern, and a braking-caused nose over belongs to the nose over pattern.",
+   "predicts": {
+    "first_occurrence": [
+     "552230"
+    ],
+    "finding_categories": [
+     "010620",
+     "010232",
+     "020630",
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 6,
+    "agrees": 2,
+    "first_codes": [
+     [
+      "552230",
+      4
+     ],
+     [
+      "551230",
+      1
+     ],
+     [
+      "552300",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L096",
+   "kind": "convention",
+   "statement": "when the pilot misjudges speed and altitude on the approach and the airplane comes down short of the intended landing area, the NTSB defines the event as a landing area undershoot in the generic landing phase, follows it with a collision during takeoff or landing, and flags a pilot aircraft control finding with a descent or glide path performance finding.",
+   "scope": "applies to ordinary approaches that end short with no mechanical or weather cause blamed, and a practice forced landing that ends short belongs to the flare-phase undershoot pattern instead.",
+   "predicts": {
+    "first_occurrence": [
+     "550370"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 6,
+    "agrees": 2,
+    "first_codes": [
+     [
+      "550370",
+      2
+     ],
+     [
+      "550490",
+      1
+     ],
+     [
+      "551490",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L094",
+   "kind": "convention",
+   "statement": "when the pilot fails to keep clear of terrain during a descent at night or in low cloud and fog, the NTSB defines the event as controlled flight into terrain in the descent phase, follows it with a post-impact fire, and flags an altitude not-maintained performance finding with a pilot attention finding for monitoring the environment.",
+   "scope": "applies to descents into mountainous or rising terrain in poor visibility where no upset is described and no mechanical cause is blamed, and the weather or light condition is carried in the narrative rather than as a separate pilot finding.",
+   "predicts": {
+    "first_occurrence": [
+     "404120"
+    ],
+    "finding_categories": [
+     "010620",
+     "020215"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 5,
+    "agrees": 2,
+    "first_codes": [
+     [
+      "404120",
+      3
+     ],
+     [
+      "401120",
+      1
+     ],
+     [
+      "506120",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L005",
+   "kind": "split",
+   "statement": "when a downdraft or windshear in rising or mountainous terrain exceeds the airplane's climb ability, the NTSB flags a wind downdraft finding, a climb capability finding and sometimes a pilot decision finding, but the first code divides between loss of control in flight, collision during takeoff and windshear in the enroute phase.",
+   "scope": "cruise-phase encounters that end in loss of control are coded as enroute loss of control, encounters right after departure are coded as a takeoff collision followed by another weather encounter, and a narrative that names the windshear or downdraft as the event itself points to the enroute windshear code followed by a terrain collision with only the capability and wind findings and no decision finding.",
+   "predicts": {
+    "first_occurrence": [
+     "400240",
+     "300490",
+     "400390"
+    ],
+    "finding_categories": [
+     "030340",
+     "010610",
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 4,
+    "agrees": 2,
+    "first_codes": [
+     [
+      "300490",
+      1
+     ],
+     [
+      "400240",
+      1
+     ],
+     [
+      "400390",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L120",
+   "kind": "convention",
+   "statement": "when a fire starts in the engine area of a parked airplane and investigators cannot find its source, the NTSB codes a non-impact fire or smoke event in the standing phase with the engine not operating and flags only a not-determined finding.",
+   "scope": "applies to ground fires with no pilot, maintenance or mechanical cause identified, so no personnel or aircraft finding is flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "151150"
+    ],
+    "finding_categories": [
+     "050000"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 3,
+    "agrees": 2,
+    "first_codes": [
+     [
+      "151150",
+      2
+     ],
+     [
+      "251150",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L091",
+   "kind": "convention",
+   "statement": "when the aircraft and pilot are missing and no cause can be found, the NTSB codes a missing aircraft event followed by a general unknown or undetermined code and flags only a not-determined finding.",
+   "scope": "applies to disappearances where no wreckage or evidence is available, so no pilot, aircraft or environmental finding can be flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "990990"
+    ],
+    "finding_categories": [
+     "050000"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 2,
+    "first_codes": [
+     [
+      "990990",
+      2
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L013",
+   "kind": "split",
+   "statement": "when the pilot selects unsuitable terrain or an unsuitable takeoff area, the NTSB flags a pilot decision finding, and the first code follows what the aircraft did next, so it divides among loss of control on ground, nose over, runway excursion, rejected-takeoff excursion, initial climb loss of control and a miscellaneous takeoff code.",
+   "scope": "a veer or loss of directional control on the surface points to loss of control on ground, a nose-over during the takeoff roll points to the nose over code, a departure off the runway points to the runway excursion code, an abandoned takeoff that ends off the runway points to the rejected-takeoff excursion code, a stall or loss of control shortly after liftoff points to initial climb loss of control, a collision during takeoff points to the collision during takeoff code, and a bare complaint about the surface with no further event points to the miscellaneous takeoff code, with a terrain or wind environmental finding added only when the narrative blames those conditions.",
+   "predicts": {
+    "first_occurrence": [
+     "300230",
+     "300096",
+     "300300",
+     "301300",
+     "350240",
+     "300490",
+     "300900"
+    ],
+    "finding_categories": [
+     "020415",
+     "030210",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 20,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300230",
+      3
+     ],
+     [
+      "300300",
+      2
+     ],
+     [
+      "300470",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L032",
+   "kind": "split",
+   "statement": "when the pilot fails to hold airspeed on final approach, the NTSB flags an airspeed not maintained finding with a pilot aircraft control finding, but the first occurrence depends on how the narrative describes the event, most often an aerodynamic stall when a stall is named, otherwise loss of control, a collision on final, or a landing phase code such as undershoot or hard landing.",
+   "scope": "a narrative that names a stall points to the aerodynamic stall code on final (or the landing phase stall code when the event is placed at touchdown) usually followed by a terrain collision, an upset without a named stall points to loss of control in flight, a narrative that goes straight to ground contact points to the collision on final code, a short or hard touchdown points to the landing phase undershoot or hard landing codes, and a wind response finding is added only when gusts or crosswind are blamed.",
+   "predicts": {
+    "first_occurrence": [
+     "508241",
+     "508240",
+     "508490",
+     "550241",
+     "550092"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 19,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "508241",
+      4
+     ],
+     [
+      "508240",
+      3
+     ],
+     [
+      "550241",
+      3
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L049",
+   "kind": "convention",
+   "statement": "when the investigation cannot establish why the airplane departed controlled flight while manoeuvring, the NTSB codes loss of control in flight in the maneuvering phase followed by a terrain collision from uncontrolled descent, and flags a not-determined finding.",
+   "scope": "applies to unexplained upsets where no mechanical or weather cause is found, a pilot aircraft control finding with a performance not-maintained finding is added when the cause names the pilot's control, and a cause that is wholly undetermined carries only the not-determined finding.",
+   "predicts": {
+    "first_occurrence": [
+     "450240"
+    ],
+    "finding_categories": [
+     "050000",
+     "020630",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 11,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "450240",
+      3
+     ],
+     [
+      "350240",
+      1
+     ],
+     [
+      "401240",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L092",
+   "kind": "convention",
+   "statement": "when a landing gear leg or actuator fails or collapses during landing for reasons the investigation states as undetermined, the NTSB flags the failed landing gear component as the finding, usually with no pilot finding and only sometimes with a not-determined finding added, and the first occurrence is most often landing gear collapse in the landing roll but may instead be a structural failure, a system failure or a touchdown event.",
+   "scope": "applies to nose or main gear collapses, actuator failures or uncommanded retractions at touchdown or in the landing roll where the cause is stated as undetermined and no wear, maintenance or pilot cause is identified; the finding names the failed component rather than a general not-determined item.",
+   "predicts": {
+    "first_occurrence": [
+     "552094"
+    ],
+    "finding_categories": [
+     "010232"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 11,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "552094",
+      2
+     ],
+     [
+      "252094",
+      1
+     ],
+     [
+      "300338",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L077",
+   "kind": "convention",
+   "statement": "when the pilot fails to maintain directional control while taxiing, the NTSB codes loss of control on ground in the taxi phase, followed by a collision with terrain or object, a dragged part, a roll over or a dynamic rollover, and flags a directional control or general performance finding with a pilot aircraft control finding.",
+   "scope": "applies to taxi veers in light aircraft including gyroplanes and helicopters, where no mechanical or surface cause is blamed, and the performance item is directional control when the narrative stresses heading and the general not-maintained item otherwise.",
+   "predicts": {
+    "first_occurrence": [
+     "250230"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 9,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "552230",
+      3
+     ],
+     [
+      "250230",
+      1
+     ],
+     [
+      "252230",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L107",
+   "kind": "convention",
+   "statement": "when a helicopter pilot lets rotor speed decay while manoeuvring at low altitude, the NTSB defines the event as loss of lift in the low-altitude manoeuvring phase, follows it with an uncontrolled descent collision, and flags a pilot aircraft control finding with a rotor parameter not-maintained performance finding.",
+   "scope": "applies to low manoeuvring flights where the narrative blames the pilot's handling of rotor speed and no mechanical or weather cause is named, and a practice autorotation that ends badly belongs to the autorotation patterns instead.",
+   "predicts": {
+    "first_occurrence": [
+     "452500"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 7,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "601092",
+      2
+     ],
+     [
+      "601240",
+      2
+     ],
+     [
+      "452500",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L111",
+   "kind": "split",
+   "statement": "when icing conditions or ice contamination figure in a loss of control accident, the NTSB nearly always flags a conducive-to-structural-icing environmental finding, often with a pilot decision finding, but the first occurrence code depends on the phase and narrative emphasis, being an icing encounter when the icing is the named event in the enroute or descent phase and a loss of control in flight when the stall follows a takeoff or manoeuvring departure.",
+   "scope": "a narrative naming icing as the event in the enroute, cruise or descent phase points to the icing encounter code for that phase, followed by loss of control in flight or an uncontrolled descent collision, whereas a narrative stressing contamination or a stall after takeoff or in the initial climb points to loss of control in flight for the takeoff or manoeuvring phase, and an approach stall may list loss of control first with the icing encounter second; a pilot decision finding is added when the pilot chose to fly into known icing, and an aircraft control finding only when the narrative faults handling.",
+   "predicts": {
+    "first_occurrence": [
+     "404210",
+     "400210",
+     "300240",
+     "450240"
+    ],
+    "finding_categories": [
+     "030310",
+     "020415",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 7,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "404210",
+      2
+     ],
+     [
+      "300240",
+      1
+     ],
+     [
+      "400210",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L109",
+   "kind": "convention",
+   "statement": "when the cause says only that aircraft control was lost for undetermined reasons in cruise, the NTSB codes an unknown or undetermined event in the cruise phase and flags only a not-determined finding.",
+   "scope": "applies to bare cruise upsets with no described manoeuvre, no pilot cause and no mechanical or weather cause, and a narrative that describes an upset while manoeuvring moves to the loss of control in flight pattern instead.",
+   "predicts": {
+    "first_occurrence": [
+     "402000"
+    ],
+    "finding_categories": [
+     "050000"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 6,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "450240",
+      2
+     ],
+     [
+      "350240",
+      1
+     ],
+     [
+      "402000",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L113",
+   "kind": "convention",
+   "statement": "when the reason for a loss of control during takeoff stays undetermined, the NTSB usually leads with a takeoff-phase loss-of-control occurrence, in flight if the aircraft was airborne and on ground if not, flags a not-determined finding, and usually adds an aircraft performance and control parameters finding whose detail varies with the case.",
+   "scope": "applies to takeoff upsets, including helicopter departures and aborted landings, where no mechanical or weather cause is identified; follow-on occurrences such as aerodynamic stall, collision with terrain or post-impact fire are added when the narrative describes them, and a stall soon after liftoff may instead lead as an initial climb unknown occurrence.",
+   "predicts": {
+    "first_occurrence": [
+     "300240"
+    ],
+    "finding_categories": [
+     "050000",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 6,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300240",
+      2
+     ],
+     [
+      "300230",
+      1
+     ],
+     [
+      "301300",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L125",
+   "kind": "convention",
+   "statement": "when the pilot simply fails to keep control during a low-altitude manoeuvre with no cause given, the NTSB usually leads with loss of control in flight in the manoeuvring phase, follows it with a collision with terrain or an uncontrolled descent collision, and flags a pilot aircraft control finding.",
+   "scope": "applies to low manoeuvring flights where the narrative names neither a mechanical problem, a weather problem nor an obstacle, and a cause that stresses an obstacle belongs to the obstacle-clearance patterns instead.",
+   "predicts": {
+    "first_occurrence": [
+     "450240"
+    ],
+    "finding_categories": [
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 6,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "452241",
+      2
+     ],
+     [
+      "450220",
+      1
+     ],
+     [
+      "450240",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L078",
+   "kind": "convention",
+   "statement": "when a landing gear collapses because of worn or fatigued components and the pilot is not blamed, the NTSB defines the event as landing gear collapse in the landing roll and flags only a landing gear system finding for fatigue, wear or corrosion.",
+   "scope": "applies to gear failures traced to age or wear on a normal landing, whereas a collapse blamed on an earlier poor landing instead leads with the gear collapse but adds pilot and instructor findings.",
+   "predicts": {
+    "first_occurrence": [
+     "552094"
+    ],
+    "finding_categories": [
+     "010232"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 5,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "552094",
+      3
+     ],
+     [
+      "150094",
+      1
+     ],
+     [
+      "551330",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L028",
+   "kind": "convention",
+   "statement": "when the airplane collides with a bird in flight, the NTSB defines the event as a birdstrike in that phase and flags only an environmental animal or bird finding marked as an effect on equipment, with no pilot finding.",
+   "scope": "applies to bird impacts in any phase of flight where the narrative blames the animal itself rather than the pilot's choices.",
+   "predicts": {
+    "first_occurrence": [
+     "350901"
+    ],
+    "finding_categories": [
+     "030220"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 4,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "350901",
+      1
+     ],
+     [
+      "402901",
+      1
+     ],
+     [
+      "404901",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L114",
+   "kind": "convention",
+   "statement": "when a pilot fails to keep clear of terrain while manoeuvring in a canyon or similar confined terrain and no reason is established, the NTSB codes a collision with terrain or object under an unknown phase and flags a not-determined finding with an altitude not-maintained performance finding.",
+   "scope": "applies to terrain contact cases where the phase of flight is not specified by the narrative and no upset, mechanical or weather cause is described.",
+   "predicts": {
+    "first_occurrence": [
+     "990470"
+    ],
+    "finding_categories": [
+     "050000",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 4,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "402000",
+      1
+     ],
+     [
+      "404120",
+      1
+     ],
+     [
+      "450470",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L121",
+   "kind": "convention",
+   "statement": "when the pilot skips the manufacturer checklist and leaves trim or engine controls wrongly set so that directional control is lost soon after liftoff, the NTSB codes loss of control in flight in the initial climb, followed by an uncontrolled descent collision, and flags a directional control performance finding with preflight inspection and checklist-use findings against the pilot.",
+   "scope": "applies to departures where the narrative blames the incomplete preflight and checklist rather than the handling alone, and the specific control left misset is named in the narrative rather than carried as a separate aircraft finding.",
+   "predicts": {
+    "first_occurrence": [
+     "350240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020615",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 4,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300230",
+      2
+     ],
+     [
+      "350240",
+      2
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L088",
+   "kind": "convention",
+   "statement": "when the pilot waits too long to abandon a landing and the airplane rolls over, the NTSB leads with a roll over in the landing phase and flags only a delayed-action finding against the pilot.",
+   "scope": "applies to late decisions to go around where the narrative blames the timing of the decision rather than the handling, and no aircraft or environmental finding is flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "550097"
+    ],
+    "finding_categories": [
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 3,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "509490",
+      1
+     ],
+     [
+      "550097",
+      1
+     ],
+     [
+      "553490",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L064",
+   "kind": "convention",
+   "statement": "when a practice forced landing ends short of the intended touchdown point, the NTSB defines the event as a landing area undershoot in the flare or touchdown phase, follows it with a simulated training event and an attempted-recovery code, and flags a glide path performance finding with a pilot aircraft control finding.",
+   "scope": "applies to dual flights where the instructor is also blamed for waiting too long to take over or abort, in which case a delayed-action instructor finding is added.",
+   "predicts": {
+    "first_occurrence": [
+     "551370"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "508241",
+      1
+     ],
+     [
+      "551370",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L081",
+   "kind": "convention",
+   "statement": "when fuel contamination stops the engine and the NTSB blames inadequate maintenance of the fuel system, it leads with fuel contamination in the phase flown, follows it with a prior-to-flight maintenance event and total loss of engine power, and flags a fuel system finding with a maintenance personnel finding.",
+   "scope": "applies to contamination traced to wear or poor servicing of the fuel system with no pilot error blamed, and the fuel system item is fatigue, wear or corrosion or not serviced depending on what the narrative says.",
+   "predicts": {
+    "first_occurrence": [
+     "402193"
+    ],
+    "finding_categories": [
+     "010228",
+     "020620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "100194",
+      1
+     ],
+     [
+      "402193",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L095",
+   "kind": "split",
+   "statement": "when a pilot fails to keep control during an aborted takeoff, the NTSB codes two rejected-takeoff events, one a runway excursion and the other a rejected-takeoff loss of control, and flags pilot aircraft control, with the order of the two varying.",
+   "scope": "a cause that blames unexplained loss of directional control puts the runway excursion first with loss of control on ground second, a cause that blames failure to maintain control puts a rejected-takeoff loss of control code first with the runway excursion following, and the aircraft performance and control parameters finding is added only when the cause says control was not maintained.",
+   "predicts": {
+    "first_occurrence": [
+     "301300",
+     "301230",
+     "301240"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "301240",
+      1
+     ],
+     [
+      "301300",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L100",
+   "kind": "convention",
+   "statement": "when a pilot who becomes lost runs the tank dry, the NTSB leads with fuel exhaustion in cruise, follows it with a preflight event, a miscellaneous code, total power loss and an off-field landing, and flags a fuel level finding with a geographic disorientation finding.",
+   "scope": "applies to pilots who lose their position and keep flying until the fuel is gone, and a fatigue finding is added when the pilot reports being tired.",
+   "predicts": {
+    "first_occurrence": [
+     "402192"
+    ],
+    "finding_categories": [
+     "010710",
+     "020220",
+     "020135"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "402192",
+      1
+     ],
+     [
+      "600192",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L103",
+   "kind": "convention",
+   "statement": "when the pilot turns off the runway at excessive speed and hits something, the NTSB codes a ground collision in the landing roll phase and flags a pilot decision making finding with a surface speed or braking performance finding.",
+   "scope": "applies to exits from the runway after touchdown where the narrative blames speed on the turn rather than a mechanical or surface cause.",
+   "predicts": {
+    "first_occurrence": [
+     "552200"
+    ],
+    "finding_categories": [
+     "020415",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "301334",
+      1
+     ],
+     [
+      "552200",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L124",
+   "kind": "convention",
+   "statement": "when the pilot descends below the published minimum altitudes during an instrument approach because of poor planning and strikes terrain, the NTSB defines the event as controlled flight into terrain in the instrument approach phase and flags a flight planning finding with an altitude not-maintained performance finding.",
+   "scope": "applies to instrument approaches flown without upset where no mechanical or weather cause is blamed, and a medication or impairment finding is added only when the narrative names it as contributing.",
+   "predicts": {
+    "first_occurrence": [
+     "501120"
+    ],
+    "finding_categories": [
+     "020610",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "501120",
+      1
+     ],
+     [
+      "502120",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L036",
+   "kind": "convention",
+   "statement": "when the pilot takes off too close behind a large aircraft and meets its wake, the NTSB defines the event as a takeoff wake turbulence encounter, follows it with loss of control on ground and a runway excursion, and flags only a pilot identification or recognition decision finding.",
+   "scope": "applies to departures behind heavier aircraft where separation was inadequate, and no aircraft or environmental finding is flagged because the cause is the pilot's failure to recognise and avoid the wake.",
+   "predicts": {
+    "first_occurrence": [
+     "300361"
+    ],
+    "finding_categories": [
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300361",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L071",
+   "kind": "convention",
+   "statement": "when a flight control is left disconnected or misassembled because of the pilot's own inadequate preflight inspection, the NTSB leads with loss of control in flight in the phase flown, follows it with a preflight event and a flight control malfunction, and flags a preflight inspection finding with an incorrect service item on the flight control system.",
+   "scope": "applies to freshly assembled or reassembled aircraft where the pilot did not verify control connections, and the flight control item depends on which surface linkage was left unsecured.",
+   "predicts": {
+    "first_occurrence": [
+     "300240"
+    ],
+    "finding_categories": [
+     "020615",
+     "010227"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300240",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L072",
+   "kind": "convention",
+   "statement": "when an engine fails or burns just after takeoff and the pilot mishandles the emergency return, the NTSB leads with a power plant malfunction in the takeoff phase, follows it with fire or smoke and a loss of control in the emergency descent, and flags a pilot aircraft control finding with an incorrect-use engine control item and a power plant malfunction item.",
+   "scope": "applies to emergency returns where the pilot is blamed for failing to secure the failed engine or hold control, and the fire is treated as contributing when its origin is undetermined.",
+   "predicts": {
+    "first_occurrence": [
+     "300340"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620",
+     "010576",
+     "010500"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300340",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L073",
+   "kind": "convention",
+   "statement": "when the crew lets airspeed decay while manoeuvring during a simulated engine failure, the NTSB leads with an aerodynamic stall in the low-altitude manoeuvring phase, follows it with a simulated training event and an uncontrolled descent collision, and flags an airspeed performance finding with a lack-of-action finding against the crew.",
+   "scope": "applies to training flights where the stall comes from the practice emergency itself rather than from a real power loss.",
+   "predicts": {
+    "first_occurrence": [
+     "452241"
+    ],
+    "finding_categories": [
+     "010620",
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "452241",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L075",
+   "kind": "convention",
+   "statement": "when the pilot starts a takeoff while vehicles or other aircraft are operating on the runway and strikes one, the NTSB codes a ground collision in the takeoff phase and flags only a pilot decision making finding.",
+   "scope": "applies to departures into an occupied runway where the cause is the choice to go despite the traffic, and no aircraft or environmental finding is flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "300200"
+    ],
+    "finding_categories": [
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300200",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L087",
+   "kind": "convention",
+   "statement": "when a pilot is struck by or walks into a turning propeller during start-up or ground handling, the NTSB codes aircraft or propeller contact with a person in the standing start-up phase and flags only a pilot attention finding.",
+   "scope": "applies to inadvertent encounters with a rotating propeller where no mechanical or environmental cause is blamed, and the cause is the pilot's lack of attention to the propeller.",
+   "predicts": {
+    "first_occurrence": [
+     "152081"
+    ],
+    "finding_categories": [
+     "020215"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "152081",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L098",
+   "kind": "convention",
+   "statement": "when turbulence or a dust devil upsets the airplane shortly after departure and no pilot error is blamed, the NTSB codes loss of control in flight in the initial climb, follows it with a turbulence encounter and an uncontrolled descent collision, and flags only environmental turbulence and wind findings marked as an effect on operation.",
+   "scope": "applies to upsets blamed on the atmosphere itself rather than on the pilot's handling, and no personnel finding is flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "350240"
+    ],
+    "finding_categories": [
+     "030320",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "350240",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L099",
+   "kind": "convention",
+   "statement": "when a pilot makes an abrupt manoeuvre to avoid another aircraft and then loses control, the NTSB leads with the abrupt manoeuvre in the phase flown, follows it with loss of control in flight and a terrain collision, and flags a monitoring-other-aircraft attention finding against both pilots with a pilot aircraft control finding.",
+   "scope": "applies to traffic pattern and climb conflicts where the evasive action leads to an airspeed or lift problem, and the performance item is airspeed not maintained when the narrative stresses the lost airspeed.",
+   "predicts": {
+    "first_occurrence": [
+     "350270"
+    ],
+    "finding_categories": [
+     "020215",
+     "020630",
+     "010620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "350270",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L101",
+   "kind": "convention",
+   "statement": "when the pilot underestimates the distance needed to clear obstructions on a takeoff from an unprepared strip such as a road, the NTSB codes a collision during takeoff, often followed by a nose over, and flags a takeoff distance capability finding with a pilot decision making finding.",
+   "scope": "applies to departures from roads or short strips where the narrative blames misjudged takeoff distance rather than a power or weather problem, and the obstruction struck is not itself flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "300490"
+    ],
+    "finding_categories": [
+     "010610",
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300490",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L105",
+   "kind": "convention",
+   "statement": "when the wings or other primary structure fail in cruise because of a design weakness such as flutter, the NTSB leads with an aircraft structural failure in the cruise phase, follows it with loss of control in flight and an uncontrolled descent collision, and flags only structures failure and design findings with no pilot finding.",
+   "scope": "applies to in-flight breakups blamed on inadequate stiffness or missing balance weights rather than on the pilot's handling, and the structures items name the failed component and carry both a failure item and a design item.",
+   "predicts": {
+    "first_occurrence": [
+     "402337"
+    ],
+    "finding_categories": [
+     "010357"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "402337",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L110",
+   "kind": "convention",
+   "statement": "when the pilot fails to keep clear of terrain during aerobatics and investigators cannot establish why, the NTSB codes a collision with terrain or object in the aerobatics phase and flags only a not-determined finding.",
+   "scope": "applies to aerobatic flights where the narrative names the failed clearance but no cause for it, so no pilot, aircraft or environmental finding beyond not determined is flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "451470"
+    ],
+    "finding_categories": [
+     "050000"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "451470",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L112",
+   "kind": "convention",
+   "statement": "when a rotor head or similar rotating part separates in flight because of fatigue from a defective manufacturing process, the NTSB leads with a non-power component malfunction in the phase flown, follows it with a part separation from the aircraft and an uncontrolled descent collision, and flags a rotor system fatigue finding with a manufacturer finding and no pilot finding.",
+   "scope": "applies to helicopter cruise breakups traced to a production flaw rather than to wear, maintenance or the pilot's handling, and the rotor item names the failed rotor component.",
+   "predicts": {
+    "first_occurrence": [
+     "400330"
+    ],
+    "finding_categories": [
+     "010462",
+     "040130"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "400330",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L116",
+   "kind": "convention",
+   "statement": "when a propeller blade fails and separates in cruise and investigators cannot say why, the NTSB leads with part separation from the aircraft, follows it with total loss of engine power, and flags a propeller blade failure finding together with a not-determined finding and no pilot finding.",
+   "scope": "applies to propeller failures where no maintenance, fatigue or overload cause is identified, and the propeller item names the failed blade section.",
+   "predicts": {
+    "first_occurrence": [
+     "402338"
+    ],
+    "finding_categories": [
+     "010461",
+     "050000"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "402338",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L118",
+   "kind": "convention",
+   "statement": "when turbulence upsets the airplane and the NTSB blames the pilot or instructor for not regaining control, it leads with loss of control in flight in the phase flown, follows it with a turbulence encounter and an uncontrolled descent collision, and flags a general not-maintained performance finding with an aircraft control finding against the person flying.",
+   "scope": "applies to turbulence upsets where the cause is the failure to recover rather than the atmosphere itself, so no turbulence environmental finding is flagged, and the aircraft control item names the instructor when one was flying.",
+   "predicts": {
+    "first_occurrence": [
+     "404240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "404240",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L119",
+   "kind": "convention",
+   "statement": "when a landing gear leg collapses and the NTSB blames a poorly executed flare in wind, it codes only landing gear collapse in the landing roll and flags only a general task performance finding against the pilot.",
+   "scope": "applies to landings where the narrative blames the pilot's technique rather than any gear defect, and no aircraft or environmental finding is flagged even though wind is mentioned.",
+   "predicts": {
+    "first_occurrence": [
+     "552094"
+    ],
+    "finding_categories": [
+     "020600"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "552094",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L122",
+   "kind": "convention",
+   "statement": "when poor preflight planning leads the pilot to take off with a tailwind and the airplane strikes something, the NTSB codes a collision during takeoff and flags only a flight planning finding under planning and preparation.",
+   "scope": "applies to departures where the cause is the failure to account for wind direction during planning and no aircraft or environmental finding is flagged.",
+   "predicts": {
+    "first_occurrence": [
+     "300490"
+    ],
+    "finding_categories": [
+     "020610"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "300490",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L126",
+   "kind": "convention",
+   "statement": "when a faulty ignition component lets the engine start unexpectedly while someone turns the propeller by hand and the pilot is not blamed, the NTSB leads with an electrical system malfunction before flight, follows it with a ground handling event, and flags only an ignition system finding for the damaged part.",
+   "scope": "applies to hand-turning of the propeller on the ground where a broken or degraded ignition lead or magneto grounding wire is the cause, and the ignition item names the failed component rather than any pilot action.",
+   "predicts": {
+    "first_occurrence": [
+     "100332"
+    ],
+    "finding_categories": [
+     "010574"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 1,
+    "agrees": 1,
+    "first_codes": [
+     [
+      "100332",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L055",
+   "kind": "split",
+   "statement": "when the cause of an engine power loss is undetermined, the NTSB codes the power loss for the phase flown followed by the forced landing or collision, and flags a not-determined finding that is sometimes alone and sometimes accompanied or even replaced by a power plant or engine item recorded as failed or not specified.",
+   "scope": "applies to total or partial power loss accounts in climb, cruise, descent, pattern and manoeuvring phases where the narrative gives no reason for the loss, the loss code follows the narrative wording of quitting or reduced power, an occasional power plant malfunction code may lead instead, and the finding is not-determined alone unless the narrative names a power plant failure or an unspecified engine item.",
+   "predicts": {
+    "first_occurrence": [
+     "350341",
+     "402341",
+     "350342",
+     "450341",
+     "300342",
+     "404341",
+     "508342",
+     "506341",
+     "400341"
+    ],
+    "finding_categories": [
+     "050000",
+     "010571",
+     "010500",
+     "010585"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 104,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "350341",
+      14
+     ],
+     [
+      "402341",
+      12
+     ],
+     [
+      "350342",
+      11
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L035",
+   "kind": "evidence",
+   "statement": "when a total loss of engine power is traced to a mechanical or maintenance fault, the first occurrence is usually loss of engine power (total) for the phase of flight, with fuel starvation leading only when fuel delivery is the stated cause, and the findings name the specific failed part in whichever system it belongs to, with a condition such as failure, malfunction, damaged or degraded, or inoperative, and a maintenance or inspection finding when someone's upkeep is blamed.",
+   "scope": "read the narrative for which part gave out, whether engine internals, carburetor or fuel control, fuel lines or vents, exhaust, ignition wiring, oil lines, or throttle linkage, since the finding follows that system rather than always the engine, and for whether the owner or a mechanic is blamed for installation, maintenance or inspection, which adds a task performance finding and often a separate powerplant malfunction occurrence after the power loss.",
+   "predicts": {
+    "first_occurrence": [
+     "402341",
+     "350341",
+     "400341",
+     "350191"
+    ],
+    "finding_categories": [
+     "010585",
+     "010573",
+     "010571",
+     "010576",
+     "010578",
+     "010579",
+     "010228",
+     "020620",
+     "020615"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 66,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "402341",
+      19
+     ],
+     [
+      "350341",
+      9
+     ],
+     [
+      "400341",
+      7
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L102",
+   "kind": "split",
+   "statement": "when the cause is an improper landing flare, the first occurrence is usually a hard landing in the flare phase, with the flare performance finding and a pilot aircraft control finding, and when an instructor was supervising a delayed action finding is added.",
+   "scope": "applies to landings where the narrative blames the flare technique; the flare hard landing code leads in most cases, the generic landing phase hard landing or flare abnormal runway contact code leads in a few, later codes often record a runway excursion, loss of control on ground, nose over or gear collapse, and a gust finding is added when wind is named as contributing.",
+   "predicts": {
+    "first_occurrence": [
+     "551092",
+     "550092",
+     "551090"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "020410",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 58,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "551092",
+      32
+     ],
+     [
+      "551090",
+      11
+     ],
+     [
+      "550092",
+      3
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L043",
+   "kind": "split",
+   "statement": "when an engine, propeller, turbine or fuel part fails because of fatigue, corrosion, lack of lubrication or faulty maintenance, the NTSB flags the failed power plant, ignition, fuel, oil system, accessory drive or propeller part, together with a maintenance or inspection finding against the mechanic or owner when work was at fault, but the first code divides between a power plant component malfunction and a power loss code, total or partial, in the phase flown.",
+   "scope": "a lead on the part failing points to the power plant malfunction code in cruise, descent, climb or manoeuvring, a lead on the engine ceasing or reducing power points to the total or partial power loss code, an emergency landing and terrain collision follow, a prior-to-flight maintenance or servicing event follows when work was done wrongly, and the finding item depends on whether the narrative blames installation, service, a missed inspection, a skipped post-maintenance check or simply fatigue of the part.",
+   "predicts": {
+    "first_occurrence": [
+     "402340",
+     "402341",
+     "350341",
+     "350342",
+     "403340",
+     "403341",
+     "402342",
+     "404341",
+     "404340",
+     "452341",
+     "450340",
+     "400341"
+    ],
+    "finding_categories": [
+     "010461",
+     "010585",
+     "010572",
+     "010574",
+     "010571",
+     "010583",
+     "010105",
+     "010710",
+     "020615",
+     "020620",
+     "010573",
+     "010228"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 56,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "402341",
+      14
+     ],
+     [
+      "350341",
+      6
+     ],
+     [
+      "400341",
+      6
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L023",
+   "kind": "split",
+   "statement": "when the pilot fails to keep clear of a wire, tree, crops or similar obstacle, the first code follows the phase, being low altitude operations for low manoeuvring, collision during takeoff or landing for initial climb, and collision with terrain or object for approach, with an object environmental finding, an altitude not maintained finding and a pilot monitoring or planning finding flagged.",
+   "scope": "this applies to obstacle strikes during low flying such as crop work or wire contact, during the initial climb after departure, and on approach or short final, where low altitude operations most often leads in low flying and is sometimes followed by a collision with terrain or object code, while a loss of engine power or a control loss leaves the first code to the power or control event.",
+   "predicts": {
+    "first_occurrence": [
+     "452220",
+     "350490",
+     "452470",
+     "500470"
+    ],
+    "finding_categories": [
+     "030220",
+     "010620",
+     "020215",
+     "020610"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 54,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "452220",
+      14
+     ],
+     [
+      "350490",
+      7
+     ],
+     [
+      "452470",
+      5
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L106",
+   "kind": "split",
+   "statement": "when the pilot fails to keep clear of wires, poles, trees or other obstacles while flying low or manoeuvring, the NTSB most often codes low altitude operations in the low-altitude flying phase, sometimes a plain collision with terrain or object instead, and codes controlled flight into terrain in the approach phase when clearance is lost on approach.",
+   "scope": "applies to obstacle-clearance failures at low level without a described upset, where low-altitude flying narratives take the low altitude operations code and sometimes the plain collision code, approach narratives take the approach controlled flight into terrain code, and takeoff or landing contacts with poles or wires take a collision during takeoff or landing code; findings usually include a monitoring-environment attention finding or a wire finding, with an altitude not-maintained finding, an identification or decision finding, or a weather or visibility finding added in some cases, and an unexplained cause carries only an unknown finding.",
+   "predicts": {
+    "first_occurrence": [
+     "452220",
+     "452470",
+     "500120",
+     "507120",
+     "350490"
+    ],
+    "finding_categories": [
+     "010620",
+     "020215",
+     "030220",
+     "020415",
+     "030350",
+     "020610"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 52,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "452220",
+      17
+     ],
+     [
+      "452470",
+      5
+     ],
+     [
+      "402120",
+      3
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L011",
+   "kind": "split",
+   "statement": "when the cause names a pilot's improper flare or descent rate in a hard landing, the lead occurrence is a hard landing coded to the flare phase if the flare is named and to the generic landing phase if descent rate or the landing as a whole is named, and the findings pair a pilot aircraft control finding with a landing flare or descent rate performance finding.",
+   "scope": "abnormal runway contact is usually a later code after the hard landing but can lead when strong wind and descent rate are blamed together, bounces, nose-over, loss of control or ground collision follow as later codes, a wind finding is added only when wind is named as contributing or the sole cause, an experience finding is added when limited time in the make and model is cited, and when wind alone is blamed the lead is still a hard landing with only a wind finding and no pilot finding.",
+   "predicts": {
+    "first_occurrence": [
+     "551092",
+     "550092",
+     "551090",
+     "550090"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "030340",
+     "020310"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 50,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "551092",
+      26
+     ],
+     [
+      "551090",
+      9
+     ],
+     [
+      "550092",
+      7
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L003",
+   "kind": "convention",
+   "statement": "when the probable cause is the pilot choosing an unsuitable landing or takeoff area, the NTSB flags a pilot decision making and judgment finding, usually the only pilot finding, plus an environmental finding marked as a decision related to the condition.",
+   "scope": "applies to off-airport, rough, soft, sloped or short surfaces and to unfavorable wind chosen for the operation, and the environmental item depends on whether the surface, the terrain or the wind made the area unsuitable.",
+   "predicts": {
+    "first_occurrence": [],
+    "finding_categories": [
+     "020415",
+     "030230",
+     "030210",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 46,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "300230",
+      5
+     ],
+     [
+      "552230",
+      4
+     ],
+     [
+      "300490",
+      3
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L030",
+   "kind": "split",
+   "statement": "when a landing gear, brake, tailwheel or other non-power part fails or is poorly maintained and the NTSB blames the part or its maintenance rather than the pilot, the first code is usually the landing roll outcome, either a gear collapse, a loss of control on ground or a non-power malfunction, while a door or rotor part that departs in flight starts with part separation.",
+   "scope": "a collapsed gear leg on the landing roll points to the gear collapse code, a brake or tailwheel fault that took away directional control points to the loss of control on ground code or the non-power malfunction code, a door or rotor part that separated in flight points to the part separation code in the phase flown, and a prior-to-flight maintenance event is added later when improper installation, servicing or inspection is blamed, with maintenance personnel findings alongside the failed part finding.",
+   "predicts": {
+    "first_occurrence": [
+     "552094",
+     "552230",
+     "552330",
+     "402338",
+     "500338",
+     "100040"
+    ],
+    "finding_categories": [
+     "010232",
+     "010352",
+     "020615",
+     "020620"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 40,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "552230",
+      5
+     ],
+     [
+      "552330",
+      5
+     ],
+     [
+      "500330",
+      4
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L042",
+   "kind": "split",
+   "statement": "when the pilot or instructor mismanages the fuel supply, such as by poor selector use, an unused boost pump, poor monitoring or an improper in-flight transfer, and the engine quits with fuel still aboard, the NTSB flags a fuel management or fuel system incorrect-use or not-used finding with a pilot equipment-use, monitoring or action finding, but the first code divides between fuel starvation and total loss of engine power.",
+   "scope": "the lead is fuel starvation when the narrative stresses fuel not reaching the engine and total power loss when it stresses the engine stopping, the phase flown including takeoff sets the phase of the code, the same items are flagged against the instructor when one was flying, a fuel planning finding is added when the narrative blames how the fuel was planned, a monitoring-equipment attention finding is added when the pilot failed to watch the fuel state, a forgotten-action or checklist-use finding is added when a skipped step or checklist is blamed, and an incomplete restart finding is added when the pilot's recovery attempt is blamed.",
+   "predicts": {
+    "first_occurrence": [
+     "508191",
+     "508341",
+     "506191",
+     "506341",
+     "500191",
+     "350191",
+     "350341",
+     "402341",
+     "507191",
+     "402191",
+     "404341",
+     "404191",
+     "300341",
+     "300191"
+    ],
+    "finding_categories": [
+     "010710",
+     "010228",
+     "020630",
+     "020410",
+     "020610",
+     "020215"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 37,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "350191",
+      5
+     ],
+     [
+      "402191",
+      3
+     ],
+     [
+      "300191",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L010",
+   "kind": "split",
+   "statement": "when the pilot chooses an unsuitable or unimproved surface for landing, the NTSB flags a pilot decision finding together with an environmental finding about either the terrain or the landing surface, and the first code follows whichever outcome the narrative leads with.",
+   "scope": "a nose over points to the nose over code, loss of control points to loss of control on ground, and a general excursion or terrain strike points to the miscellaneous landing roll code, with the phase shifting to flare or touchdown when the event happens at touchdown, and a mechanical or power loss that began the sequence takes the first code instead.",
+   "predicts": {
+    "first_occurrence": [
+     "552096",
+     "552230",
+     "552900",
+     "551096",
+     "551230"
+    ],
+    "finding_categories": [
+     "020415",
+     "030210",
+     "030230"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 23,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "552096",
+      3
+     ],
+     [
+      "552230",
+      3
+     ],
+     [
+      "550090",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L022",
+   "kind": "split",
+   "statement": "when a defect in the fuel system or its plumbing, such as blocked vents, a leaking tank, a clogged screen or a failed pump, stops fuel reaching the engine, the NTSB codes a power loss together with a fuel starvation or exhaustion event in whatever phase the engine quit, and the first code is whichever of those the cause statement names first.",
+   "scope": "the first code is fuel starvation or fuel exhaustion when the cause opens with fuel not reaching the engine or the tank running dry, and total or partial power loss when the cause opens with the engine losing power, while the non-power malfunction event is usually a second or third code and not the first; the phase follows where the power was lost, so initial climb, enroute-cruise, maneuvering and approach all occur, fuel contamination found before flight takes the first code when contaminated fuel is the origin, and findings name the failed fuel system item, with an inspection, planning or maintenance finding added when the pilot or builder's checks or work were inadequate.",
+   "predicts": {
+    "first_occurrence": [
+     "402341",
+     "400191",
+     "400192",
+     "402191",
+     "350191",
+     "350341",
+     "350342",
+     "450341",
+     "100193"
+    ],
+    "finding_categories": [
+     "010228",
+     "020620",
+     "020615",
+     "020610",
+     "010573",
+     "010710",
+     "010714"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 23,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "350341",
+      5
+     ],
+     [
+      "402191",
+      3
+     ],
+     [
+      "402341",
+      3
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L037",
+   "kind": "split",
+   "statement": "when a pilot becomes spatially disoriented after flying into cloud, fog, darkness or reduced visibility, the NTSB's first code follows what the cause stresses, loss of control in flight when the cause is the disorientation and the lost control itself, and VFR encounter with IMC when the cause is the decision to depart or continue into the weather.",
+   "scope": "a cause worded as failure to maintain control due to disorientation, in climb, initial climb, cruise or on an approach, gives loss of control in flight first, followed by an uncontrolled descent collision, with spatial disorientation and pilot aircraft control findings and sometimes only the disorientation finding, and a cause that blames the decision to take off or continue into weather without instrument qualification gives VFR encounter with IMC first, often followed by loss of visual reference, with a decision finding and a weather visibility finding, and the disorientation finding is often absent in these cases, although a low-level departure into fog can still start with the VFR encounter even when the cause names the disorientation.",
+   "predicts": {
+    "first_occurrence": [
+     "400240",
+     "350240",
+     "501240",
+     "401240",
+     "400401",
+     "402401",
+     "452401",
+     "350401"
+    ],
+    "finding_categories": [
+     "020220",
+     "020630",
+     "020415",
+     "030350"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 23,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "400240",
+      4
+     ],
+     [
+      "450240",
+      3
+     ],
+     [
+      "350240",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L086",
+   "kind": "split",
+   "statement": "when the pilot loses control during a go-around or aborted landing, the NTSB usually flags a performance finding on airspeed, angle of attack, directional control or general control not maintained together with a pilot aircraft control finding, but the first code follows the narrative and phase, and divides between aerodynamic stall or spin, loss of control in flight, collision with terrain or object, and a takeoff runway excursion or ground loss of control.",
+   "scope": "a narrative of low airspeed or a stall points to aerodynamic stall or spin in the go-around phase, a loss of control with no stall described points to loss of control in flight, striking terrain or an obstacle with no described upset points to the terrain collision code, an aborted landing described as a takeoff or initial climb moves the same codes into the takeoff or initial climb phase, a crosswind or runway departure narrative points to loss of control on the ground followed by a runway excursion with an added wind finding, and an unexplained loss of control adds a not-determined finding.",
+   "predicts": {
+    "first_occurrence": [
+     "509240",
+     "509241",
+     "509470",
+     "300240",
+     "300300",
+     "350241"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "020410",
+     "050000"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 23,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "509240",
+      4
+     ],
+     [
+      "509241",
+      3
+     ],
+     [
+      "509470",
+      3
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L069",
+   "kind": "split",
+   "statement": "when a pilot continues visual flight into instrument conditions and the airplane then hits terrain, the first code is the VFR encounter with IMC code, or the outcome code of controlled flight into terrain or loss of control in flight, in the phase flown, usually followed by the other, with a decision-making finding nearly always and a planning finding when preparation is blamed.",
+   "scope": "a narrative that stresses the choice to enter or stay in the weather points to the VFR encounter with IMC code first, whereas one that stresses disorientation or an upset points to loss of control in flight first and one that stresses reaching terrain points to controlled flight into terrain first, with the weather code usually following; the phase is cruise, initial climb, maneuvering or approach as flown, thunderstorm weather adds windshear or thunderstorm and structural failure codes, and the planning finding appears only when weather planning or general preparation is blamed.",
+   "predicts": {
+    "first_occurrence": [
+     "402401",
+     "402120",
+     "402240",
+     "350401",
+     "450401",
+     "452401",
+     "508120"
+    ],
+    "finding_categories": [
+     "020415",
+     "030350",
+     "020610",
+     "020410",
+     "020220"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 21,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "400240",
+      3
+     ],
+     [
+      "402120",
+      3
+     ],
+     [
+      "400401",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L009",
+   "kind": "split",
+   "statement": "when a failed brake, wheel, tailwheel, pedal or other non-power part leads to loss of directional control on the ground, the NTSB flags the failed part in the landing gear or flight control system and usually a directional control finding, but the first occurrence is spread across loss of control on ground, a component malfunction, part separation or a runway excursion, with no single code dominating.",
+   "scope": "applies to landing roll and takeoff roll events where a worn, broken, detached or wrongly installed ground-handling part is named as the cause, loss of control on ground is the first code when the narrative leads with the pilot's inability to steer, a component malfunction or part separation code comes first when the failure is the initiating event, a runway excursion can come first when the narrative leads with the departure from the runway, the directional control finding may read not possible or not attained and is sometimes absent or replaced by a pilot aircraft control finding, and faulty installation or inspection adds a maintenance finding.",
+   "predicts": {
+    "first_occurrence": [
+     "552230",
+     "552330",
+     "552338",
+     "300330",
+     "300333",
+     "300300",
+     "300230"
+    ],
+    "finding_categories": [
+     "010232",
+     "010227",
+     "010620",
+     "020620",
+     "020615"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 20,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "552230",
+      6
+     ],
+     [
+      "552330",
+      6
+     ],
+     [
+      "552338",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L083",
+   "kind": "split",
+   "statement": "when a landing gear leg, actuator, spring or attach point fails from a crack, fatigue, wear or overstress and the pilot is not blamed, the NTSB flags a landing gear system finding on the failed component, and the first occurrence is a landing-phase code that is either landing gear collapse or a non-power malfunction, usually followed by a runway excursion or nose over.",
+   "scope": "a lead on the leg giving way points to the landing gear collapse code and a lead on the part failing points to the non-power malfunction code, the phase of the first code follows the wording of the cause as flare or touchdown, landing roll or generic landing, a malfunction from an earlier takeoff may come first when the part is said to have failed before the landing, a general structures fatigue item replaces the landing gear system finding only when the cause names a cracked strut without naming the gear system, a maintenance or inspection finding against maintenance personnel is added when a crack or wear was missed in past inspections and a prior-to-flight maintenance event may follow, and a manufacturer design finding and a related maintenance information finding are added when the design or the inspection guidance is blamed.",
+   "predicts": {
+    "first_occurrence": [
+     "552094",
+     "551330",
+     "551094",
+     "550094",
+     "552330",
+     "550330",
+     "300330",
+     "100040"
+    ],
+    "finding_categories": [
+     "010232",
+     "010300",
+     "020620",
+     "020615",
+     "040110"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 20,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "552094",
+      5
+     ],
+     [
+      "551330",
+      3
+     ],
+     [
+      "300330",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L004",
+   "kind": "split",
+   "statement": "when the pilot fails to keep clear of a building, tree, truck, parked airplane, sign or other object or aircraft while moving on the ground, the NTSB flags either a pilot monitoring attention finding, a perception finding or an incorrect-action finding, and the first code is a ground collision or a taxi collision with an object if the airplane was taxiing but a collision during takeoff or landing if it was in the takeoff run.",
+   "scope": "the phase of operation at the moment of contact decides between the taxi ground collision code, the taxi collision with terrain or object code when a fixed marker or obstacle was struck, whether taxiing to or from the runway, and the takeoff collision code, and the wording of the cause decides between the attention, perception and incorrect action findings, with a monitoring-other-aircraft attention item when the narrative blames inadequate lookout for another aircraft, and a general equipment-use finding sometimes added.",
+   "predicts": {
+    "first_occurrence": [
+     "250200",
+     "253200",
+     "251200",
+     "300490",
+     "253470"
+    ],
+    "finding_categories": [
+     "020215",
+     "020410",
+     "020220",
+     "020630",
+     "030220"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 19,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "250200",
+      4
+     ],
+     [
+      "251200",
+      4
+     ],
+     [
+      "300490",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L070",
+   "kind": "split",
+   "statement": "when a pilot fails to hold airspeed after an engine power loss, the first code is either the fuel or power loss code or a stall or loss of control code, and the phase of flight in it is where the trouble began, with an airspeed performance finding and often an aircraft control finding.",
+   "scope": "the lead follows whichever event the probable cause names first, so a cause that opens with the fuel or engine problem leads with fuel contamination, fuel starvation or partial or total power loss, while a cause that opens with the airspeed failure leads with the stall or loss of control in flight code; the phase prefix is the phase where the power loss or the handling problem began, such as takeoff, initial climb, maneuvering, the pattern or cruise, and emergency descent is used only when the descent itself is the framing; fuel planning and fluid findings are added only when fuel is named in the cause, and an action or aircraft control finding is added when the pilot's handling is blamed.",
+   "predicts": {
+    "first_occurrence": [
+     "600241",
+     "600240",
+     "450240",
+     "350193",
+     "350342",
+     "400191",
+     "506240"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "010710",
+     "020610",
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 18,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "350342",
+      3
+     ],
+     [
+      "450240",
+      2
+     ],
+     [
+      "600241",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L061",
+   "kind": "convention",
+   "statement": "when the pilot touches down long or fast, or lands with a tailwind, and the airplane overruns the runway, the NTSB usually leads with a landing roll runway excursion followed by a landing area overshoot or collision with terrain or object code, and flags performance and control parameter findings for airspeed or approach path together with aircraft control or incorrect action, reserving decision making for a blamed choice to land downwind.",
+   "scope": "applies to overruns after a stabilized or normal landing attempt where the narrative blames the touchdown point, excess airspeed, or a downwind landing, not to overruns that follow a hard landing, a turbulence encounter, or a delayed go-around, where the lead code is a hard landing or takeoff excursion.",
+   "predicts": {
+    "first_occurrence": [
+     "552300"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "020410",
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 14,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "552300",
+      4
+     ],
+     [
+      "551380",
+      3
+     ],
+     [
+      "550380",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L015",
+   "kind": "split",
+   "statement": "when a pilot lands with the landing gear retracted, including on water, the NTSB almost always flags the landing gear system as not used and adds a forgotten-action, equipment-use or attention finding, and the lead code is landing gear not configured in the landing phase the narrative describes, unless a nose over, a collision with the surface or a miscellaneous approach code leads instead.",
+   "scope": "the landing phase picks the lead: flare or touchdown, generic landing and landing roll each have their own landing gear not configured code, and a narrative that stresses the resulting nose over or contact with the surface or the incomplete checklist on final puts that code first with the gear code second; the added finding varies with the narrative, so a forgotten action is common, an equipment or checklist finding fits a skipped checklist, an attention finding fits a distraction, and a monitoring finding against the instructor fits a training flight.",
+   "predicts": {
+    "first_occurrence": [
+     "551095",
+     "550095",
+     "552095",
+     "551096",
+     "551470",
+     "508900"
+    ],
+    "finding_categories": [
+     "010232",
+     "020410",
+     "020630",
+     "020215"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 13,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "551095",
+      4
+     ],
+     [
+      "550095",
+      3
+     ],
+     [
+      "402332",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L062",
+   "kind": "convention",
+   "statement": "when a pilot deliberately flies low and fails to keep clear of an obstacle, wire or the water, the NTSB codes low altitude operations as the first event, often followed by a collision with terrain or object, and flags a pilot attention or decision finding, an altitude performance finding, or both.",
+   "scope": "applies to deliberate low flights such as observation, survey, sightseeing or showing off, where the narrative blames the choice to fly low plus poor lookout or poor clearance; the pilot item may be attention, decision or situational awareness, and not every case carries all of them; an object finding is added only when a specific structure was struck and a light condition finding only when glare is blamed.",
+   "predicts": {
+    "first_occurrence": [
+     "452220"
+    ],
+    "finding_categories": [
+     "020215",
+     "020415",
+     "010620",
+     "020220"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 11,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "452220",
+      8
+     ],
+     [
+      "452470",
+      2
+     ],
+     [
+      "451220",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L017",
+   "kind": "convention",
+   "statement": "when engine power is only partly lost just after departure, the NTSB defines the event as a partial power loss in initial climb and follows it with an emergency descent or off-field landing code and often a nose over or gear collapse code.",
+   "scope": "the finding depends on the evidence: a failed engine control or other component is flagged as that component failing, an unexplained loss is coded as not determined, and a pilot decision finding is added only when the narrative blames the pilot for flying with a known deficiency.",
+   "predicts": {
+    "first_occurrence": [
+     "350342"
+    ],
+    "finding_categories": [
+     "050000",
+     "010576",
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 10,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "300342",
+      3
+     ],
+     [
+      "350342",
+      3
+     ],
+     [
+      "402191",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L020",
+   "kind": "split",
+   "statement": "when a practice autorotation ends badly, the first code is usually an autorotation-phase code, most often loss of control in flight or hard landing, but it moves to a landing-flare or touchdown code such as abnormal runway contact or hard landing when the narrative centers on a hovering autorotation or the final touchdown, with a pilot aircraft control finding in nearly every case.",
+   "scope": "a rotor speed not maintained or a recovery that went wrong in a full practice autorotation points to loss of control in flight, hard landing or loss of lift in the autorotation phase, with an attempted-recovery code often following and a training-event code often listed; an aggressive recovery from excess descent rate points to loss of tail rotor effectiveness; a hovering autorotation or a low-level touchdown mishap points to a landing-flare or touchdown code; an instructor who was slow to take over or lax in supervising adds a delayed-action or monitoring finding for the instructor, and a rotor parameter, airspeed or descent rate performance finding names what was not maintained.",
+   "predicts": {
+    "first_occurrence": [
+     "601240",
+     "601092",
+     "601500",
+     "601242",
+     "551092",
+     "551090"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620",
+     "020410",
+     "020215"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 10,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "601240",
+      3
+     ],
+     [
+      "551092",
+      2
+     ],
+     [
+      "601092",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L057",
+   "kind": "convention",
+   "statement": "when the airplane fails to stop within the runway after touchdown, the NTSB opens with a landing roll runway excursion code and follows it with a collision with object, overshoot or nose over code, and the pilot findings are usually aircraft control, delayed action or airspeed rather than a capability finding.",
+   "scope": "applies to landings where the airplane runs off the end or side of the runway during the roll; the braking or landing distance capability finding appears only when the narrative says stopping performance was exceeded, surface and terrain findings are added mainly for unimproved or remote strips, and when the sequence starts with a hard landing, bounce or aborted landing that event is coded first instead.",
+   "predicts": {
+    "first_occurrence": [
+     "552300"
+    ],
+    "finding_categories": [
+     "020630",
+     "020410",
+     "010620",
+     "010610"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 10,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "552300",
+      4
+     ],
+     [
+      "300300",
+      1
+     ],
+     [
+      "300490",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L084",
+   "kind": "split",
+   "statement": "when an in-flight breakup follows the pilot's exceeding of design limits, the NTSB codes aircraft structural failure in the phase flown, maneuvering or cruise, as the first event if the overstress itself started the sequence, but if a VFR encounter with IMC or a disorientation-driven loss of control came first, that event leads and the structural failure follows, often in the uncontrolled descent phase, with a terrain collision usually closing the chain.",
+   "scope": "the first code is structural failure only when the pilot's handling or a deliberate maneuver or excess speed is the start of the chain, a weather or disorientation start puts the encounter with IMC or the loss of control first and may add a preflight event or a loss of visual reference, the closing terrain collision is often omitted in cruise breakups, the structures item and capability-exceeded flag depend on the failed component, and pilot findings range from incorrect action and aircraft control to decision making and spatial disorientation, with a builder's defective construction adding a manufacturer finding.",
+   "predicts": {
+    "first_occurrence": [
+     "450337",
+     "402337",
+     "650337",
+     "402401",
+     "300401",
+     "400240"
+    ],
+    "finding_categories": [
+     "010620",
+     "010300",
+     "010355",
+     "010357",
+     "020410",
+     "020630",
+     "020220",
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 8,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "450337",
+      3
+     ],
+     [
+      "402337",
+      2
+     ],
+     [
+      "300401",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L085",
+   "kind": "evidence",
+   "statement": "when the narrative names an overweight or out-of-limits loaded airplane as contributing to a takeoff or initial climb accident, the NTSB most often flags an aircraft capability finding for the exceeded weight or center of gravity limit, adding a planning and preparation finding for weight and balance calculations only when the pilot is faulted for not computing or complying with them, and a loading handling finding only when the narrative faults how the airplane was loaded.",
+   "scope": "applies to takeoff and initial climb accidents where the overweight or loading condition is cited in the probable cause, usually as a contributing item behind a lead occurrence such as loss of control in flight, runway excursion or gear collapse, not to cases where loading is the main cause.",
+   "predicts": {
+    "first_occurrence": [
+     "350240",
+     "300094",
+     "300300"
+    ],
+    "finding_categories": [
+     "010610",
+     "020610",
+     "010115"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 8,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "350240",
+      2
+     ],
+     [
+      "300094",
+      1
+     ],
+     [
+      "300300",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L060",
+   "kind": "convention",
+   "statement": "when the pilot or another crew member inadvertently moves an engine or propeller control so that power or thrust is lost with no mechanical fault, the NTSB codes a personnel action finding of incorrect action, adds a control-system finding for the specific control moved as unintentional or unnecessary use, and opens the occurrences with a power loss, shutdown or malfunction event whose type and phase follow the flight phase and is usually followed by an emergency landing.",
+   "scope": "applies to inadvertent mixture, fuel cutoff switch, power lever, propeller lever or feathering operation in flight with no aircraft fault blamed, where the lead occurrence and the control item depend on the control moved and the phase of flight.",
+   "predicts": {
+    "first_occurrence": [
+     "402341"
+    ],
+    "finding_categories": [
+     "020410",
+     "010576",
+     "010461"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 7,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "350342",
+      1
+     ],
+     [
+      "400340",
+      1
+     ],
+     [
+      "402341",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L063",
+   "kind": "split",
+   "statement": "when an airplane or helicopter moves or surges uncontrolled while standing with the engine running, the first code is a standing loss of control on ground in the start-up phase if it happened during engine start, and in the operating phase (or its miscellaneous code) if the pilot left the controls, with a ground collision or rollover often following and with pilot aircraft-control, decision or action findings and engine control or parking and securing findings.",
+   "scope": "a start-up that gets away from the pilot points to the start-up loss of control on ground code, then a start-up ground collision, with a pilot aircraft-control or equipment-use finding and often an engine control finding; a pilot who exits with the engine running, especially leaving a helicopter's collective unsecured or in gusty wind, points to the operating-phase loss of control on ground code or the operating miscellaneous code, with a parking and securing incorrect-use finding and a pilot decision or incorrect action finding.",
+   "predicts": {
+    "first_occurrence": [
+     "152230",
+     "153230",
+     "153900"
+    ],
+    "finding_categories": [
+     "020630",
+     "010576",
+     "010110",
+     "020410",
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 7,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "152230",
+      2
+     ],
+     [
+      "153230",
+      2
+     ],
+     [
+      "153900",
+      2
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L068",
+   "kind": "split",
+   "statement": "when the pilot uses the brakes improperly or unintentionally during the landing rollout, the NTSB flags a brake incorrect-use or unintended-use finding with a pilot incorrect action finding and often an aircraft control finding, but the first code divides between a nose over and a runway excursion in the landing roll.",
+   "scope": "applies to rollouts where heavy, abrupt or inadvertent braking such as from misplaced feet on the pedals is blamed and no mechanical brake fault is found, a lead on the airplane tipping forward points to the nose over code followed by loss of control on ground, and a lead on the airplane leaving the runway points to the runway excursion code followed by an overshoot code, with a general not-maintained performance finding when the narrative speaks of control in general.",
+   "predicts": {
+    "first_occurrence": [
+     "552096",
+     "552300"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620",
+     "010232",
+     "020410"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 7,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "552096",
+      4
+     ],
+     [
+      "301096",
+      1
+     ],
+     [
+      "552090",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L021",
+   "kind": "split",
+   "statement": "when gusty wind upsets a helicopter, the first code follows the phase the pilot was in and not the later rollover or rotor strike, so a pilot at the controls in a hover is coded loss of control in the hover or a hover collision with terrain or an object, a pilot landing is coded loss of control in the landing phase, and a helicopter left running without its pilot or hit by gusts during shutdown is coded standing miscellaneous.",
+   "scope": "a pilot at the controls who loses control while hovering points to the hover loss of control code or, when the narrative goes straight to contact, the hover collision code, with aircraft control and performance findings; a gusty approach to land points to the landing loss of control code with the same findings; an unattended helicopter with the engine running points to the standing miscellaneous code with a decision finding; and gusts during shutdown that make the blades strike the tail point to the standing miscellaneous code with only a wind effect on equipment finding; dynamic rollover and roll over codes come later in the sequence.",
+   "predicts": {
+    "first_occurrence": [
+     "453240",
+     "453470",
+     "550240",
+     "153900"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620",
+     "020415",
+     "030340"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 6,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "153900",
+      2
+     ],
+     [
+      "153230",
+      1
+     ],
+     [
+      "453240",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "edited in 2009",
+    "edited in 2009",
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L029",
+   "kind": "split",
+   "statement": "when a low altitude windshear encounter is blamed without any pilot decision, the NTSB leads with windshear or thunderstorm in the phase flown, but when the narrative faults the pilot for pressing on into threatening weather the lead becomes a loss of control code, in flight or on the ground depending on the phase, with the weather event following or omitted.",
+   "scope": "a bare windshear or downdraft encounter in takeoff or initial climb points to the windshear or thunderstorm code in that phase with only a wind finding, whereas a pilot decision to continue an approach or landing toward convective weather adds a decision finding and a decision-related weather finding and moves the lead to loss of control in flight on approach or loss of control on ground in the landing roll.",
+   "predicts": {
+    "first_occurrence": [
+     "300390",
+     "350390",
+     "508240",
+     "552230"
+    ],
+    "finding_categories": [
+     "030340",
+     "030330",
+     "020415"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 6,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "300390",
+      1
+     ],
+     [
+      "350390",
+      1
+     ],
+     [
+      "402240",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L034",
+   "kind": "split",
+   "statement": "when the cause names a structural part as failing from corrosion or overload the first code is aircraft structural failure, in the generic landing phase for a failure at touchdown and in the landing roll phase for a side-load overload, but when the cause only says a hard landing damaged a part the first code is hard landing followed by an unknown occurrence.",
+   "scope": "a corroded fuselage structure failing at touchdown gets the generic landing structural failure code with a fatigue or corrosion structures finding and abnormal runway contact after it, an axle overload from poor crosswind technique gets the landing roll structural failure code with an incorrect action finding and a capability-exceeded structures item, and landing gear damage attributed to an earlier hard landing gets the hard landing code first with a damaged or degraded landing gear finding.",
+   "predicts": {
+    "first_occurrence": [
+     "550337",
+     "552337",
+     "551092"
+    ],
+    "finding_categories": [
+     "010353",
+     "010300",
+     "020410",
+     "010232"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 5,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "550337",
+      1
+     ],
+     [
+      "551092",
+      1
+     ],
+     [
+      "552094",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L090",
+   "kind": "convention",
+   "statement": "when a helicopter practice emergency manoeuvre ends in a hard or abnormal touchdown, the NTSB usually leads with a landing-phase contact occurrence such as hard landing, adds a simulated training event, and flags a performance finding on descent rate, airspeed or directional control together with a personnel finding against the pilot or instructor for aircraft control, lack of action, delayed action or poor monitoring.",
+   "scope": "applies to helicopter training flights where a simulated engine or system failure leads directly to the hard contact; the lead occurrence may instead be abnormal runway contact or loss of control in flight when control is lost during the manoeuvre, and the personnel finding falls on the instructor when the cause blames delayed or missing intervention.",
+   "predicts": {
+    "first_occurrence": [
+     "551092"
+    ],
+    "finding_categories": [
+     "010620",
+     "020630",
+     "020410",
+     "020215"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 5,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "551092",
+      3
+     ],
+     [
+      "506240",
+      1
+     ],
+     [
+      "551090",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L053",
+   "kind": "convention",
+   "statement": "when the pilot fails to keep control in cruise flight, the NTSB defines the event as loss of control in flight in the cruise phase and flags a pilot aircraft control finding with a performance not-maintained finding.",
+   "scope": "applies to cruise upsets in clouds, in storms or with no stated cause, and the lead is followed by a stall, an inflight breakup with structural failure or part separation, and an uncontrolled descent collision, with a recent-experience finding added when lack of practice in the conditions is blamed and a convective weather finding added when a storm is blamed.",
+   "predicts": {
+    "first_occurrence": [
+     "402240"
+    ],
+    "finding_categories": [
+     "020630",
+     "010620",
+     "020310",
+     "030330"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 4,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "402240",
+      3
+     ],
+     [
+      "402337",
+      1
+     ]
+    ]
+   },
+   "history": []
+  },
+  {
+   "lesson_id": "L097",
+   "kind": "split",
+   "statement": "when a flight instructor fails to supervise or promptly correct a helicopter student during a hover or landing and the helicopter rolls over, the NTSB codes the first event as hover loss of control if control is lost in the hover but as the touchdown dynamic rollover if the helicopter touches down while drifting, and adds an instructor delayed-action, monitoring or aircraft-control finding.",
+   "scope": "a narrative of control lost in the hover starts with the hover loss of control code and then codes the rollover either as the touchdown dynamic rollover or, after abrupt manoeuvre and attempted recovery events, as the post-impact dynamic rollover, whereas a narrative of touching down while drifting has the touchdown dynamic rollover alone, with a landing gear design finding only when the skid design is blamed and with the instructor finding being delayed action, monitoring or aircraft control according to what the narrative faults.",
+   "predicts": {
+    "first_occurrence": [
+     "453240",
+     "551231",
+     "700231"
+    ],
+    "finding_categories": [
+     "020410",
+     "020215",
+     "020630",
+     "010620",
+     "010232"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 4,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "453240",
+      2
+     ],
+     [
+      "551231",
+      1
+     ],
+     [
+      "601092",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L108",
+   "kind": "convention",
+   "statement": "when a mechanic's faulty reassembly of helicopter rotor drive or flight control parts fails while the engine is running, the NTSB usually codes the first event as a flight control system malfunction in whatever phase the failure appears, standing or hover, with a maintenance personnel finding, and adds a prior-to-flight maintenance event only in some cases.",
+   "scope": "applies to helicopter accidents where maintenance personnel's installation or reattachment error in a drive or control linkage fails on the ground or in a hover with the engine running, rather than only to divergence found after landing.",
+   "predicts": {
+    "first_occurrence": [
+     "153333"
+    ],
+    "finding_categories": [
+     "020410",
+     "020620",
+     "010227"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 3,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "153333",
+      1
+     ],
+     [
+      "153900",
+      1
+     ],
+     [
+      "453333",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L115",
+   "kind": "split",
+   "statement": "when a helicopter pilot demands more than the aircraft can deliver at low altitude in mountainous terrain and high density altitude, the NTSB always flags a high density altitude finding in the temperature, humidity and pressure category, but it picks the first occurrence by the maneuver named in the narrative: loss of control in flight for a general failure to stay within performance capabilities, low altitude operations for canyon or terrain flying that exceeds climb capability, and loss of lift for an out of ground effect hover or quick stop.",
+   "scope": "applies to helicopter accidents where the narrative blames the pilot for exceeding aircraft capability in thin air and the environmental item is density altitude; the first occurrence and the aircraft finding depend on whether the narrative describes general maneuvering, low altitude terrain flying or a hover, and the effect marker on the density altitude finding varies.",
+   "predicts": {
+    "first_occurrence": [
+     "450240",
+     "452220",
+     "453500"
+    ],
+    "finding_categories": [
+     "010610",
+     "010620",
+     "030310"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 3,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "450240",
+      1
+     ],
+     [
+      "452220",
+      1
+     ],
+     [
+      "453500",
+      1
+     ]
+    ]
+   },
+   "history": [
+    "revised in 2009"
+   ]
+  },
+  {
+   "lesson_id": "L076",
+   "kind": "split",
+   "statement": "when the pilot mishandles the airplane after a partial power loss just after departure, the NTSB flags a pilot action finding with a performance finding on control or airspeed, but the first code divides between an emergency descent stall, loss of control in flight in the rejected takeoff phase, and the partial power loss itself.",
+   "scope": "a cause that opens with the failure to hold airspeed points to the emergency descent stall code with the power loss following and an incorrect action finding, a cause that opens with failing to keep control points to loss of control in flight with the power loss following and a lack of action finding, and a contributing wiring or ignition fault adds its own aircraft system finding.",
+   "predicts": {
+    "first_occurrence": [
+     "600241",
+     "301240",
+     "350342"
+    ],
+    "finding_categories": [
+     "010620",
+     "020410",
+     "020630"
+    ]
+   },
+   "written_in": 2009,
+   "support": {
+    "applies": 2,
+    "agrees": 0,
+    "first_codes": [
+     [
+      "350240",
+      1
+     ],
+     [
+      "600241",
+      1
+     ]
+    ]
+   },
+   "history": []
+  }
+ ]
+}
