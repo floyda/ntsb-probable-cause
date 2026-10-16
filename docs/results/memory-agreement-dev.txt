@@ -1,0 +1,9 @@
+run: 20261016T061311Z-0efdd63-memory-2009
+commit: 0efdd63
+lessons in the draft: 109
+sample: 100 cases of 2009, seed 20261014
+reference sonnet-high: failed replies 0
+haiku-low: failed replies 0; pairs both marked 108; pairs either marked 172; agreement 62.8%
+haiku-medium: failed replies 0; pairs both marked 118; pairs either marked 147; agreement 80.3%
+bar: 90% agreement
+chosen applier: sonnet-high
