@@ -463,9 +463,10 @@ found in the support count (decision
 [0209](../decisions/0209-a-lessons-finding-categories-are-alternatives-and-the-2010-lessons-are-recounted.md)).
 A lesson counted as fitting a case only when every finding category it names was flagged, but
 lessons name categories as alternatives. Of the 106 `pilot-2010` lessons that apply to at least 10
-cases, the median fit was 0% by that rule and 48% when one listed category is enough. The count
-chose which lessons the cap kept, sent most lessons to revision, and was shown to the coding model
-with each lesson. The verdict above stands as read; it tested a memory chosen by that count. The
+cases, the median fit was 0% by that rule and 48% when one listed category is enough
+(`docs/results/memory-recount-dev.txt`). The count chose which lessons the cap kept, decided which
+lessons went back to the learner for revision, and was shown to the coding model with each
+lesson. The verdict above stands as read; it tested a memory chosen by that count. The
 2010 lessons were recounted from the learner's saved answers, with no call, into
 `pilot-2010-recount`. Andy chose to test, next, a design that looks up the lessons matching each
 case's first answer instead of one capped note for every case (decision

@@ -7,10 +7,11 @@ From Andy, 2026-10-16 ("Yes let's give this a go"). Detail: the registration
 
 1. **The pilot's memory was one fixed note for every case.** All of it was read on every call, so
    it was capped at 6,000 estimated tokens (0201). It held 15 lessons after 2010; the learner had
-   written 198, about 63,000 tokens. The median kept lesson is about 416 estimated tokens, against
-   the 100 the design note assumed (§11 question 3).
+   written 198, 63,179 estimated tokens in all. The median kept lesson is 416 estimated tokens,
+   against the 100 the design note assumed (§11 question 3). Figures from
+   `docs/results/memory-recount-dev.txt`.
 2. **The kept lessons barely touched findings**, the measure the stop rule reads: the 15 name 7
-   finding categories, the 198 name 60.
+   finding categories, the 198 name 60 (the same file).
 3. **0201 put off looking lessons up per case** "before the memory has shown it helps". The cap
    made that hard to show, and the count behind the cap was faulty (0209).
 4. **Looking up past cases did not help once**: S3.1's precedent probe found the nearest earlier
@@ -42,8 +43,9 @@ From Andy, 2026-10-16 ("Yes let's give this a go"). Detail: the registration
 2. **Matching by codes needs no new model.** Every lesson lists the codes it predicts, so a script
    matches them, as the coding tools look up counts; it gives the same result every time and can
    be read and checked.
-3. **It is cheap.** The two pilot memory runs cost $0.1315 and $0.1339; a lookup run reads fewer
-   lesson tokens per case.
+3. **It is cheap.** The two pilot memory runs cost $0.1315 and $0.1339. A lookup run reads a mean
+   of 2,293 estimated tokens of lessons a case, against 5,763 for the refilled note
+   (`docs/results/memory-lookup-reach-dev.txt`).
 
 ## What this rules out
 

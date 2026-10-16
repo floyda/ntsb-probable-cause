@@ -12,12 +12,13 @@ From Andy, 2026-10-16 ("recount first as you recommend"). Detail: the lookup pla
    instructions never said which reading was meant. A lesson naming twelve alternatives could fit
    no case.
 2. **What it changed in the pilot**, recounted on 2026-10-16 from the 2010 finish step's saved
-   answers (no call):
+   answers (no call; figures from `docs/results/memory-recount-dev.txt`):
    - Of the 106 lessons that apply to at least 10 cases, the median fit was 0% under the old rule
      and 48% when one flagged category is enough. Their first codes matched about half the time
      all along (median 50%, over the 103 that predict a first code).
-   - 101 of those 106 were sent back to the learner as disagreeing more than agreeing; 54 would
-     have been under the corrected rule. The finish step revised 104 lessons.
+   - On the final support, 101 of those 106 disagree more than they agree by the old rule, the
+     test that sends a lesson back to the learner; by the corrected rule, 54 do. The finish step
+     revised 104 lessons (`finish.json` of the 2010 run).
    - The cap ranks by agreements, so it kept lessons that name few categories, not the best ones.
    - Every rendered lesson showed its count ("agrees in 9"), so the coding model read good lessons
      as unreliable.
@@ -44,8 +45,8 @@ From Andy, 2026-10-16 ("recount first as you recommend"). Detail: the lookup pla
 
 ## Why
 
-1. **The learner's lists are alternatives in practice.** Lessons name up to twelve categories, the
-   median well-used lesson three; no reading in which all must hold is one a lesson could meet.
+1. **The learner's lists are alternatives in practice.** Well-used lessons name up to twelve
+   categories, the median three (`docs/results/memory-recount-dev.txt`); no reading in which all must hold is one a lesson could meet.
 2. **Recounting is free and exact.** The replies are on disk; nothing is sent, and the check
    against the saved request keys proves the rebuilt answers are the ones Sonnet gave.
 3. **Relearning waits for a reason.** It would cost about $20–35 of plan credit, judged by the
