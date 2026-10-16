@@ -151,6 +151,11 @@ export function commitUrl(commit: string): string {
     return `${REPO_URL}/commit/${commit}`;
 }
 
+/** The public repository's own page. */
+export function repoRoot(): string {
+    return REPO_URL;
+}
+
 /** A repository path on GitHub's main branch: a file as a blob, a folder (ending "/") as a tree. */
 export function repoUrl(path: string): string {
     return path.endsWith("/")

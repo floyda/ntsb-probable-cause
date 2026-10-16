@@ -1,0 +1,49 @@
+---
+// The foot of every page (spec §3.1): the author, linking to his profile page, the repository
+// and Methods. Open cases joins in step 6c, once its page exists.
+import { AUTHOR_URL } from "../lib/site";
+import { repoRoot } from "../lib/words";
+---
+
+<footer class="site-foot">
+    <ul class="inner">
+        <li>
+            <a href={AUTHOR_URL}>Built by Andy Floyd</a>
+        </li>
+        <li>
+            <a href={repoRoot()}>The repository</a>
+        </li>
+        <li>
+            <a href="/methods/">Methods</a>
+        </li>
+    </ul>
+</footer>
+
+<style>
+    .site-foot {
+        background: var(--board-ground);
+        border-top: 1px solid var(--board-rule);
+        margin-top: var(--space-section);
+    }
+    .inner {
+        list-style: none;
+        max-width: 72rem;
+        margin: 0 auto;
+        padding: 1.25rem 1rem 2rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem 1.5rem;
+    }
+    a {
+        display: inline-block;
+        padding-block: 0.4rem;
+        color: var(--board-dim);
+    }
+    a:hover {
+        color: var(--board-ink);
+    }
+    a:focus-visible {
+        outline: 2px solid var(--board-ink);
+        outline-offset: 2px;
+    }
+</style>

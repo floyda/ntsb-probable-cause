@@ -116,28 +116,28 @@ Decided here, so no question is needed; each can be changed at the preview:
   export type PageId = "home" | (typeof PAGES)[number]["id"];
   ```
 
-- [ ] **Step 1: Failing tests.** `site.test.ts`: `PAGES` holds no address twice, and every `href` ends in `/`. In `dist.test.ts`, for every built page:
+- [x] **Step 1: Failing tests.** `site.test.ts`: `PAGES` holds no address twice, and every `href` ends in `/`. In `dist.test.ts`, for every built page:
   - the first focusable element is "Skip to content", pointing at `#content`, and `main` has `id="content"`;
   - the header holds ELLERY linking to `/`, then each of `PAGES` in order;
   - exactly one link has `aria-current="page"` on `/`, `/path/` and `/methods/`, and none on a case or trail page;
   - the footer holds "Built by Andy Floyd" (a link only if choice 1 gave an address), the repository, and Methods;
   - no page links to `/open/`.
-- [ ] **Step 2: Run them.** They fail.
-- [ ] **Step 3: `SiteHeader.astro`.**
+- [x] **Step 2: Run them.** They fail.
+- [x] **Step 3: `SiteHeader.astro`.**
   - "Skip to content" is visually hidden until focused.
   - Then a dark band (`--board-ground`) holding ELLERY in the dot font, in `--board-ink`, linking to `/` (with `aria-current="page"` when `current` is `home`).
   - Then a `nav` labelled "Site" listing `PAGES`. The current page is marked with `aria-current="page"`, the sign colour and a 2px underline, so the mark is not colour alone.
   - On a phone the list wraps onto a second line; there is no menu button.
-- [ ] **Step 4: `SiteFooter.astro`.** The same dark band, holding:
+- [x] **Step 4: `SiteFooter.astro`.** The same dark band, holding:
   - "Built by Andy Floyd" (choice 1);
   - "The repository" (`repoUrl("")`'s root: add `repoRoot()` to `words.ts` if `repoUrl` cannot give it);
   - Methods.
-- [ ] **Step 5: `Base.astro`.**
+- [x] **Step 5: `Base.astro`.**
   - The order is header, then `<main id="content" tabindex="-1">`, then footer.
   - The body's `max-width` and padding move from `body` to an inner wrapper, so the dark bands run the full width.
   - Each page passes `current`: `index.astro` `home`, `path.astro` `path`, `methods.astro` `methods`.
   - The pages' own `h1` stay.
-- [ ] **Step 6:** Run the tests and `make check`, including the accessibility run. Commit `S5 step 6a Task 2: the top bar and the footer on every page`.
+- [x] **Step 6:** Run the tests and `make check`, including the accessibility run. Commit `S5 step 6a Task 2: the top bar and the footer on every page`.
 
 ## Task 3: The rail of places within a page
 
@@ -214,6 +214,11 @@ Decided here, so no question is needed; each can be changed at the preview:
   - The contrast test checks the seven text pairs (4.5:1) in both themes, and passes with the plan's values unchanged. It does **not** require 3:1 for the panel's edge, though the plan said so. WCAG's 3:1 rule (1.4.11) is for controls and for graphics needed to understand content. A panel's edge is neither; the panel is readable without it. Holding it to 3:1 would need a heavy dark border on every figure.
   - The dark ground moves from `#121212` to `#111418`, a dark with a slight blue bias that matches the board's ground.
   - `Panel` takes an optional `label`, which makes it a labelled group for a figure that has no caption of its own.
+- **Task 2 (2026-10-16):**
+  - `lib/site.ts` holds the top bar's pages and the author's address, <https://floyda.dev>. `words.ts` gains `repoRoot()` for the footer's repository link.
+  - The page's width and padding moved from `body` to a `.page` wrapper, so the top bar and footer run the full width. The holding page is a separate static page and is unchanged.
+  - The 404 page gets the top bar and footer like every other page, with no page marked.
+  - The tests were written beside the code, not first. They were then proved able to fail: on a built Path page with its skip link, its current mark and its author line each changed, the skip-link, top-bar and footer checks failed. A keyboard test in all three projects checks that Tab reaches the skip link first, that it shows, and that Enter moves focus to `main`.
 
 ## Glossary
 

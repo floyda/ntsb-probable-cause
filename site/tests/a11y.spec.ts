@@ -115,3 +115,15 @@ test("the ladder's rendered labels stay inside the drawing and never overlap", a
     });
     expect(faults).toEqual([]);
 });
+
+// A keyboard user reaches the content first (S5 step 6a, Task 2; WCAG 2.4.1): the skip link is
+// the first stop, shows when focused, and moves focus past the top bar into the page.
+test("the skip link is the first stop and moves focus to the content", async ({ page }) => {
+    await page.goto("/path/");
+    await page.keyboard.press("Tab");
+    const skip = page.locator("a.skip");
+    await expect(skip).toBeFocused();
+    await expect(skip).toBeInViewport();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("main#content")).toBeFocused();
+});

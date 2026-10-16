@@ -50,9 +50,18 @@ html {
 }
 
 body {
+    margin: 0;
+}
+
+/* The page between the top bar and the footer, whose dark bands run the full width. */
+.page {
     margin: 0 auto;
     max-width: 72rem;
     padding: 1.5rem 1rem;
+}
+
+main:focus {
+    outline: none;
 }
 
 /* Reading text keeps about 65 characters a line; the board is wider (board.css). */

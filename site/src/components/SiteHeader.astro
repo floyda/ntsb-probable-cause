@@ -1,0 +1,100 @@
+---
+// The top bar on every page (spec §21 note, 2026-10-16): a skip link for keyboard users, then
+// ELLERY, the way to the first page, then the site's separate pages. The current page is marked
+// by aria-current, the sign colour and an underline, so never by colour alone.
+import { PAGES, type PageId } from "../lib/site";
+
+interface Props {
+    current?: PageId | undefined;
+}
+
+const { current } = Astro.props;
+const here = (id: PageId): "page" | undefined => (id === current ? "page" : undefined);
+---
+
+<a class="skip" href="#content">
+    Skip to content
+</a>
+<header class="site-head">
+    <div class="inner">
+        <a class="wordmark" href="/" aria-current={here("home")}>
+            ELLERY
+        </a>
+        <nav aria-label="Site">
+            <ul>
+                {PAGES.map((p) => (
+                    <li>
+                        <a href={p.href} aria-current={here(p.id)}>
+                            {p.label}
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </nav>
+    </div>
+</header>
+
+<style>
+    .skip {
+        position: absolute;
+        left: 1rem;
+        top: -10rem;
+        z-index: 20;
+        padding: 0.5rem 0.75rem;
+        background: var(--sign);
+        color: var(--sign-ink);
+        font-weight: 700;
+    }
+    .skip:focus {
+        top: 0.5rem;
+    }
+    .site-head {
+        background: var(--board-ground);
+        border-bottom: 1px solid var(--board-rule);
+    }
+    .inner {
+        max-width: 72rem;
+        margin-inline: auto;
+        padding: 0.6rem 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.25rem 1.5rem;
+    }
+    .wordmark {
+        font-family: var(--board);
+        font-weight: 700;
+        font-size: var(--step-2);
+        letter-spacing: 0.06em;
+        color: var(--board-ink);
+        text-decoration: none;
+        padding-block: 0.3rem;
+    }
+    ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0 1.25rem;
+    }
+    nav a {
+        display: inline-block;
+        padding-block: 0.55rem;
+        color: var(--board-dim);
+        text-decoration: none;
+        border-bottom: 2px solid transparent;
+    }
+    nav a:hover {
+        color: var(--board-ink);
+    }
+    nav a[aria-current="page"] {
+        color: var(--board-ink);
+        border-bottom-color: var(--board-ink);
+    }
+    a:focus-visible {
+        outline: 2px solid var(--board-ink);
+        outline-offset: 2px;
+    }
+</style>

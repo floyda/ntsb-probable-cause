@@ -7,6 +7,7 @@ import { exampleCase } from "../src/lib/example-case";
 import { exportDir, loadExport } from "../src/lib/export";
 import { LADDER } from "../src/lib/ladder";
 import { anchorFor, shown } from "../src/lib/methods";
+import { AUTHOR_URL, PAGES } from "../src/lib/site";
 import { count, countOf, numbers, pointsOn, usd, withInterval } from "../src/lib/numbers";
 import { costLabel } from "../src/lib/trail";
 import { differenceSentence } from "../src/lib/words";
@@ -437,5 +438,49 @@ describe.skipIf(!built)("the Methods page (S5 step 5, Task 5)", () => {
         );
         expect(board).not.toBeNull();
         expect(board?.[1]).not.toMatch(/\sid="n-/);
+    });
+});
+
+describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () => {
+    const all = htmlFiles()
+        .filter((p) => !p.endsWith("404.html"))
+        .map((p) => relative(DIST, p).split(sep).join("/"));
+    const CURRENT: Record<string, string> = {
+        "index.html": "/",
+        "path/index.html": "/path/",
+        "methods/index.html": "/methods/",
+    };
+    const read = (page: string): string => readFileSync(join(DIST, page), "utf8");
+
+    it.each(all)("%s opens with a skip link to its content", (page) => {
+        const html = read(page);
+        const first = /<body[^>]*>[\s\S]*?<a\s[^>]*href="([^"]+)"[^>]*>([^<]*)</.exec(html);
+        expect(first?.[1]).toBe("#content");
+        expect(first?.[2]).toBe("Skip to content");
+        expect(html).toMatch(/<main[^>]*\sid="content"/);
+    });
+
+    it.each(all)("%s has the top bar, in order, marking the right page", (page) => {
+        const html = read(page);
+        const head = /<header[^>]*class="site-head[\s\S]*?<\/header>/.exec(html)?.[0] ?? "";
+        const hrefs = [...head.matchAll(/<a[^>]*href="([^"]+)"/g)].map((m) => m[1]);
+        expect(hrefs).toEqual(["/", ...PAGES.map((p) => p.href)]);
+        const marked = [...head.matchAll(/<a[^>]*href="([^"]+)"[^>]*aria-current="page"/g)].map(
+            (m) => m[1],
+        );
+        const current = CURRENT[page];
+        expect(marked).toEqual(current === undefined ? [] : [current]);
+    });
+
+    it.each(all)("%s ends with the footer", (page) => {
+        const foot = /<footer[^>]*class="site-foot[\s\S]*?<\/footer>/.exec(read(page))?.[0] ?? "";
+        expect(foot).toContain(`href="${AUTHOR_URL}"`);
+        expect(visibleText(foot)).toContain("Built by Andy Floyd");
+        expect(foot).toContain('href="https://github.com/floyda/ntsb-probable-cause"');
+        expect(foot).toContain('href="/methods/"');
+    });
+
+    it("links no page to Open cases, which step 6c builds", () => {
+        for (const page of all) expect(read(page), page).not.toContain('href="/open/"');
     });
 });
