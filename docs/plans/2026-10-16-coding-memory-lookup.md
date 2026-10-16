@@ -73,10 +73,10 @@ coding test. No learner (Claude) call anywhere in this plan.
 
 ### Task 5: The records
 
-- [ ] Decisions 0209 and 0210, README rows; the pilot plan's Deviations entry for the defect; a
+- [x] Decisions 0209 and 0210, README rows; the pilot plan's Deviations entry for the defect; a
   dated note under the spec's §12; the registration `docs/rounds/memory-lookup.md`.
-- [ ] An independent review of Tasks 1–4 before any paid run.
-- [ ] Andy signs the registration.
+- [x] An independent review of Tasks 1–4 before any paid run.
+- [x] Andy signs the registration.
 
 ### Task 6: The runs (paid, under $1)
 
