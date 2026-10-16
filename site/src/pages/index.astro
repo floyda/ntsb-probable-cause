@@ -1,6 +1,7 @@
 ---
 import Board from "../components/Board.astro";
 import OpenedCase from "../components/OpenedCase.astro";
+import Sign from "../components/Sign.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 import { methodsLink } from "../lib/methods";
@@ -27,6 +28,7 @@ const places = [
 >
     <h1>Ellery</h1>
     <section id="question" class="caveat" aria-labelledby="caveat-heading">
+        <Sign>1 · The question</Sign>
         <h2 id="caveat-heading">Read this first</h2>
         <p>
             The board runs Ellery, version 1, an AI agent. It reads the same evidence, with the same
@@ -42,12 +44,14 @@ const places = [
         </p>
     </section>
     <section id="board" aria-labelledby="board-heading">
-        <h2 id="board-heading">Closed cases</h2>
+        <Sign>2 · Closed cases</Sign>
+        <h2 id="board-heading">Recently closed cases</h2>
         <Board index={index} />
     </section>
     {newestCase !== undefined && (
         <section id="case" aria-labelledby="one-case">
-            <h2 id="one-case">One case</h2>
+            <Sign>3 · One case</Sign>
+            <h2 id="one-case">One case, both codings</h2>
             <OpenedCase kase={newestCase} />
         </section>
     )}
@@ -56,3 +60,23 @@ const places = [
 <script>
     import "../scripts/open-row.ts";
 </script>
+
+<style>
+    /* The first page's stops (spec §3.1), spaced and ruled as the Path's and Methods' are. */
+    section {
+        display: grid;
+        gap: 0.75rem;
+        padding-block: var(--space-section);
+        border-top: 1px solid var(--rule);
+    }
+    h2 {
+        margin: 0;
+    }
+    p {
+        margin-block: 0;
+    }
+    /* The board alone uses the main column's full width (board.css). */
+    #board {
+        max-width: none;
+    }
+</style>

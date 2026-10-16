@@ -181,23 +181,23 @@ Decided here, so no question is needed; each can be changed at the preview:
 
 **Files:** modify `index.astro`, `path.astro`, `methods.astro`, `components/PathStop.astro`, the figure components (`Ladder`, `ExampleCase`, `FirstCodes`, `BeliefPath`, `MissPairs`, `PageKinds`, `ClosuresStrip`, `SplitDiagram`), `components/OpenedCase.astro`, `components/Trail.astro`; extend `site/tests/dist.test.ts`.
 
-- [ ] **Step 1: Failing test.** On `/`, `/path/` and `/methods/`, every `h2` that is a place in the rail has a sign just before it, and no sign stands alone without a heading. A sign's letters are made uppercase by CSS, so its source text stays in normal case for screen readers.
-- [ ] **Step 2: Run it.** It fails.
-- [ ] **Step 3: Signs.**
+- [x] **Step 1: Failing test.** On `/`, `/path/` and `/methods/`, every `h2` that is a place in the rail has a sign just before it, and no sign stands alone without a heading. A sign's letters are made uppercase by CSS, so its source text stays in normal case for screen readers.
+- [x] **Step 2: Run it.** It fails.
+- [x] **Step 3: Signs.**
   - `PathStop` gains its sign ("Question 3"), from its `n`.
   - The first page's three sections each get one ("1 · The question" and so on).
   - Each Methods section gets one.
   - The ladder's section on Path gets "The ladder".
-- [ ] **Step 4: Panels.**
+- [x] **Step 4: Panels.**
   - Each Path figure sits in a `Panel`.
   - So do Methods' rows, its diagram and its glossary, and the opened case's code lists and trail blocks.
   - The board keeps its own dark frame, gaining a 1px `--board-rule` edge so it stays distinct in dark mode.
-- [ ] **Step 5: Type and spacing.**
+- [x] **Step 5: Type and spacing.**
   - Headings take `--step-2`, and the page's `h1` `--step-3`.
   - Sections are separated by `--space-section` and a rule.
   - Running text stays within 44rem; panels may use the main column's full width.
   - Each page's own `p { margin-block: 0 }` and grid gaps stay as they are.
-- [ ] **Step 6:** Run the tests and `make check`, including the accessibility run in all three projects. Take one screenshot of each page at phone and desktop width, in light and dark, and compare it with the mock-up. Fix what differs, and log it. Commit `S5 step 6a Task 5: the Quiet look on every page`.
+- [x] **Step 6:** Run the tests and `make check`, including the accessibility run in all three projects. Take one screenshot of each page at phone and desktop width, in light and dark, and compare it with the mock-up. Fix what differs, and log it. Commit `S5 step 6a Task 5: the Quiet look on every page`.
 
 ## Task 6: Preview (Controller)
 
@@ -227,6 +227,26 @@ Decided here, so no question is needed; each can be changed at the preview:
   - Methods' own contents list is removed, as planned.
   - The phone test of a link to a place runs on the phone project only; on a wide screen the rail is a side column and the test does not apply. It was shown to fail with the scroll margin removed from the built CSS.
 - **Task 4 (2026-10-16):** the case and trail pages already had plain "Back to the board" and "Back to the case" lines from steps 2 and 3. `BackLinks.astro` replaces them. "← All closed cases" now goes to `/#board`, the board itself, not the top of the first page. Only site files changed, so the site's tests and the accessibility run were rerun, not the Python suite.
+- **Task 5 (2026-10-17):**
+  - **Signs.**
+    - First page: "1 · The question", "2 · Closed cases", "3 · One case". Its headings become "Recently closed cases" and "One case, both codings", so a sign and its heading don't say the same words.
+    - Path: "Question N" above each question, and the heading drops its "N." prefix. The ladder's sign is "Four ways to code an accident".
+    - Methods: "Part 1" to "Part 9".
+    - The test checks that every place in a rail has a sign before its heading, and that there are exactly as many signs as places.
+  - **Panels.**
+    - The panel look is one global `.panel` class in `tokens.css`. `Panel.astro` only draws a `div` with it, and the components with their own markup use the same values in their own CSS:
+      - the opened case's codings and code lists;
+      - the trail's steps.
+    - On panels:
+      - the Path's figures, through `PathStop`'s figure slot, and its top ladder;
+      - Methods' rows, predictions, glossary and diagram.
+    - The board keeps its own dark frame and gains a 1px edge.
+  - **Type and spacing.** `h1` and `h2` take the type scale globally; the pages' own `h2` sizes are removed. Sections are separated by `--space-section` and a rule. The first page had no styles of its own and now has the same section rhythm as the Path and Methods.
+  - **Found by the screenshots and fixed:**
+    - The global `h1` rule reset the heading's inline margin, so headings sat left of the centred text. It now sets block margins only.
+    - Beside a rail, the reading column now sits at the left of its space, not in its middle.
+    - Wrapping the board in a section for the rail put it under the 44rem text width, cutting off its last column. The board's section is now full width.
+    - Beside the rail the board is narrower than the 72rem it was drawn for, so the rule keeping a result's words on one line is removed. At 1280px the board no longer scrolls sideways (measured: 0px overflow).
 
 ## Glossary
 

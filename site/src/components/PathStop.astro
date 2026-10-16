@@ -2,6 +2,7 @@
 // One question's stop on the Path page (spec §7.2): the question, its measured answer, the
 // decision taken from it, its figure where there is one, and its sources on GitHub.
 import { methodsLink } from "../lib/methods";
+import Sign from "./Sign.astro";
 import { repoUrl } from "../lib/words";
 
 interface Props {
@@ -28,9 +29,8 @@ const sources = [
 ---
 
 <section class="stop" id={id} aria-labelledby={`${id}-q`}>
-    <h2 id={`${id}-q`}>
-        {String(n)}. {question}
-    </h2>
+    <Sign>Question {String(n)}</Sign>
+    <h2 id={`${id}-q`}>{question}</h2>
     <div class="answer">
         <slot />
     </div>
@@ -38,7 +38,7 @@ const sources = [
         <strong>Decision:</strong> {decision}
     </p>
     {Astro.slots.has("figure") && (
-        <div class="figure">
+        <div class="figure panel">
             <slot name="figure" />
         </div>
     )}
@@ -63,13 +63,11 @@ const sources = [
     .stop {
         display: grid;
         gap: 0.6rem;
-        padding-block: 1.5rem;
+        padding-block: var(--space-section);
         border-top: 1px solid var(--rule);
     }
     h2 {
-        font-size: 1.25rem;
         margin: 0;
-        text-wrap: balance;
     }
     .answer {
         display: grid;

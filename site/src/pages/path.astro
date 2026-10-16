@@ -10,6 +10,7 @@ import MissPairs from "../components/MissPairs.astro";
 import Ladder from "../components/Ladder.astro";
 import PageKinds from "../components/PageKinds.astro";
 import PathStop from "../components/PathStop.astro";
+import Sign from "../components/Sign.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 import { assertPathClaims } from "../lib/claims";
@@ -56,12 +57,15 @@ const places = [
     </p>
 
     <section aria-labelledby="ladder-heading">
+        <Sign>Four ways to code an accident</Sign>
         <h2 id="ladder-heading">The ladder</h2>
         <p>
             How often each way's first code matched the NTSB's, on held-out accidents, and what it
             cost. The whisker on each bar is its 95 percent interval.
         </p>
-        <Ladder id="ladder-top" />
+        <div class="panel">
+            <Ladder id="ladder-top" />
+        </div>
     </section>
 
     <PathStop
@@ -302,13 +306,12 @@ const places = [
     .next {
         display: grid;
         gap: 0.6rem;
-        padding-block: 1.5rem;
+        padding-block: var(--space-section);
     }
     .next {
         border-top: 1px solid var(--rule);
     }
     h2 {
-        font-size: 1.25rem;
         margin: 0;
     }
     /* Block margins only: main's children keep their centring margin (tokens.css). */

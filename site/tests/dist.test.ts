@@ -533,3 +533,25 @@ describe.skipIf(!built)("the way back (S5 step 6a, Task 4)", () => {
         },
     );
 });
+
+describe.skipIf(!built)("the Quiet look's signs (S5 step 6a, Task 5)", () => {
+    const SIGN = /<span[^>]*class="sign[" ]/g;
+    it.each(["index.html", "path/index.html", "methods/index.html"])(
+        "%s labels every place in its rail with a sign before its heading",
+        (page) => {
+            const html = readFileSync(join(DIST, page), "utf8");
+            const rail = /<nav[^>]*class="rail[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
+            const ids = [...rail.matchAll(/href="#([^"]+)"/g)].map((m) => m[1] ?? "");
+            expect(ids.length).toBeGreaterThan(0);
+            for (const id of ids) {
+                const at = html.search(new RegExp(`\\sid="${id}"`));
+                const start = html.lastIndexOf("<section", at);
+                const heading = html.indexOf("<h2", start);
+                expect(start, id).toBeGreaterThan(-1);
+                expect(html.slice(start, heading), id).toMatch(SIGN);
+            }
+            // No sign stands alone: there are as many signs as places.
+            expect([...html.matchAll(SIGN)]).toHaveLength(ids.length);
+        },
+    );
+});

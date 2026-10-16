@@ -219,9 +219,14 @@ const commit = kase.withheld?.commit ?? null;
         gap: 1rem;
         grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
     }
+    /* Each coding and each list of codes on a white panel (tokens.css's .panel look). */
     .pair > section,
     .triple > section {
         min-width: 0;
+        padding: 0.9rem;
+        border: 1px solid var(--panel-edge);
+        border-radius: 4px;
+        background: var(--paper);
     }
     h3,
     h4 {

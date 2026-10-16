@@ -5,6 +5,7 @@
 // the numbers file (lib/methods.ts); none is typed here.
 import Mark from "../components/Mark.astro";
 import MethodsGroup from "../components/MethodsGroup.astro";
+import Sign from "../components/Sign.astro";
 import SplitDiagram from "../components/SplitDiagram.astro";
 import Base from "../layouts/Base.astro";
 import { exampleCase } from "../lib/example-case";
@@ -87,6 +88,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </p>
 
     <section aria-labelledby="reading">
+        <Sign>Part 1</Sign>
+
         <h2 id="reading">How to read the numbers</h2>
         <h3>First code matches (top-1)</h3>
         <p>
@@ -134,6 +137,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="board">
+        <Sign>Part 2</Sign>
+
         <h2 id="board">The board</h2>
         <p>
             The board lists the cases the NTSB has closed most recently. When the NTSB closes a case
@@ -182,6 +187,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="ladder">
+        <Sign>Part 3</Sign>
+
         <h2 id="ladder">The ladder</h2>
         <p>
             Four ways of coding an accident, each with more machinery than the one before. The model
@@ -196,6 +203,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="questions">
+        <Sign>Part 4</Sign>
+
         <h2 id="questions">The Path questions</h2>
         <p>Each question on the Path page, with the numbers it shows and where they came from.</p>
 
@@ -229,6 +238,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="predictions">
+        <Sign>Part 5</Sign>
+
         <h2 id="predictions">S3.2's registered predictions</h2>
         <p>
             Before any held-out run, S3.2 wrote down nine predictions in its registration and
@@ -249,7 +260,7 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             </a>
             , section 8.
         </p>
-        <ol class="predictions">
+        <ol class="predictions panel">
             {predictions.map((p) => (
                 <li>
                     <p>
@@ -266,6 +277,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="history">
+        <Sign>Part 6</Sign>
+
         <h2 id="history">History</h2>
         <p>
             Before S3.2, the ladder's middle steps were S1's one-shot ceiling and S2.4's fixed
@@ -288,6 +301,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="limits">
+        <Sign>Part 7</Sign>
+
         <h2 id="limits">Limits</h2>
         <p>
             <strong>The run-twice band.</strong> Run twice, identically, on the same development
@@ -311,6 +326,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="withheld">
+        <Sign>Part 8</Sign>
+
         <h2 id="withheld">How the verdict is withheld</h2>
         <p>
             The agent never sees the NTSB's answer, or the investigators' write-ups that lead to it.
@@ -320,8 +337,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     </section>
 
     <section aria-labelledby="glossary">
+        <Sign>Part 9</Sign>
+
         <h2 id="glossary">Glossary</h2>
-        <dl class="glossary">
+        <dl class="glossary panel">
             {GLOSSARY.map((t) => (
                 <div>
                     <dt>{t.term}</dt>
@@ -339,11 +358,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
     section {
         display: grid;
         gap: 0.6rem;
-        padding-block: 1.5rem;
+        padding-block: var(--space-section);
         border-top: 1px solid var(--rule);
     }
     h2 {
-        font-size: 1.25rem;
         margin: 0;
     }
     h3 {

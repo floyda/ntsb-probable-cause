@@ -11,7 +11,7 @@ interface Props {
 const keys = keysOf(Astro.props.id);
 ---
 
-<ol class="entries">
+<ol class="entries panel">
     {keys.map((key) => (
         <MethodsEntry key={key} />
     ))}
@@ -21,6 +21,7 @@ const keys = keysOf(Astro.props.id);
     .entries {
         list-style: none;
         margin: 0;
-        padding: 0;
+        padding: 0 0.9rem;
+        gap: 0;
     }
 </style>

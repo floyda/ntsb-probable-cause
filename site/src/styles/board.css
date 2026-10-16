@@ -13,6 +13,8 @@
     background: var(--board-ground);
     color: var(--board-ink);
     border-radius: 6px;
+    /* An edge, so the dark board stays distinct on the dark page (spec §21 note, 2026-10-16). */
+    border: 1px solid var(--board-rule);
     padding: 0.75rem;
 }
 
@@ -98,9 +100,5 @@
     }
 }
 
-/* A result's words stay on one line where there is room. */
-@media (min-width: 641px) {
-    .board .mark-word {
-        white-space: nowrap;
-    }
-}
+/* A result's words may wrap: beside the page's rail the board is narrower than the full
+   72rem it was first drawn for (step 6a). Each mark stays beside its first word (Mark.astro). */
