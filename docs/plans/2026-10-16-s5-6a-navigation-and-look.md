@@ -209,7 +209,7 @@ Decided here, so no question is needed; each can be changed at the preview:
 
 ## Deviations
 
-(none yet)
+- **Andy's choice (2026-10-16):** "Built by Andy Floyd" links to <https://floyda.dev>.
 
 ## Glossary
 
