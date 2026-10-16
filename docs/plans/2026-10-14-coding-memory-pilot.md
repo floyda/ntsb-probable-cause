@@ -2479,8 +2479,8 @@ Before the first OpenRouter run, message the S4 session (as promised on 2026-10-
 - [x] **Step 4: The memory condition after 2009.** `make mem-spend EST=0.40`; `make mem-coding-tools SOURCE=<tables a> REPEAT=a SNAPSHOT=pilot-2009`.
 - [x] **Step 5: Learn 2010.** `make mem-learn-propose PERIOD=2010 FROM=pilot-2009 TO=pilot-2010`; `make mem-learn-finish RUN=<run id> TO=pilot-2010` (the applier is the one already chosen); `make mem-check SNAPSHOT=pilot-2010`; commit the snapshot and stamp.
 - [x] **Step 6: The memory condition after 2010.** `make mem-spend EST=0.40`; `make mem-coding-tools SOURCE=<tables a> REPEAT=a SNAPSHOT=pilot-2010`.
-- [ ] **Step 7: The reading.** `make mem-pilot-result TA=… TB=… CA=… CB=… MEM="<2009 run> <2010 run>"`; commit `docs/results/memory-pilot-dev.txt`.
-- [ ] **Step 8: Check the boundaries held.** `make check` and `make s33-continuity` pass; `uv run python -m scripts.stage_spend --stage mem` and the learning line's month total are recorded in the results commit message.
+- [x] **Step 7: The reading.** `make mem-pilot-result TA=… TB=… CA=… CB=… MEM="<2009 run> <2010 run>"`; commit `docs/results/memory-pilot-dev.txt`.
+- [x] **Step 8: Check the boundaries held.** `make check` and `make s33-continuity` pass; `uv run python -m scripts.stage_spend --stage mem` and the learning line's month total are recorded in the results commit message.
 
 Expected costs (estimates, from the published prices and the token sizes in the spec; the results file reports what was spent): learner about $10–20 of plan credit for two periods (propose dominates: about 39 Sonnet calls a period at the standard price); coding tests about $2–3 on OpenRouter for six runs.
 

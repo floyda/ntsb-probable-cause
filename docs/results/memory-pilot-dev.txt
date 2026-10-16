@@ -1,0 +1,71 @@
+coding memory pilot, dev-steer-400 (decision 0204); counts only
+
+tables-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a)
+  occurrence top-1: 23.2% [19.3%, 27.6%] n=401
+  occurrence top-3: 29.7% [25.4%, 34.3%] n=401
+  finding recall@10: 33.4% [30.1%, 36.5%] n=401
+  failed cases: 0
+
+tables-b (20261015T223114Z-754b6ee-dev-steer-400-mem-tables-b)
+  occurrence top-1: 23.7% [19.8%, 28.1%] n=401
+  occurrence top-3: 31.2% [26.8%, 35.9%] n=401
+  finding recall@10: 33.5% [30.4%, 36.7%] n=401
+  failed cases: 0
+
+counts-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-a)
+  occurrence top-1: 25.7% [21.7%, 30.2%] n=401
+  occurrence top-3: 30.2% [25.9%, 34.8%] n=401
+  finding recall@10: 41.7% [38.5%, 45.1%] n=401
+  failed cases: 0
+
+counts-b (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-b)
+  occurrence top-1: 25.9% [21.9%, 30.4%] n=401
+  occurrence top-3: 30.9% [26.6%, 35.6%] n=401
+  finding recall@10: 41.4% [38.1%, 44.6%] n=401
+  failed cases: 0
+
+memory-1 (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-memory-pilot-2009)
+  occurrence top-1: 25.2% [21.2%, 29.7%] n=401
+  occurrence top-3: 33.4% [29.0%, 38.2%] n=401
+  finding recall@10: 42.6% [39.2%, 45.8%] n=401
+  failed cases: 0
+
+memory-2 (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-memory-pilot-2010)
+  occurrence top-1: 25.9% [21.9%, 30.4%] n=401
+  occurrence top-3: 32.4% [28.0%, 37.1%] n=401
+  finding recall@10: 42.4% [39.1%, 45.5%] n=401
+  failed cases: 0
+
+paired differences (first minus second, cases in both)
+tables(b) - tables(a)
+  occurrence top-1: +0.5 points [-2.0, +3.0] n=401
+  occurrence top-3: +1.5 points [-1.5, +4.5] n=401
+  finding recall@10: +0.1 points [-1.6, +1.9] n=401
+counts(b) - counts(a), the noise
+  occurrence top-1: +0.2 points [-1.2, +2.0] n=401
+  occurrence top-3: +0.7 points [-1.2, +3.0] n=401
+  finding recall@10: -0.3 points [-2.3, +1.6] n=401
+memory-1 - counts(a)
+  occurrence top-1: -0.5 points [-2.5, +1.5] n=401
+  occurrence top-3: +3.2 points [+1.2, +5.2] n=401
+  finding recall@10: +0.8 points [-1.1, +2.8] n=401
+memory-2 - counts(a)
+  occurrence top-1: +0.2 points [-1.7, +2.2] n=401
+  occurrence top-3: +2.2 points [+0.0, +4.5] n=401
+  finding recall@10: +0.7 points [-1.4, +2.7] n=401
+
+curve (top-1, top-3, finding recall@10, per cent)
+  tables-a: 23.2, 29.7, 33.4
+  counts-a: 25.7, 30.2, 41.7
+  memory-1: 25.2, 33.4, 42.6
+  memory-2: 25.9, 32.4, 42.4
+
+snapshots
+  memory-1: pilot-2009: 18 lessons kept, 87 pushed out
+  memory-2: pilot-2010: 15 lessons kept, 183 pushed out
+
+agreement file, last line: chosen applier: sonnet-high
+learner refusals by category: none
+learner record lines unreadable and skipped: 0
+
+stop rule on the last memory run (memory-2): PASS
