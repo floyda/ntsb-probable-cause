@@ -41,10 +41,38 @@ def test_a_split_agrees_when_the_first_code_is_any_of_its_codes() -> None:
     assert curate.agrees(lesson, _case("A", "551240"))
 
 
-def test_finding_categories_must_all_be_among_the_flagged_findings() -> None:
+def test_a_finding_category_must_be_among_the_flagged_findings() -> None:
     lesson = _lesson("L3", kind="evidence", first=(), cats=("020630",))
     assert curate.agrees(lesson, _case("A", "550240", (FLAGGED_FINDING,)))
     assert not curate.agrees(lesson, _case("A", "550240", (OTHER_FINDING,)))
+
+
+def test_listed_finding_categories_are_alternatives() -> None:
+    # Decision 0209: one flagged category of those listed is enough; before, all had to be.
+    lesson = _lesson("L4", kind="evidence", first=(), cats=("020630", "010100"))
+    assert curate.agrees(lesson, _case("A", "550240", (FLAGGED_FINDING,)))
+    assert not curate.agrees(lesson, _case("A", "550240"))
+
+
+def test_both_parts_must_hold_when_a_lesson_predicts_both() -> None:
+    lesson = _lesson("L5", first=("550240",), cats=("020630",))
+    assert curate.agrees(lesson, _case("A", "550240", (FLAGGED_FINDING,)))
+    assert not curate.agrees(lesson, _case("A", "551240", (FLAGGED_FINDING,)))
+    assert not curate.agrees(lesson, _case("A", "550240", (OTHER_FINDING,)))
+
+
+def test_support_counts_each_predicted_part_on_its_own() -> None:
+    lesson = _lesson("L6", first=("550240",), cats=("020630",))
+    cases = [
+        _case("A", "550240", (FLAGGED_FINDING,)),
+        _case("B", "550240", (OTHER_FINDING,)),
+        _case("C", "551240", (FLAGGED_FINDING,)),
+    ]
+    applies = {c.case_id: frozenset({"L6"}) for c in cases}
+    s = curate.count_support([lesson], cases, applies)["L6"]
+    assert (s.applies, s.agrees, s.first_agrees, s.finding_agrees) == (3, 1, 2, 2)
+    first_only = curate.count_support([_lesson("L1")], cases, {"A": frozenset({"L1"})})["L1"]
+    assert (first_only.first_agrees, first_only.finding_agrees) == (1, None)
 
 
 def test_support_counts_applies_agrees_and_the_commonest_first_codes() -> None:

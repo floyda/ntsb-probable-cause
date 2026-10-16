@@ -71,6 +71,44 @@ def test_the_rendered_lesson_carries_counted_numbers_and_labels() -> None:
     assert "Loss of control in flight" in text
 
 
+def test_counts_per_part_replace_the_single_agreement_count() -> None:
+    # Decision 0209: a recounted lesson shows how often each part it predicts held.
+    support = ls.Support(
+        applies=41, agrees=20, first_codes=((FIRST, 29),), first_agrees=29, finding_agrees=25
+    )
+    text = ls.render_lesson(
+        _lesson(
+            kind="split",
+            predicts=ls.Prediction(
+                first_occurrence=(FIRST, OTHER_FIRST), finding_categories=(CATEGORY,)
+            ),
+            support=support,
+        ),
+        TABLES,
+    )
+    assert "applies to 41 learning cases" in text
+    assert "first code one of those predicted in 29" in text
+    assert "at least one listed finding category flagged in 25" in text
+    assert "agrees in" not in text
+
+
+def test_a_part_the_lesson_does_not_predict_has_no_count_line() -> None:
+    support = ls.Support(applies=10, agrees=7, first_agrees=7)
+    text = ls.render_lesson(_lesson(support=support), TABLES)
+    assert "first code one of those predicted in 7" in text
+    assert "finding category" not in text.split("counted:")[1]
+
+
+def test_the_pilots_snapshots_render_as_they_were_read() -> None:
+    # A support with no per-part counts is a pilot snapshot's: its line is unchanged.
+    support = ls.Support(applies=41, agrees=33, first_codes=((FIRST, 29),))
+    line = ls.render_lesson(_lesson(support=support), TABLES).splitlines()[-1]
+    assert (
+        line
+        == f"  counted: applies to 41 learning cases, agrees in 33; first codes seen: {FIRST} (29)"
+    )
+
+
 def test_the_rendered_memory_holds_every_lesson_within_the_cap() -> None:
     memory = ls.Memory(name="pilot-2009", periods=(2009,), lessons=(_lesson(),))
     assert "L001" in ls.render_memory(memory, TABLES)

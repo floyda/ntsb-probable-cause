@@ -19,6 +19,8 @@ __all__ = [
     "apply_cap",
     "count_support",
     "estimated_tokens",
+    "finding_agrees",
+    "first_agrees",
     "needs_revision",
     "render_lesson",
     "unused",
@@ -26,13 +28,30 @@ __all__ = [
 ]
 
 
-def agrees(lesson: Lesson, case: LearningCase) -> bool:
-    """Whether ``case``'s codes are what ``lesson`` predicts, on every part it predicts."""
-    first = lesson.predicts.first_occurrence
-    if first and case.occurrence[0] not in first:
-        return False
+def first_agrees(lesson: Lesson, case: LearningCase) -> bool:
+    """Whether ``case``'s first occurrence code is one ``lesson`` predicts."""
+    return case.occurrence[0] in lesson.predicts.first_occurrence
+
+
+def finding_agrees(lesson: Lesson, case: LearningCase) -> bool:
+    """Whether at least one finding category ``lesson`` predicts is flagged in ``case``.
+
+    A lesson's categories are alternatives, as the learner writes them ("the power plant,
+    ignition, fuel or oil system"), so one flagged category is enough (decision 0209).
+    """
     flagged = {code[:6] for code in case.findings}
-    return all(category in flagged for category in lesson.predicts.finding_categories)
+    return any(category in flagged for category in lesson.predicts.finding_categories)
+
+
+def agrees(lesson: Lesson, case: LearningCase) -> bool:
+    """Whether ``case``'s codes are what ``lesson`` predicts, on each part it predicts.
+
+    Decision 0209: until 2026-10-16 every predicted category had to be flagged, which no case
+    could meet for a lesson listing alternatives; the pilot's snapshots were counted that way.
+    """
+    if lesson.predicts.first_occurrence and not first_agrees(lesson, case):
+        return False
+    return not lesson.predicts.finding_categories or finding_agrees(lesson, case)
 
 
 def count_support(
@@ -44,8 +63,19 @@ def count_support(
         covered = [c for c in cases if lesson.lesson_id in applies.get(c.case_id, frozenset())]
         firsts = Counter(c.occurrence[0] for c in covered)
         top = tuple(sorted(firsts.items(), key=lambda kv: (-kv[1], kv[0]))[:FIRST_CODES_SHOWN])
+        predicts = lesson.predicts
         support[lesson.lesson_id] = Support(
-            applies=len(covered), agrees=sum(agrees(lesson, c) for c in covered), first_codes=top
+            applies=len(covered),
+            agrees=sum(agrees(lesson, c) for c in covered),
+            first_codes=top,
+            first_agrees=(
+                sum(first_agrees(lesson, c) for c in covered) if predicts.first_occurrence else None
+            ),
+            finding_agrees=(
+                sum(finding_agrees(lesson, c) for c in covered)
+                if predicts.finding_categories
+                else None
+            ),
         )
     return support
 

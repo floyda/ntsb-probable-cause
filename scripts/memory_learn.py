@@ -75,6 +75,7 @@ AGREEMENT_SAMPLE: Final = 100
 AGREEMENT_SEED: Final = 20261014
 AGREEMENT_BAR: Final = 0.90
 AGREEMENT_FILE: Path = Path("docs/results/memory-agreement-dev.txt")
+APPLIES_FILE: Final = "applies.json"
 MAX_TOKENS_HAIKU: Final = 2048
 MAX_TOKENS_SONNET: Final = 16000
 # Controller ruling, final review I2 (2026-10-15): a Sonnet apply call (the agreement's
@@ -698,6 +699,10 @@ def finish(args: argparse.Namespace, run: Run) -> int:
         "cap_tokens": draft.cap_tokens,
     }
     (settings.runs_dir / run_id / "finish.json").write_text(json.dumps(counts, indent=1) + "\n")
+    # Decision 0209: the final apply's answers, so support can be recounted without a call.
+    (settings.runs_dir / run_id / APPLIES_FILE).write_text(
+        json.dumps({case_id: sorted(ids) for case_id, ids in applies.items()}) + "\n"
+    )
     print(", ".join(f"{k.replace('_', ' ')} {v}" for k, v in counts.items()))
     print(f"saved {path.name} (unchecked); next: make mem-check SNAPSHOT={args.to}, then commit")
     print("the snapshot and its stamp")

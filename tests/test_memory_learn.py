@@ -373,6 +373,9 @@ def test_finish_counts_support_and_saves_an_unchecked_snapshot(
     counts = json.loads((h.settings.runs_dir / "run-x" / "finish.json").read_text())
     assert counts["kept"] == 1
     assert counts["revised"] == 0
+    # Decision 0209: the final apply's answers are kept for a recount.
+    applies = json.loads((h.settings.runs_dir / "run-x" / ml.APPLIES_FILE).read_text())
+    assert applies == {case.case_id: ["L001"] for case in cases}
 
 
 def test_finish_revises_a_lesson_that_disagrees_and_applies_again(

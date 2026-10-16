@@ -34,6 +34,10 @@ class Support(BaseModel):
     applies: int
     agrees: int
     first_codes: tuple[tuple[str, int], ...] = ()
+    # Decision 0209: counted per part from then on; None in the pilot's snapshots, and for a
+    # part the lesson does not predict.
+    first_agrees: int | None = None
+    finding_agrees: int | None = None
 
 
 class Lesson(BaseModel):
@@ -100,11 +104,23 @@ def render_lesson(lesson: Lesson, tables: CodeTables) -> str:
         )
         lines.append(f"  finding categories: {named}")
     if lesson.support is not None:
-        s = lesson.support
-        seen = ", ".join(f"{code} ({n})" for code, n in s.first_codes)
-        counted = f"  counted: applies to {s.applies} learning cases, agrees in {s.agrees}"
-        lines.append(f"{counted}; first codes seen: {seen}" if seen else counted)
+        lines.append(_counted_line(lesson.support))
     return "\n".join(lines)
+
+
+def _counted_line(s: Support) -> str:
+    """The counted support. The pilot's snapshots keep their original line (decision 0209)."""
+    seen = ", ".join(f"{code} ({n})" for code, n in s.first_codes)
+    if s.first_agrees is None and s.finding_agrees is None:
+        counted = f"  counted: applies to {s.applies} learning cases, agrees in {s.agrees}"
+    else:
+        parts = [f"  counted: applies to {s.applies} learning cases"]
+        if s.first_agrees is not None:
+            parts.append(f"first code one of those predicted in {s.first_agrees}")
+        if s.finding_agrees is not None:
+            parts.append(f"at least one listed finding category flagged in {s.finding_agrees}")
+        counted = "; ".join(parts)
+    return f"{counted}; first codes seen: {seen}" if seen else counted
 
 
 def render_memory(memory: Memory, tables: CodeTables) -> str:
