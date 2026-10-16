@@ -59,11 +59,11 @@ coding test. No learner (Claude) call anywhere in this plan.
 
 ### Task 3: The lookup (decision 0210)
 
-- [ ] `memory/lookup.py:lookup(lessons, occurrence_codes, finding_categories, k, min_applies)`.
-- [ ] `memory_coding_test.py tools --snapshot NAME --lookup K`: condition `lookup`, run id
+- [x] `memory/lookup.py:lookup(lessons, occurrence_codes, finding_categories, k, min_applies)`.
+- [x] `memory_coding_test.py tools --snapshot NAME --lookup K`: condition `lookup`, run id
   `<source>-lookup<K>-<snapshot>`, refused without the registration; the spec records K, the
   floor and each case's lesson ids.
-- [ ] Tests.
+- [x] Tests.
 
 ### Task 4: The reading
 

@@ -11,7 +11,7 @@ What it measures
     Coding alone: the reading of the evidence is taken out, so a change in score is the coding's
     (0204 item 1). The payload is the case's probable-cause sentence and nothing else, built by
     ``Payload.for_coding_test``, the declared exception to the request boundary (decision 0205);
-    this is the only file that calls it. Three conditions:
+    this is the only file that calls it. Four conditions:
 
     - **tables** (``answer``): arm B's answer, stage 1 then the refinement of the finding items,
       on the coding test's system text (``memory.prompts.coding_system``: the preface, arm B's
@@ -20,6 +20,10 @@ What it measures
       unchanged) over a tables run's answers, counting in the ``mem`` statistics (decision 0203).
     - **memory** (``tools --snapshot NAME``): the same, with a checked snapshot appended to the
       system text. Refused until ``docs/rounds/memory-pilot.md`` is committed (0204 item 6).
+    - **lookup** (``tools --snapshot NAME --lookup K``): the same, with each case's own system
+      text: up to K of the snapshot's lessons, kept or pushed out, matched by script to that
+      case's first answer (``memory.lookup``, decision 0210). Refused until
+      ``docs/rounds/memory-lookup.md`` is committed. The spec records each case's lesson ids.
 
     ``suggest_codes`` is never called in the counts or memory conditions: the coding test has no
     phase-of-flight evidence, so the post-pass is given no group, and both conditions match.
@@ -45,6 +49,8 @@ Usage
         [--resume RUN_ID]
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
         [--resume RUN_ID]
+    uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
+        --lookup K [--resume RUN_ID]
 """
 
 import argparse
@@ -73,7 +79,7 @@ from ntsb_probable_cause.agent.run import log_line, round_costs, round_line
 from ntsb_probable_cause.agent.steps import sanitised
 from ntsb_probable_cause.agent.trail import StepKind
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, ModelError, SchemaError
-from ntsb_probable_cause.memory import prompts, snapshots
+from ntsb_probable_cause.memory import lookup, prompts, snapshots
 from ntsb_probable_cause.memory.lessons import Memory
 from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelReply, ModelSettings, Payload, Turn, cost_usd
@@ -99,6 +105,7 @@ __all__ = [
     "causes",
     "gitinfo",
     "main",
+    "refuse_lookup_without_registration",
     "refuse_memory_without_registration",
     "refuse_sample",
     "spend_usd",
@@ -107,6 +114,7 @@ __all__ = [
 SAMPLE: Final = "dev-steer-400"
 GUIDANCE: Final = ("r3-loc-stall", "r6-aircraft-control")
 REGISTRATION: Final = Path("docs/rounds/memory-pilot.md")
+LOOKUP_REGISTRATION: Final = Path("docs/rounds/memory-lookup.md")
 CAP_USD: Final = 0.05
 EXPECTED_USD_PER_CASE: Final = 0.01
 STATS: Final = "mem"
@@ -122,7 +130,7 @@ SPEC_FILE: Final = "spec.json"
 CASES_FILE: Final = "cases.jsonl"
 _PROG: Final = "memory_coding_test"
 
-Condition = Literal["tables", "counts", "memory"]
+Condition = Literal["tables", "counts", "memory", "lookup"]
 BatchFactory = Callable[[Settings], BatchRunner]
 Clock = Callable[[], datetime]
 
@@ -173,6 +181,19 @@ def refuse_memory_without_registration() -> None:
         raise ConfigurationError(
             f"{REGISTRATION} is not committed: the memory condition waits for the pilot's "
             "registration (decision 0204 item 6)"
+        )
+
+
+def refuse_lookup_without_registration() -> None:
+    """Refuse the lookup condition until its registration is committed.
+
+    Raises:
+        ConfigurationError: ``docs/rounds/memory-lookup.md`` is not committed (0210 item 4).
+    """
+    if not gitinfo.is_committed(LOOKUP_REGISTRATION):
+        raise ConfigurationError(
+            f"{LOOKUP_REGISTRATION} is not committed: the lookup condition waits for its "
+            "registration (decision 0210 item 4)"
         )
 
 
@@ -665,9 +686,13 @@ def _tools_run_id(args: argparse.Namespace) -> str:
             id these arguments give.
     """
     if args.snapshot is None:
+        if args.lookup is not None:
+            raise ConfigurationError("the lookup condition needs --snapshot")
         if args.repeat is None:
             raise ConfigurationError("the counts condition needs --repeat a or b")
         run_id = f"{args.source}-counts-{args.repeat}"
+    elif args.lookup is not None:
+        run_id = f"{args.source}-lookup{args.lookup}-{args.snapshot}"
     else:
         run_id = f"{args.source}-memory-{args.snapshot}"
     if args.resume is not None and args.resume != run_id:
@@ -678,18 +703,28 @@ def _tools_run_id(args: argparse.Namespace) -> str:
 
 
 def tools(args: argparse.Namespace, ctx: Context) -> int:
-    """The counts condition over a tables run, or the memory condition with ``--snapshot``.
+    """The counts condition, or the memory condition, or the lookup condition.
 
-    The memory condition ignores ``--repeat``: one memory run per snapshot and source.
+    Counts runs over a tables run; memory adds ``--snapshot``; lookup adds ``--lookup K``. The
+    memory and lookup conditions ignore ``--repeat``: one run per snapshot and source. The lookup
+    condition gives each case its own system text: the counts condition's, followed by up to K of
+    the snapshot's lessons, kept or pushed out, matched to that case's first answer
+    (``memory.lookup``, decision 0210). A case that matches none reads the counts text.
     """
     source = args.source
     run_id = _tools_run_id(args)
     memory: Memory | None = None
     snapshot_sha: str | None = None
+    if args.lookup is not None:
+        refuse_lookup_without_registration()
+        if args.lookup < 1:
+            raise ConfigurationError("--lookup must be at least 1")
     if args.snapshot is not None:
         memory, snapshot_sha = _checked_memory(args.snapshot)
     first = _read_source(ctx.runs_dir / source)
-    condition: Condition = "counts" if memory is None else "memory"
+    condition: Condition = (
+        "counts" if memory is None else ("memory" if args.lookup is None else "lookup")
+    )
     tables = load_tables()
     config = LoopConfig(
         tables=tables,
@@ -707,10 +742,11 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         model=sources.DEFAULT_MODEL,
         reasoning_effort=REASONING,
     )
-    system = prompts.coding_system(tables, GUIDANCE, memory)
+    system = prompts.coding_system(tables, GUIDANCE, None if args.lookup else memory)
     found = causes(_processed(ctx.settings))
     loops: list[Loop] = []
     skipped: dict[str, str] = {}
+    looked_up: dict[str, list[str]] = {}
     for row in first:
         cause = found.get(row.case_id)
         if row.hypothesis is None:
@@ -718,25 +754,40 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         elif cause is None:
             skipped[row.case_id] = NO_CAUSE
         else:
+            case_system = system
+            if args.lookup is not None and memory is not None:
+                picked = lookup.lookup(
+                    (*memory.lessons, *memory.pushed_out),
+                    row.hypothesis.occurrence_codes(tables),
+                    {guess.category6 for guess in row.hypothesis.findings},
+                    k=args.lookup,
+                )
+                looked_up[row.case_id] = [lesson.lesson_id for lesson in picked]
+                case_system = prompts.coding_system(
+                    tables, GUIDANCE, memory.model_copy(update={"lessons": picked})
+                )
             # group=None: no phase-of-flight evidence, so no suggest_codes call (module docstring)
             loops.append(
                 FixedToolsLoop(
                     {"ntsbNumber": row.case_id},
                     Payload.for_coding_test(cause),
-                    system,
+                    case_system,
                     row.hypothesis,
                     as_recorded(row.hypothesis),
                     None,
                     config,
                 )
             )
-    repeat = args.repeat if memory is None else None
+    repeat = args.repeat if memory is None else None  # memory and lookup: one run each
     order = [row.case_id for row in first]
     spec = {
         **_base_spec(condition, repeat, ctx.commit),
         "source_run": source,
         "snapshot": args.snapshot,
         "snapshot_sha256": snapshot_sha,
+        "lookup_k": args.lookup,
+        "lookup_min_applies": lookup.MIN_APPLIES if args.lookup is not None else None,
+        "lookup_lessons": looked_up if args.lookup is not None else None,
         "suggest_codes": SUGGEST_CODES,
         "case_ids": order,
     }
@@ -788,6 +839,12 @@ def main(
         help="the counts run's repeat (required for counts; the memory condition ignores it)",
     )
     t.add_argument("--snapshot", help="a checked memory snapshot's name")
+    t.add_argument(
+        "--lookup",
+        type=int,
+        metavar="K",
+        help="the lookup condition: up to K of the snapshot's lessons per case (decision 0210)",
+    )
     t.add_argument("--resume", metavar="RUN_ID", help="continue this run's folder")
     args = parser.parse_args(argv)
     try:

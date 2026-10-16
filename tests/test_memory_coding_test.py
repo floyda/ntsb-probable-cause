@@ -14,7 +14,7 @@ from scripts import memory_coding_test as ct
 from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.errors import ConfigurationError
 from ntsb_probable_cause.memory import checks, prompts, snapshots
-from ntsb_probable_cause.memory.lessons import Lesson, Memory, Prediction
+from ntsb_probable_cause.memory.lessons import Lesson, Memory, Prediction, Support
 from ntsb_probable_cause.model.batch import BatchRequest, BatchResult, BatchStatus
 from ntsb_probable_cause.model.client import ModelReply, Payload, Usage, tool_reply
 from ntsb_probable_cause.scoring import prompt
@@ -532,3 +532,124 @@ def test_counts_and_memory_send_the_same_requests_but_for_the_memory_suffix(
             assert with_memory.system[len(plain.system) :].startswith(prompts.MEMORY_HEADING)
             suffixed += 1
     assert suffixed == 1  # the answer call; the refinement's system text holds no memory
+
+
+# --- the lookup condition (decision 0210) ---------------------------------------------------
+
+
+WORDS = {"L001": "one", "L002": "two", "L003": "three", "L004": "four"}
+
+
+def _lookup_snapshot(directory: Path) -> None:
+    """One kept lesson that matches the source answer's 552230, one pushed out that matches its
+    category 020630, one that matches nothing, and one that matches but has too little support."""
+
+    def lesson(lid: str, first: tuple[str, ...], cats: tuple[str, ...], applies: int) -> Lesson:
+        kind = "convention" if first else "evidence"
+        return Lesson(
+            lesson_id=lid,
+            kind=kind,
+            statement=f"lesson {WORDS[lid]} says how the NTSB codes it",
+            scope="a scope",
+            predicts=Prediction(first_occurrence=first, finding_categories=cats),
+            written_in=2010,
+            support=Support(applies=applies, agrees=applies // 2),
+        )
+
+    directory.mkdir()
+    memory = Memory(
+        name="t",
+        periods=(2009, 2010),
+        lessons=(lesson("L001", ("552230",), (), 30), lesson("L002", ("550240",), (), 30)),
+        pushed_out=(lesson("L003", (), ("020630",), 20), lesson("L004", ("552230",), (), 9)),
+    )
+    path = snapshots.save(memory, directory)
+    stamp = checks.Stamp(
+        snapshot="t",
+        sha256=snapshots.sha256_of(path),
+        withheld_texts_compared=1,
+        causes_compared=1,
+        checked_on=date(2026, 10, 16),
+        commit="abc1234",
+        dirty=False,
+    )
+    snapshots.stamp_path("t", directory).write_text(stamp.model_dump_json())
+
+
+def test_lookup_gives_the_case_the_lessons_that_match_its_first_answer(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    fake = FakeBatch(_tools_answer)
+    argv = ["tools", "--source", SOURCE, "--snapshot", "t", "--lookup", "5"]
+    assert _run(settings, fake, argv) == 0
+    answer = fake.submitted[0][0]
+    assert prompts.MEMORY_HEADING in answer.system
+    assert "[L001]" in answer.system  # kept, matches the first code
+    assert "[L003]" in answer.system  # pushed out, matches the finding category
+    assert "[L002]" not in answer.system  # matches nothing
+    assert "[L004]" not in answer.system  # below the support floor
+    folder = settings.runs_dir / f"{SOURCE}-lookup5-t"
+    spec = json.loads((folder / "spec.json").read_text())
+    assert spec["condition"] == "lookup"
+    assert spec["repeat"] is None
+    assert spec["lookup_k"] == 5
+    assert spec["lookup_min_applies"] == 10
+    assert spec["lookup_lessons"] == {FIRST: ["L001", "L003"]}
+
+
+def test_lookup_sends_the_counts_requests_with_only_the_lessons_added(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    counts, looked = FakeBatch(_tools_answer), FakeBatch(_tools_answer)
+    assert _run(settings, counts, ["tools", "--source", SOURCE, "--repeat", "a"]) == 0
+    argv = ["tools", "--source", SOURCE, "--snapshot", "t", "--lookup", "1"]
+    assert _run(settings, looked, argv) == 0
+    plain, with_lessons = counts.submitted[0][0], looked.submitted[0][0]
+    assert plain.payload == with_lessons.payload
+    assert plain.history == with_lessons.history
+    suffix = with_lessons.system[len(plain.system) :]
+    assert with_lessons.system.startswith(plain.system)
+    assert suffix.startswith(prompts.MEMORY_HEADING)
+    assert "[L001]" in suffix
+    assert "[L003]" not in suffix  # K=1: only the best match
+
+
+def test_lookup_is_refused_without_its_registration(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path != ct.LOOKUP_REGISTRATION)
+    fake = FakeBatch(_tools_answer)
+    argv = ["tools", "--source", SOURCE, "--snapshot", "t", "--lookup", "5"]
+    assert _run(settings, fake, argv) == 1
+    assert not fake.submitted
+    assert not (settings.runs_dir / f"{SOURCE}-lookup5-t").exists()
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["tools", "--source", SOURCE, "--repeat", "a", "--lookup", "5"],
+        ["tools", "--source", SOURCE, "--snapshot", "t", "--lookup", "0"],
+    ],
+)
+def test_lookup_needs_a_snapshot_and_a_positive_k(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, argv) == 1
+    assert not fake.submitted
