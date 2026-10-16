@@ -40,7 +40,10 @@ Rules for every statement and scope:
 - No digits at all. Never state a count, share or percentage: those are counted for you later.
 - No names of people, places, operators or aircraft, no dates, no registrations, no case details.
 - Do not copy wording from a probable-cause sentence; say what the NTSB does in your own words.
-- Codes go only in first_occurrence and finding_categories, from the codes shown in the cases.
+- Codes go only in first_occurrence and finding_categories, from the codes shown in the cases, \
+six digits each and nothing else: no labels. first_occurrence holds occurrence codes; \
+finding_categories holds finding categories, which are the first six digits of a flagged \
+finding's code.
 
 Return at most {MAX_NEW_PER_CALL} new lessons. Edit an existing lesson (by its id) when the cases \
 show it should be broader, narrower or corrected. Retire a lesson (by its id) only when the \
@@ -60,7 +63,8 @@ codes disagree with it in more of them than they agree. Either edit it so its si
 prediction fit what the NTSB does, or retire it if no correct lesson can be made from it. The same \
 rules hold as when it was written: one sentence, lower case except the acronyms {_ALLOWED}, no \
 digits, no names, places, operators, aircraft, dates or registrations, no copied wording, and \
-codes only in first_occurrence and finding_categories."""
+codes only in first_occurrence and finding_categories, six digits each with no labels (a finding \
+category is the first six digits of a finding's code)."""
 
 CODING_PREFACE: Final = """In this task you are not given the evidence. You are given the NTSB's \
 own probable-cause statement for one accident, as the field `ntsb_probable_cause`. Code it as the \

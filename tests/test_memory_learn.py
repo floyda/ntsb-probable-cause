@@ -427,6 +427,67 @@ def test_propose_prints_no_draft_text_when_it_drops_a_draft(
     assert "N123AB" not in out
 
 
+# The shapes the first 2009 propose run returned (plan Deviations, 2026-10-16): a code with its
+# label, and a ten-digit finding code where a six-digit category belongs.
+CATEGORY = sorted(TABLES.categories)[0]
+LABELLED = "552230 Landing-Landing Roll / Loss of control on ground"
+
+
+def test_reshape_reads_codes_from_their_leading_digits_and_counts_the_changes() -> None:
+    draft = _draft(
+        first_occurrence=[LABELLED, "552230", "5522301", "a label alone"],
+        finding_categories=[
+            f"{CATEGORY}2020",
+            f"{CATEGORY}20",
+            f"{CATEGORY}2020 a label",
+            CATEGORY,
+        ],
+    )
+    reshaped, changed = ml.reshape(draft)
+    assert reshaped.first_occurrence == ["552230", "552230", "5522301", "a label alone"]
+    assert reshaped.finding_categories == [CATEGORY] * 4
+    assert changed == 4
+
+
+def test_a_draft_in_the_copied_shapes_is_kept_with_six_digit_codes() -> None:
+    ids = iter(["L001", "L002"])
+    shaped = _draft(first_occurrence=[LABELLED], finding_categories=[f"{CATEGORY}2020"])
+    reply = ProposeReply(new=[shaped, _draft(first_occurrence=["5522301"])], edits=[], retire=[])
+    memory, dropped = ml.merge_proposal(
+        Memory(name="d", periods=(2009,)), reply, 2009, TABLES, lambda: next(ids)
+    )
+    assert [lesson.predicts.first_occurrence for lesson in memory.lessons] == [("552230",)]
+    assert memory.lessons[0].predicts.finding_categories == (CATEGORY,)
+    assert len(dropped) == 1
+
+
+def test_an_edit_and_a_revision_in_the_copied_shapes_are_kept() -> None:
+    shaped = _draft(statement="new", first_occurrence=[LABELLED]).model_dump()
+    reply = ProposeReply(new=[], edits=[LessonEdit(lesson_id="L001", **shaped)], retire=[])
+    start = Memory(name="d", periods=(2009,), lessons=(_lesson(),))
+    memory, dropped = ml.merge_proposal(start, reply, 2010, TABLES, lambda: "L002")
+    assert dropped == []
+    assert memory.lessons[0].predicts.first_occurrence == ("552230",)
+    revise = ReviseReply(action="edit", **shaped)
+    revised, messages = ml.merge_revision(start, "L001", revise, 2010, TABLES)
+    assert messages == []
+    assert revised.lessons[0].predicts.first_occurrence == ("552230",)
+
+
+def test_propose_prints_how_many_codes_it_read_from_their_leading_digits(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    shaped = _draft(first_occurrence=[LABELLED], finding_categories=[f"{CATEGORY}2020"])
+    h = Harness(
+        tmp_path,
+        lambda p: json.dumps({"new": [shaped.model_dump()], "edits": [], "retire": []}),
+        ("2009",),
+    )
+    assert h.run("propose", "--period", "2009", "--from", "empty", "--to", "pilot-a") == 0
+    out = capsys.readouterr().out
+    assert "1 lessons, 0 drafts dropped, 2 codes read from their leading digits" in out
+
+
 def test_a_resumed_propose_makes_no_new_calls(tmp_path: Path) -> None:
     h = Harness(
         tmp_path,

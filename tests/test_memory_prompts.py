@@ -61,3 +61,11 @@ def test_the_coding_system_adds_the_memory_only_when_given() -> None:
     assert with_memory.startswith(without)
     assert prompts.MEMORY_HEADING in with_memory
     assert without.startswith(prompts.CODING_PREFACE)
+
+
+def test_the_learner_prompts_state_a_codes_shape() -> None:
+    # Plan Deviations, 2026-10-16: without this the first 2009 propose run wrote finding codes
+    # for categories and copied labels into the code fields.
+    for system in (prompts.SYSTEM_PROPOSE, prompts.SYSTEM_REVISE):
+        assert "first six digits" in system
+        assert "no labels" in system

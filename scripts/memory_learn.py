@@ -88,6 +88,11 @@ AGREEING_SHOWN: Final = 5
 _NAME: Final = re.compile(r"[a-z0-9][a-z0-9-]*")
 _CODE: Final = re.compile(r"\d{6}")
 _ID: Final = re.compile(r"L(\d+)")
+# A code as a reply may write it: six leading digits, then nothing that continues the number.
+# A category may arrive as an eight-digit item or a ten-digit finding code, whose first six digits
+# are the category (plan Deviations, 2026-10-16).
+_LEADING_OCCURRENCE: Final = re.compile(r"\s*(\d{6})(?!\d)")
+_LEADING_CATEGORY: Final = re.compile(r"\s*(\d{6})(?:\d{2}|\d{4})?(?!\d)")
 
 # Pure helpers. -----------------------------------------------------------------------------
 
@@ -123,6 +128,33 @@ def _id_text(lesson_id: str) -> str:
     return lesson_id if _ID.fullmatch(lesson_id) else "an id of the wrong shape"
 
 
+def _leading(codes: Sequence[str], pattern: re.Pattern[str]) -> tuple[list[str], int]:
+    out: list[str] = []
+    changed = 0
+    for code in codes:
+        match = pattern.match(code)
+        read = match.group(1) if match else code
+        changed += read != code
+        out.append(read)
+    return out, changed
+
+
+def reshape[D: prompts.LessonDraft](draft: D) -> tuple[D, int]:
+    """The draft with each code read from its leading digits, and how many codes that changed.
+
+    The learner reads each case's codes with their labels, and finding codes at ten digits; a kept
+    lesson is shown back with labels too. In the first 2009 propose run, replies copied those
+    forms: a code with its label in ``first_occurrence``, a ten-digit finding code for a category
+    (plan Deviations, 2026-10-16). An occurrence code is its six leading digits; a category is the
+    six leading digits of a six-, eight- or ten-digit code. Anything else is left as written, and
+    the table check drops the draft.
+    """
+    occurrence, changed_o = _leading(draft.first_occurrence, _LEADING_OCCURRENCE)
+    categories, changed_c = _leading(draft.finding_categories, _LEADING_CATEGORY)
+    update = {"first_occurrence": occurrence, "finding_categories": categories}
+    return draft.model_copy(update=update), changed_o + changed_c
+
+
 def _problems(draft: prompts.LessonDraft, tables: CodeTables) -> str | None:
     """Why a draft cannot become a lesson, or None."""
     for code in draft.first_occurrence:
@@ -142,7 +174,11 @@ def _lesson_from(
     written_in: int,
     history: tuple[str, ...] = (),
 ) -> tuple[Lesson | None, str | None]:
-    """A lesson from a draft, or why not: codes, validation, then the identifier rule (0201)."""
+    """A lesson from a draft, or why not: codes, validation, then the identifier rule (0201).
+
+    Codes are first read from their leading digits (``reshape``).
+    """
+    draft, _ = reshape(draft)
     if (why := _problems(draft, tables)) is not None:
         return None, why
     try:
@@ -422,7 +458,7 @@ def propose(args: argparse.Namespace, run: Run) -> int:
         used.add(new_id)
         return new_id
 
-    failed = dropped_total = 0
+    failed = dropped_total = reshaped_total = 0
     for batch in batches:
         reply = client.send(make_call(batch))
         if not reply.ok or reply.text is None:
@@ -435,6 +471,7 @@ def propose(args: argparse.Namespace, run: Run) -> int:
                 failed += 1
                 print("chunk failed: reply did not parse")
             else:
+                reshaped_total += sum(reshape(d)[1] for d in (*parsed.new, *parsed.edits))
                 draft, dropped = merge_proposal(draft, parsed, year, tables, next_id)
                 dropped_total += len(dropped)
                 for message in dropped:
@@ -444,7 +481,7 @@ def propose(args: argparse.Namespace, run: Run) -> int:
         draft_file.write_text(draft.model_dump_json(indent=1) + "\n")
     print(
         f"run {run_id}: {len(batches)} chunks, {failed} failed, {len(draft.lessons)} lessons, "
-        f"{dropped_total} drafts dropped"
+        f"{dropped_total} drafts dropped, {reshaped_total} codes read from their leading digits"
     )
     print(f"next: make mem-agreement RUN={run_id} (2009 only), or the next period's propose")
     return 0
