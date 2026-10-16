@@ -506,3 +506,30 @@ describe.skipIf(!built)("the rail of places (S5 step 6a, Task 3)", () => {
         }
     });
 });
+
+describe.skipIf(!built)("the way back (S5 step 6a, Task 4)", () => {
+    const { cases } = loadExport(exportDir());
+    const back = (html: string): string[] => {
+        const nav = /<nav[^>]*aria-label="Back"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
+        return [...nav.matchAll(/<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)].map(
+            (m) => `${m[1] ?? ""} ${visibleText(m[2] ?? "").trim()}`,
+        );
+    };
+    const mainOpens = (html: string): boolean =>
+        /<main[^>]*>\s*<nav[^>]*aria-label="Back"/.test(html);
+
+    it.each([...cases.keys()])("case %s opens with a way back to the board", (n) => {
+        const html = readFileSync(join(DIST, "case", n, "index.html"), "utf8");
+        expect(mainOpens(html)).toBe(true);
+        expect(back(html)).toEqual(["/#board ← All closed cases"]);
+    });
+
+    it.each([...cases.keys()].filter((n) => existsSync(join(DIST, "case", n, "trail"))))(
+        "the trail of %s leads back to the board and to its case",
+        (n) => {
+            const html = readFileSync(join(DIST, "case", n, "trail", "index.html"), "utf8");
+            expect(mainOpens(html)).toBe(true);
+            expect(back(html)).toEqual(["/#board ← All closed cases", `/case/${n}/ ← This case`]);
+        },
+    );
+});

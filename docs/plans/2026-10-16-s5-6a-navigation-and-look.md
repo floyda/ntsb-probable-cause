@@ -172,10 +172,10 @@ Decided here, so no question is needed; each can be changed at the preview:
 
 **Files:** modify `site/src/pages/case/[case]/index.astro`, `site/src/pages/case/[case]/trail.astro`; extend `site/tests/dist.test.ts`.
 
-- [ ] **Step 1: Failing test.** Every case page opens its `main` with a link "← All closed cases" to `/#board`. Every trail page opens with that link and "← This case", to `/case/<number>/`.
-- [ ] **Step 2: Run it.** It fails.
-- [ ] **Step 3:** Add a `nav` labelled "Back" with those links, above the `h1`. The arrow is in the link text, and screen readers hear it as "All closed cases", because the arrow is in an `aria-hidden` span.
-- [ ] **Step 4:** Run the tests and `make check`. Commit `S5 step 6a Task 4: the way back from case and trail pages`.
+- [x] **Step 1: Failing test.** Every case page opens its `main` with a link "← All closed cases" to `/#board`. Every trail page opens with that link and "← This case", to `/case/<number>/`.
+- [x] **Step 2: Run it.** It fails.
+- [x] **Step 3:** Add a `nav` labelled "Back" with those links, above the `h1`. The arrow is in the link text, and screen readers hear it as "All closed cases", because the arrow is in an `aria-hidden` span.
+- [x] **Step 4:** Run the tests and `make check`. Commit `S5 step 6a Task 4: the way back from case and trail pages`.
 
 ## Task 5: The look, page by page
 
@@ -226,6 +226,7 @@ Decided here, so no question is needed; each can be changed at the preview:
   - The first page's three stops are now sections with the ids `question`, `board` and `case`. The board gains a visible heading, "Closed cases", so that it has a heading for its sign in Task 5. The case stop is left out of the rail when there is no case to show.
   - Methods' own contents list is removed, as planned.
   - The phone test of a link to a place runs on the phone project only; on a wide screen the rail is a side column and the test does not apply. It was shown to fail with the scroll margin removed from the built CSS.
+- **Task 4 (2026-10-16):** the case and trail pages already had plain "Back to the board" and "Back to the case" lines from steps 2 and 3. `BackLinks.astro` replaces them. "← All closed cases" now goes to `/#board`, the board itself, not the top of the first page. Only site files changed, so the site's tests and the accessibility run were rerun, not the Python suite.
 
 ## Glossary
 

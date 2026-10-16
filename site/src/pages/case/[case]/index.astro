@@ -1,6 +1,7 @@
 ---
 // One case's own page, at its NTSB case number (spec §12 item 12).
 import type { GetStaticPaths } from "astro";
+import BackLinks from "../../../components/BackLinks.astro";
 import OpenedCase from "../../../components/OpenedCase.astro";
 import Base from "../../../layouts/Base.astro";
 import type { CaseFile } from "../../../lib/board-case-types";
@@ -25,9 +26,7 @@ const { kase } = Astro.props;
     title={`${kase.case_number} · Ellery`}
     description="One closed case: the agent's coding beside the NTSB's."
 >
-    <p>
-        <a href="/">Back to the board</a>
-    </p>
+    <BackLinks />
     <h1>{kase.case_number}</h1>
     <OpenedCase kase={kase} />
 </Base>
