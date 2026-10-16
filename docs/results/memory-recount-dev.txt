@@ -1,0 +1,16 @@
+corrected count, pilot-2010 against pilot-2010-recount (decision 0209); counts only
+
+lessons: 198; estimated tokens, all lessons: 63179
+median estimated tokens of a lesson the cap kept in pilot-2010: 416
+
+lessons that apply to at least 10 learning cases: 106
+  median fit, old rule (every listed category flagged): 0%
+  median fit, corrected rule (one listed category enough): 48%
+  median first-code fit, over the 103 that predict a first code: 50%
+  finding categories named: median 3, largest 12
+  disagree more than agree on the final support (the revision test): old rule 101, corrected rule 54
+
+finding categories named
+  all 198 lessons: 60
+  the 15 lessons the cap keeps in pilot-2010: 7
+  the 13 lessons the cap keeps in pilot-2010-recount: 21

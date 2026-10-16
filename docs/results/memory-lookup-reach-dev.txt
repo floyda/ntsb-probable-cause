@@ -1,0 +1,8 @@
+lookup reach on tables(a)'s answers, pilot-2010-recount, K=5, floor 10 (decision 0210); counts only
+
+lessons in the snapshot: 198; the lookup may choose: 106
+cases with an answer: 401
+  with 5 lessons: 397; with 1 to 4: 3; with none: 1
+distinct lessons used: 93
+mean estimated tokens of lessons a case: 2293; the capped note: 5763
+cases where a lesson the lookup may choose predicts the answer's first code: 290; of them, given none: 9
