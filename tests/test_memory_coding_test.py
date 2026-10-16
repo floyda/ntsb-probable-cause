@@ -325,6 +325,7 @@ def test_memory_appends_the_checked_snapshot_to_the_system_text(
     assert spec["repeat"] is None  # the memory condition ignores --repeat
     assert spec["snapshot"] == "t"
     assert spec["snapshot_sha256"] == snapshots.sha256_of(tmp_path / "snapshots" / "t.json")
+    assert "lookup_k" not in spec  # a memory spec is as it was before the lookup condition
 
 
 def test_memory_is_refused_without_the_registration(

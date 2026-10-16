@@ -134,6 +134,8 @@ def test_main_writes_a_counts_only_reading_that_ends_with_the_rule(
         ("lk", {"lookup_k": 3}, "K=5"),
         ("lk", {"lookup_min_applies": 5}, "floor 10"),
         ("lk", {"condition": "memory"}, "lookup run expected"),
+        ("nt", {"model": "another/model"}, "note differs from tables-a in model"),
+        ("cb", {"guidance_sha256": "0" * 12}, "counts-b differs from tables-a in guidance"),
     ],
 )
 def test_main_refuses_runs_that_do_not_belong_together(

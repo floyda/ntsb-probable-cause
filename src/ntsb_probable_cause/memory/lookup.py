@@ -16,17 +16,21 @@ MIN_APPLIES: Final = 10
 
 @dataclass(frozen=True)
 class Match:
-    """How one lesson matches an answer.
+    """How one lesson matches an answer; each part counts once, however many codes it lists.
 
     Attributes:
-        exact: predicted first codes among the answer's occurrence codes, plus predicted finding
-            categories among the answer's categories.
-        event: predicted first codes that are not in the answer but share an event with one of
+        exact: 1 if any predicted first code is among the answer's occurrence codes, plus 1 if any
+            predicted finding category is among the answer's categories (a lesson's categories are
+            alternatives, decision 0209, so a long list does not outrank a short one).
+        first: 1 if any predicted first code is among the answer's occurrence codes, else 0 (the
+            first-code part of ``exact``, which breaks ties ahead of a finding category).
+        event: 1 if no predicted first code is in the answer but one shares an event with one of
             its occurrence codes (the same event in another phase, which a split lesson exists to
-            settle).
+            settle); else 0.
     """
 
     exact: int
+    first: int
     event: int
 
 
@@ -34,10 +38,10 @@ def match(lesson: Lesson, occurrence: Collection[str], categories: Collection[st
     """``lesson`` against an answer's six-digit occurrence codes and finding categories."""
     first = lesson.predicts.first_occurrence
     events = {code[3:] for code in occurrence}
-    exact_first = sum(code in occurrence for code in first)
-    exact_cats = sum(category in categories for category in lesson.predicts.finding_categories)
-    event = sum(code not in occurrence and code[3:] in events for code in first)
-    return Match(exact=exact_first + exact_cats, event=event)
+    by_first = any(code in occurrence for code in first)
+    by_category = any(category in categories for category in lesson.predicts.finding_categories)
+    by_event = not by_first and any(code[3:] in events for code in first)
+    return Match(exact=int(by_first) + int(by_category), first=int(by_first), event=int(by_event))
 
 
 def fit(lesson: Lesson) -> float:
@@ -56,14 +60,16 @@ def lookup(
 ) -> tuple[Lesson, ...]:
     """Up to ``k`` matching lessons that apply to at least ``min_applies`` learning cases.
 
-    Order: most exact matches, then most event matches, then highest fit, then most cases applied
-    to, then lesson id, so the same answer always gets the same lessons.
+    A lesson matches by an exact part or by an event alone (``Match``). Order: most exact parts
+    (first code, finding category), then a first-code match ahead of a category match, then an
+    event match, then highest fit, then most cases applied to, then lesson id, so the same answer
+    always gets the same lessons.
     """
 
-    def rank(item: tuple[Lesson, Match]) -> tuple[int, int, float, int, str]:
+    def rank(item: tuple[Lesson, Match]) -> tuple[int, int, int, float, int, str]:
         lesson, m = item
         applies = lesson.support.applies if lesson.support is not None else 0
-        return (-m.exact, -m.event, -fit(lesson), -applies, lesson.lesson_id)
+        return (-m.exact, -m.first, -m.event, -fit(lesson), -applies, lesson.lesson_id)
 
     eligible = [
         (lesson, match(lesson, occurrence, categories))

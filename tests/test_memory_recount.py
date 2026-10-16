@@ -5,6 +5,8 @@ the memory text the apply step reads, as the real key is.
 """
 
 import hashlib
+import json
+from pathlib import Path
 
 import pytest
 from scripts import memory_recount as mr
@@ -94,3 +96,26 @@ def test_the_recount_uses_the_corrected_rule_and_retires_unused_lessons() -> Non
     assert (s1.applies, s1.agrees, s1.first_agrees, s1.finding_agrees) == (2, 2, 2, 2)
     assert memory.name == "pilot-x-recount"
     assert memory.cap_tokens == FINAL.cap_tokens
+
+
+def test_a_recount_over_other_cases_than_the_finish_step_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match="no finished finish step"):
+        mr.refuse_other_cases(tmp_path, 2)
+    (tmp_path / "finish.json").write_text(json.dumps({"applied_cases": 3}))
+    with pytest.raises(ConfigurationError, match="applied to 3 cases"):
+        mr.refuse_other_cases(tmp_path, 2)
+    mr.refuse_other_cases(tmp_path, 3)
+
+
+def test_saved_answers_are_read_and_checked_against_the_snapshot(tmp_path: Path) -> None:
+    stored = tmp_path / "applies.json"
+    stored.write_text(json.dumps({"A": ["L1"], "B": ["L1", "L2"]}))
+    applies, how = mr._answers(tmp_path, DRAFT, FINAL, CASES)
+    assert applies == {"A": frozenset({"L1"}), "B": frozenset({"L1", "L2"})}
+    assert how == "read from applies.json"
+    stored.write_text(json.dumps({"A": ["L1"], "B": ["L7"]}))
+    with pytest.raises(ConfigurationError, match="names lessons"):
+        mr._answers(tmp_path, DRAFT, FINAL, CASES)
+    stored.write_text(json.dumps({"A": ["L1"]}))
+    with pytest.raises(ConfigurationError, match="other cases"):
+        mr._answers(tmp_path, DRAFT, FINAL, CASES)

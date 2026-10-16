@@ -116,6 +116,23 @@ def recount(
     )
 
 
+def refuse_other_cases(folder: Path, n_cases: int) -> None:
+    """Refuse a recount over a different number of cases than the run's finish step applied to.
+
+    Raises:
+        ConfigurationError: ``finish.json`` is missing, or its ``applied_cases`` is not
+            ``n_cases`` (the processed file or the exclusions changed since the run).
+    """
+    try:
+        applied = json.loads((folder / "finish.json").read_text())["applied_cases"]
+    except OSError, ValueError, KeyError:
+        raise ConfigurationError(f"{folder.name}: no finished finish step to recount") from None
+    if applied != n_cases:
+        raise ConfigurationError(
+            f"the finish step applied to {applied} cases; the recount would count {n_cases}"
+        )
+
+
 def _answers(
     folder: Path, draft: Memory, final: Memory, cases: Sequence[LearningCase]
 ) -> tuple[dict[str, frozenset[str]], str]:
@@ -123,7 +140,13 @@ def _answers(
     stored = folder / ml.APPLIES_FILE
     if stored.exists():
         raw = json.loads(stored.read_text())
-        return {case_id: frozenset(ids) for case_id, ids in raw.items()}, f"read from {stored.name}"
+        applies = {case_id: frozenset(ids) for case_id, ids in raw.items()}
+        known = {lesson.lesson_id for lesson in (*final.lessons, *final.pushed_out)}
+        if applies.keys() != {case.case_id for case in cases}:
+            raise ConfigurationError(f"{stored.name} covers other cases than the run's periods")
+        if not set().union(*applies.values()) <= known:
+            raise ConfigurationError(f"{stored.name} names lessons the snapshot does not hold")
+        return applies, f"read from {stored.name}"
     model, effort = ml.APPLIERS[ml.parse_applier(ml.AGREEMENT_FILE.read_text())]
 
     def call_key(memory: Memory, case: LearningCase) -> str:
@@ -150,6 +173,7 @@ def _recount_run(args: argparse.Namespace, settings: Settings) -> tuple[Memory, 
     cases = pool.learning_part(
         settings.data_dir / "processed", years=set(draft.periods), excluded=pool.excluded_ids()
     )
+    refuse_other_cases(folder, len(cases))
     applies, how = _answers(folder, draft, final, cases)
     return recount(final, args.to, cases, applies), len(cases), how
 

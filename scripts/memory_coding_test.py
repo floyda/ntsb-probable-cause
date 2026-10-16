@@ -785,12 +785,15 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         "source_run": source,
         "snapshot": args.snapshot,
         "snapshot_sha256": snapshot_sha,
-        "lookup_k": args.lookup,
-        "lookup_min_applies": lookup.MIN_APPLIES if args.lookup is not None else None,
-        "lookup_lessons": looked_up if args.lookup is not None else None,
         "suggest_codes": SUGGEST_CODES,
         "case_ids": order,
     }
+    if args.lookup is not None:  # only here, so a counts or memory spec is as it was
+        spec |= {
+            "lookup_k": args.lookup,
+            "lookup_min_applies": lookup.MIN_APPLIES,
+            "lookup_lessons": looked_up,
+        }
     plan = Plan(run_id, spec, loops, skipped, order)
     return _run(ctx, plan, resume=args.resume is not None)
 

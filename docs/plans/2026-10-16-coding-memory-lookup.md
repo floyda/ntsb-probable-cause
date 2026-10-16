@@ -86,4 +86,22 @@ coding test. No learner (Claude) call anywhere in this plan.
 
 ## Deviations
 
-(none yet)
+- 2026-10-16, independent review of Tasks 1–4 (0 critical, 1 important, 9 minor). I1: the figures
+  0209 and 0210 cite came from uncommitted checks, and "101 of 106 were sent back" was the revision
+  test read on the final support, not the lessons revised (the finish step revised 104). Added
+  `scripts/memory_recount_report.py` (`make mem-recount-report`, `docs/results/memory-recount-dev.txt`)
+  and `scripts/memory_lookup_reach.py` (`make mem-lookup-reach`, `docs/results/memory-lookup-reach-dev.txt`,
+  answers' codes only, no score); the decisions now cite them and the clause is reworded (corrected in
+  place before push, sign-off or citation; recorded here). M1: the lookup keys are added to a run's
+  spec only for a lookup run, so a counts or memory spec is as it was. M2: the recount refuses unless
+  its case count equals `finish.json`'s `applied_cases`. M3: the `applies.json` path is tested and
+  checked against the run's cases and the snapshot's lessons. M5: the reading refuses runs whose model,
+  reasoning, output limit, price variant, cap, guidance or statistics differ from tables(a)'s. M7: a
+  lesson's finding categories count as one match however many it lists (decision 0209's reading),
+  and a first-code match breaks ties ahead of a category match; set from the lookup's reach on
+  tables(a)'s answers (cases with a choosable lesson predicting the answer's first code but given
+  none: 15 under the first rule, 29 with categories counted once, 9 with the tie-break; of 290), never
+  from a score. Not changed: M4 (every snapshot stamp, the pilot's included, is written before its
+  commit, so `dirty` is always true there), M6 (counts(a) ran on 2026-10-15; drift between then and
+  the lookup run is not in the noise term; stated in the registration), M8 (a retired lesson that
+  had been revised would make the rebuild refuse, safely).

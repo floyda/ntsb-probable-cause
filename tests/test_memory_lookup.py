@@ -42,7 +42,7 @@ def test_a_lesson_matches_on_a_first_code_or_a_finding_category() -> None:
 def test_the_same_event_in_another_phase_matches_below_an_exact_code() -> None:
     other_phase = _lesson("L1", first=(APPROACH_LOC, "552240"))
     exact = _lesson("L2", first=(LANDING_LOC,), agrees=2)
-    assert lk.match(other_phase, [LANDING_LOC], []) == lk.Match(exact=0, event=2)
+    assert lk.match(other_phase, [LANDING_LOC], []) == lk.Match(exact=0, first=0, event=1)
     assert _ids(lk.lookup([other_phase, exact], [LANDING_LOC], [])) == ["L2", "L1"]
 
 
@@ -56,6 +56,27 @@ def test_more_exact_matches_rank_first_then_fit_then_support_then_id() -> None:
         [tie, fit_low_small, fit_low_big, fit_high, two], [LANDING_LOC], ["020630"], k=5
     )
     assert _ids(found) == ["L9", "L5", "L4", "L2", "L3"]
+
+
+def test_a_long_list_of_categories_counts_once() -> None:
+    # Decision 0209: categories are alternatives, so naming more of them earns no extra rank.
+    many = _lesson("L1", first=(OTHER,), cats=("020630", "010100"), agrees=1)
+    one = _lesson("L2", first=(OTHER,), cats=("020630",), agrees=15)
+    assert lk.match(many, [LANDING_LOC], ["020630", "010100"]) == lk.Match(
+        exact=1, first=0, event=0
+    )
+    assert _ids(lk.lookup([many, one], [LANDING_LOC], ["020630", "010100"])) == ["L2", "L1"]
+
+
+def test_an_exact_first_code_and_an_event_do_not_add_up() -> None:
+    both = _lesson("L1", first=(LANDING_LOC, APPROACH_LOC))
+    assert lk.match(both, [LANDING_LOC], []) == lk.Match(exact=1, first=1, event=0)
+
+
+def test_a_first_code_match_outranks_a_category_match_of_higher_fit() -> None:
+    by_category = _lesson("L1", first=(OTHER,), cats=("020630",), agrees=19)
+    by_first = _lesson("L2", agrees=2)
+    assert _ids(lk.lookup([by_category, by_first], [LANDING_LOC], ["020630"])) == ["L2", "L1"]
 
 
 def test_at_most_k_lessons_and_none_below_the_support_floor() -> None:

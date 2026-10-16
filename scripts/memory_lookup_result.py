@@ -56,6 +56,16 @@ DEFAULT_OUT: Final = Path("docs/results/memory-lookup-dev.txt")
 SNAPSHOT: Final = "pilot-2010-recount"
 PILOT_SNAPSHOT: Final = "pilot-2010"
 K: Final = 5
+# The settings every run must share with tables(a), so the runs differ only in their condition.
+SAME_SETTINGS: Final = (
+    "model",
+    "reasoning_effort",
+    "max_output_tokens",
+    "price_variant",
+    "cap_usd",
+    "guidance_sha256",
+    "statistics",
+)
 # Each label's condition, repeat and snapshot (None where the run names none).
 LABELS: Final[dict[str, tuple[str, str | None, str | None]]] = {
     "tables-a": ("tables", "a", None),
@@ -82,8 +92,9 @@ def refuse_unrelated(runs: Mapping[str, RunRead], snapshot_dir: Path) -> None:
 
     Raises:
         ConfigurationError: a run's repeat or snapshot is not its label's, a run after tables(a)
-            was not made from it, a snapshot hash does not match its file, or the lookup did not
-            use the registered K and support floor.
+            was not made from it, a snapshot hash does not match its file, a run's model or
+            settings differ from tables(a)'s, or the lookup did not use the registered K and
+            support floor.
     """
     tables_a = runs["tables-a"].folder.name
     for name, run in runs.items():
@@ -98,6 +109,11 @@ def refuse_unrelated(runs: Mapping[str, RunRead], snapshot_dir: Path) -> None:
             path = snapshots.snapshot_path(snapshot, snapshot_dir)
             if not path.exists() or run.spec.get("snapshot_sha256") != snapshots.sha256_of(path):
                 raise ConfigurationError(f"{name}'s snapshot hash does not match its file")
+    base = runs["tables-a"].spec
+    for name, run in runs.items():
+        differing = [key for key in SAME_SETTINGS if run.spec.get(key) != base.get(key)]
+        if differing:
+            raise ConfigurationError(f"{name} differs from tables-a in {', '.join(differing)}")
     spec = runs["lookup"].spec
     if spec.get("lookup_k") != K or spec.get("lookup_min_applies") != lookup.MIN_APPLIES:
         raise ConfigurationError(
