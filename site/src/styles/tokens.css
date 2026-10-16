@@ -3,8 +3,14 @@
     color-scheme: light dark;
     --ink: #1a1a1a;
     --ink-muted: #4a4a4a;
-    --ground: #ffffff;
+    /* The Quiet look (spec §21 note, 2026-10-16): a pale page, white panels for figures. */
+    --ground: #f6f7f8;
+    --paper: #ffffff;
+    --panel-edge: #c9d0d7;
     --rule: #c8c8c8;
+    /* An amber wayfinding sign, the board's amber, as a section's label (spec §10). */
+    --sign: #f2c94c;
+    --sign-ink: #0d1117;
     /* The ladder's bars (spec §7.1): lit and dimmed, by lightness only, never good or bad. */
     --bar: #7d8996;
     --bar-dim: #d5d9de;
@@ -15,13 +21,21 @@
     --board-ink: #f2c94c;
     --board-dim: #b8c0cc;
     --board-rule: #2a3240;
+    /* One type scale and one section space for every page. */
+    --step-0: 1rem;
+    --step-1: 1.2rem;
+    --step-2: 1.5rem;
+    --step-3: 2rem;
+    --space-section: 2.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
         --ink: #ececec;
         --ink-muted: #b8b8b8;
-        --ground: #121212;
+        --ground: #111418;
+        --paper: #171b21;
+        --panel-edge: #39424d;
         --rule: #3a3a3a;
         --bar: #5f6b78;
         --bar-dim: #2c3238;

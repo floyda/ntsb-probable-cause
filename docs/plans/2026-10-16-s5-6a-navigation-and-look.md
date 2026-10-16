@@ -78,9 +78,9 @@ Decided here, so no question is needed; each can be changed at the preview:
 
 **Interfaces:** produces the tokens `--paper`, `--sign`, `--sign-ink`, `--panel-edge`, `--space-section`, `--step-0` to `--step-3`, and the components `<Sign>{text}</Sign>` and `<Panel>…</Panel>`.
 
-- [ ] **Step 1: Failing contrast test.** `contrast.test.ts` reads `tokens.css` and computes the WCAG ratio for each pair in light and dark: ink on ground and on paper, muted ink on ground and on paper, sign ink on sign, the board's ink on its ground. It requires at least 4.5:1 for text pairs and 3:1 for the panel edge against the ground. A small `ratio(hexA, hexB)` is written in the test, from the WCAG formula.
-- [ ] **Step 2: Run it.** It fails, because the new tokens don't exist yet.
-- [ ] **Step 3: The tokens.** In `tokens.css`, the bare `:root` holds the light values and the dark media query redefines them, as now:
+- [x] **Step 1: Failing contrast test.** `contrast.test.ts` reads `tokens.css` and computes the WCAG ratio for each pair in light and dark: ink on ground and on paper, muted ink on ground and on paper, sign ink on sign, the board's ink on its ground. It requires at least 4.5:1 for text pairs and 3:1 for the panel edge against the ground. A small `ratio(hexA, hexB)` is written in the test, from the WCAG formula.
+- [x] **Step 2: Run it.** It fails, because the new tokens don't exist yet.
+- [x] **Step 3: The tokens.** In `tokens.css`, the bare `:root` holds the light values and the dark media query redefines them, as now:
   ```css
   :root {
       --ground: #f6f7f8;   /* the page: very light grey, not flat white */
@@ -96,9 +96,9 @@ Decided here, so no question is needed; each can be changed at the preview:
   }
   ```
   The existing `--ink`, `--ink-muted`, `--rule`, `--bar`, `--bar-dim` and board tokens stay. Any value the test rejects is adjusted, and the adjustment is logged.
-- [ ] **Step 4: `Sign.astro`.** Draws `<span class="sign">` with the slot's text: uppercase, letter-spaced, in the sign colours, with 2px corners. It is a label, not a heading: the heading beside it stays the real `h2`.
-- [ ] **Step 5: `Panel.astro`.** Draws `<div class="panel">`: paper ground, a 1px `--panel-edge` border, 4px corners, padding `0.9rem`. It may be wider than the 65-character text column, up to the main column's width.
-- [ ] **Step 6:** Run the contrast test; it passes. Run `make check`. Commit `S5 step 6a Task 1: the Quiet look's tokens, the sign and the panel`.
+- [x] **Step 4: `Sign.astro`.** Draws `<span class="sign">` with the slot's text: uppercase, letter-spaced, in the sign colours, with 2px corners. It is a label, not a heading: the heading beside it stays the real `h2`.
+- [x] **Step 5: `Panel.astro`.** Draws `<div class="panel">`: paper ground, a 1px `--panel-edge` border, 4px corners, padding `0.9rem`. It may be wider than the 65-character text column, up to the main column's width.
+- [x] **Step 6:** Run the contrast test; it passes. Run `make check`. Commit `S5 step 6a Task 1: the Quiet look's tokens, the sign and the panel`.
 
 ## Task 2: The top bar and the footer, on every page
 
@@ -210,6 +210,10 @@ Decided here, so no question is needed; each can be changed at the preview:
 ## Deviations
 
 - **Andy's choice (2026-10-16):** "Built by Andy Floyd" links to <https://floyda.dev>.
+- **Task 1 (2026-10-16):**
+  - The contrast test checks the seven text pairs (4.5:1) in both themes, and passes with the plan's values unchanged. It does **not** require 3:1 for the panel's edge, though the plan said so. WCAG's 3:1 rule (1.4.11) is for controls and for graphics needed to understand content. A panel's edge is neither; the panel is readable without it. Holding it to 3:1 would need a heavy dark border on every figure.
+  - The dark ground moves from `#121212` to `#111418`, a dark with a slight blue bias that matches the board's ground.
+  - `Panel` takes an optional `label`, which makes it a labelled group for a figure that has no caption of its own.
 
 ## Glossary
 

@@ -1,0 +1,25 @@
+---
+// A section's label, drawn as an amber airport wayfinding sign (spec §10, §21 note of 2026-10-16).
+// It labels the heading beside it and is never a heading itself; its letters are made capitals by
+// CSS, so a screen reader hears the words in normal case.
+---
+
+<span class="sign">
+    <slot />
+</span>
+
+<style>
+    .sign {
+        display: inline-block;
+        justify-self: start;
+        padding: 0.3rem 0.55rem;
+        border-radius: 2px;
+        background: var(--sign);
+        color: var(--sign-ink);
+        font-size: 0.78rem;
+        font-weight: 700;
+        line-height: 1.1;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+</style>
