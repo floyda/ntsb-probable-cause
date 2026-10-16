@@ -38,8 +38,8 @@ def _synth(tmp_path: Path, **context: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_parse_branches_is_safe() -> None:
-    assert parse_branches(None) == ("main", "s4-predictions-and-resolution")
-    assert parse_branches(" , ") == ("main", "s4-predictions-and-resolution")
+    assert parse_branches(None) == ("main",)
+    assert parse_branches(" , ") == ("main",)
     assert parse_branches("main, dev ,") == ("main", "dev")
 
 

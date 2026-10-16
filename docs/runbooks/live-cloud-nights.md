@@ -18,12 +18,9 @@ Words in **bold** the first time they appear are in the glossary at the end. Eve
 here uses `--profile ntsb` and `--region eu-west-2`. Run `aws login` first (a sign-in lasts a
 few hours). No command here prints a key.
 
-**Where to run the commands until the stage is merged.** The S4 code is in its own git
-**worktree**, not in the main project folder:
-`/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s4-predictions-and-resolution`.
-Until the merge, "the project folder" in this runbook means that worktree, and "the `infra`
-folder" means its `infra` folder. The data stays in the main checkout's `data/` folder, so set
-`NTSB_DATA_DIR=/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/data` first.
+**Where to run the commands.** The project folder is the main checkout,
+`/Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause`, on `main`. The `infra` folder is
+its `infra` folder. The data is in its `data/` folder, so `NTSB_DATA_DIR` need not be set.
 
 ---
 
@@ -46,9 +43,8 @@ folder" means its `infra` folder. The data stays in the main checkout's `data/` 
 9. It writes `nights/<date>/night.json` and the night's **manifest**, publishes one **metric**
    (this means "a night finished"), and sends one email per alert kind.
 10. A GitHub job adds the new manifests' hashes to the public **ledger**. GitHub runs a
-    schedule only from the repository's default branch, so the 10:00 UTC schedule starts only
-    after the stage is merged. Until then the job runs when a commit is pushed to the S4 branch
-    (section 9, "Run the job before the merge").
+    schedule only from the repository's default branch, which is `main` (section 9, "Run the
+    job").
 
 Nothing that leaves the task names a case: emails, the ledger and the log hold kinds, counts,
 dates and hashes.
@@ -88,11 +84,11 @@ One email per alert kind per night. The subject names the kind; the body holds c
 | `docket-folders` | The live document folder is set to the development one, or inside it. Nothing was spent. | Tell Claude. It is a setting in the image. |
 | `resume-refused` | An unfinished run began on another image, so this image will not finish it. Nothing was spent. | See section 5, "resume-refused". |
 | `docket-changed` | An unfinished run was to be resumed, but at least one of its cases' documents, read again from the NTSB, are not the files the run first read (their hashes differ from the run's `dockets.json`). The run was not resumed, so no case is coded from documents it was not first shown. Nothing was spent. | Tell Claude. Every night stops the same way while the files differ. Do not delete anything in the bucket. |
-| `resume-failed` | An unfinished run could not be resumed, or a finished run's records could not be completed, because its folder is not as the code expects (for example a file is missing). Nothing was spent tonight. The later scores, the export and the night record still ran. | Tell Claude the alert kind. Every night stops the same way until the folder is put right. Do not edit the run folder. |
+| `resume-failed` | An unfinished run could not be resumed, or a finished run's records could not be completed, because its folder is not as the code expects (for example a file is missing). Money may have been spent tonight before the stop, and the run's own records count it. The later scores, the export and the night record still ran. | Tell Claude the alert kind. Every night stops the same way until the folder is put right. Do not edit the run folder. |
 | `key-unreachable` | The live OpenRouter key's page could not be read, or answered something unexpected, or the key has no limit. Nothing was spent. | Usually nothing: the next night tries again. If it repeats on 2 nights, open OpenRouter's key page and check that the key exists and has a $10 monthly limit, and that the Parameter Store value is the live key (section 7, step 3). Then tell Claude. |
 | `store-unsound` | The recorder's store has a case with no case row or run row, or it was written by newer code than the image's. Nothing was spent. | Usually nothing: the recorder rewrites its store each night. If it repeats on 2 nights, tell Claude. Do not edit the store. |
 | `recorder-not-finished` | The recorder had not finished its run for today when the night started. Nothing was spent. Every queued case waits. | Usually nothing. If it repeats on 3 nights, see `docs/runbooks/recorder-bridge.md` and `docs/runbooks/recorder-deploy.md`, and tell Claude. |
-| `money-held-back` | The month's money allows fewer cases than are queued. The cases wait. This is normal after a busy night. | Nothing. The queue drains when the key's limit resets at the start of the month. If the queue grows for a week, tell Claude. Raising the limit is your decision, on OpenRouter. |
+| `money-held-back` | The month's money allows fewer cases than are queued. The cases wait. This is normal after a busy night. | Nothing. The full-cap rule ($0.30 a case against the month's room) allows about 30 cases a night, so a large queue drains over the next nights. Only if the month's room runs out does the queue wait for the key's limit to reset at the start of the month. If the queue grows for a week, tell Claude. Raising the limit is your decision, on OpenRouter. |
 | `budget-guard` | The code's own monthly guard would have been passed. It should never happen in the cloud. | Tell Claude. |
 | `fetch-failed` | A case's record or document list could not be read from the NTSB, during a resume or a completion. Not tied to one case in the email. | Nothing. The next night tries again. If it repeats for a week, tell Claude. |
 | `outage` | Every fetch failed tonight: the NTSB's site is down or unreachable. It counts against no case. | Nothing. |
@@ -151,10 +147,10 @@ spent. What you do:
    if it prints nothing or `None`, the image is gone; tell Claude. Find the digest: the run's
    `spec.json` in the bucket names its commit, and the image tag is `live-<commit>`:
    ```
-   aws s3 cp s3://<bucket>/runs/<run id>/spec.json - --profile ntsb --region eu-west-2
+   aws s3 cp s3://<bucket>/runs/<run id>/spec.json - --profile ntsb --region eu-west-2 | python3 -c 'import json,sys; print(json.load(sys.stdin)["commit_sha"])'
    aws ecr describe-images --repository-name ntsb-live --image-ids imageTag=live-<commit> --profile ntsb --region eu-west-2 --query "imageDetails[0].imageDigest" --output text
    ```
-   (`spec.json` holds the commit, which is the tag's suffix, and no case text.) Keep `-c live_schedule=enabled` in that deploy if the schedule
+   (The command prints only the commit, which is the tag's suffix.) Keep `-c live_schedule=enabled` in that deploy if the schedule
    is on. Let the next night finish the run.
 3. Once it has finished, deploy again with the new digest (full context). The nights after that
    run on the current image.
@@ -190,9 +186,8 @@ is complete.
 stack again, remove them first or import them, or the deploy fails because the names exist.
 
 **Every `cdk deploy` needs the full context.** CDK does not remember the `-c` values from the
-last deploy. A deploy without `-c live_schedule=enabled` switches the schedule off again. A
-deploy without `-c ledger_branches=main` brings back the S4 branch's trust. So every command in
-sections 7 to 11 is written out in full. Copy it whole.
+last deploy. A deploy without `-c live_schedule=enabled` switches the schedule off again. So every
+command in sections 7 to 11 is written out in full. Copy it whole.
 
 ## 6. Messages `ntsb-live` prints
 
@@ -273,7 +268,7 @@ folder (`cd infra`). The stack needs a one-time `cdk bootstrap` of the account, 
 already did.
 
 ```
-cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest_placeholder=1 -c ledger_branches=main,s4-predictions-and-resolution
+cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest_placeholder=1 -c ledger_branches=main
 ```
 
 CDK lists the IAM changes (two roles for the task, one for the schedule, one for the ledger job)
@@ -352,7 +347,7 @@ commit cannot be pushed twice with different contents.
 only when no live run is unfinished (section 5).
 
 ```
-cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest=<digest> -c ledger_branches=main,s4-predictions-and-resolution
+cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest=<digest> -c ledger_branches=main
 ```
 
 ## 8. Start a task by hand
@@ -427,19 +422,16 @@ the variable last.
    ```
    Before this variable is `true`, the workflow is a no-op.
 
-**Run the job before the merge.** The workflow file is not on `main` yet, so GitHub will not run
-its schedule, and a manual start cannot start it either. Before the merge the job runs on a
-push to the S4 branch. After a night has finished, push to the branch (or ask Claude to). The
-commands name the S4 worktree, so they work from any folder:
+**Run the job.** The 10:00 UTC schedule on `main` runs the job each day. To run it sooner after
+a night has finished, start it by hand and list its runs:
 
 ```
-git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s4-predictions-and-resolution commit --allow-empty -m "ledger: run the job" && git -C /Users/floyda/Workspace/ntsb-demo-agent/ntsb-probable-cause/.claude/worktrees/s4-predictions-and-resolution push origin HEAD:s4-predictions-and-resolution
-gh run list --workflow ledger --branch s4-predictions-and-resolution --repo floyda/ntsb-probable-cause
+gh workflow run ledger --ref main --repo floyda/ntsb-probable-cause
+gh run list --workflow ledger --branch main --repo floyda/ntsb-probable-cause
 ```
 
-Wait until the run shows as completed, then run `make s4-verify-ledger`. After the merge, the
-10:00 UTC schedule takes over and the push is not needed. The job's log holds hashes and counts,
-never contents.
+Wait until the run shows as completed, then run `make s4-verify-ledger`. The job's log holds
+hashes and counts, never contents.
 
 ## 10. Before the first night, and the first night
 
@@ -505,7 +497,7 @@ costs (about 30 cases, about $0.15, about 45 minutes) and how long it runs.
 with the real digest:
 
 ```
-cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest=<digest> -c ledger_branches=main,s4-predictions-and-resolution -c live_schedule=enabled
+cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest=<digest> -c ledger_branches=main -c live_schedule=enabled
 ```
 
 The next 06:00 UTC night is the first one. The backfill (the cases closed since 23 September 2026
@@ -516,9 +508,8 @@ and not yet coded) takes about three nights because a night is limited by money 
 1. Read the night's email and the log (the command in section 2). The alarm should send an `OK`
    email after this first finished night. If there is no `OK` email and no log stream for the
    date, the task never started: tell Claude.
-2. `make s4-export`. Then run the ledger job by a push to the S4 branch and wait for it to finish
-   (section 9, "Run the job before the merge"; the 10:00 UTC schedule does not run before the
-   merge). Then `make s4-verify-ledger`, then `make s4-report`. `docs/results/s4-live.txt` is
+2. `make s4-export`. Then run the ledger job and wait for it to finish (section 9, "Run the job").
+   Then `make s4-verify-ledger`, then `make s4-report`. `docs/results/s4-live.txt` is
    counts only: commit it yourself or ask Claude.
 3. **The alarm state test.** The alarm sits in `ALARM` from the deploy until the first finished
    night, which sends an `OK` email. Run the test only once the alarm shows `OK`, because an alarm
@@ -574,7 +565,7 @@ role is removed. From a clean `main` checkout (the `cdk` command from its `infra
    ```
    cdk deploy NtsbLiveStack --profile ntsb -c recorder_bucket=<recorder bucket> -c alert_email=<alert email> -c github_oidc_provider_arn=<provider arn> -c live_image_digest=<new digest> -c ledger_branches=main -c live_schedule=enabled
    ```
-3. The close-out commit removes the S4 branch from the ledger workflow's `push` trigger. From
+3. The close-out commit removed the S4 branch from the ledger workflow's `push` trigger. From
    now on the 10:00 UTC schedule runs the job, because the file is on `main`. Check that the
    next 10:00 UTC run still signs in.
 

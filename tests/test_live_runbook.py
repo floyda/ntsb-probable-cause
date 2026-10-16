@@ -151,9 +151,9 @@ def test_every_cdk_deploy_gives_the_full_context_from_infra_app() -> None:
     assert "live_image_digest_placeholder=1" in deploys[0]
     merged = deploys[-1]
     assert "ledger_branches=main " in merged + " "
-    assert "s4-predictions-and-resolution" not in merged
-    for first in deploys[:3]:
-        assert "ledger_branches=main,s4-predictions-and-resolution" in first
+    for line in deploys:
+        assert "s4-predictions-and-resolution" not in line
+        assert "ledger_branches=main " in line + " "
 
 
 def test_the_runbook_names_the_stack_outputs_the_stack_defines() -> None:
@@ -193,7 +193,6 @@ def test_the_runbook_covers_the_carried_situations() -> None:
         "an alarm\n   already in `ALARM` sends nothing",
         "CDK does not remember the `-c` values",
         "A deploy without `-c live_schedule=enabled` switches the schedule off again",
-        "without `-c ledger_branches=main` brings back the S4 branch's trust",
         "A run is finished only on the image that started it",
         "Do not deploy a new image while a run is unfinished",
         "ECR keeps the 5 newest images",
@@ -217,17 +216,16 @@ def test_the_runbook_covers_the_carried_situations() -> None:
         assert needle in text, needle
 
 
-def test_the_ledger_job_before_the_merge_runs_on_a_push_not_a_schedule_or_dispatch() -> None:
+def test_the_ledger_job_runs_on_the_main_schedule_or_by_hand() -> None:
     text = RUNBOOK.read_text()
     workflow = (ROOT / ".github" / "workflows" / "ledger.yml").read_text()
-    assert "push:\n    branches: [s4-predictions-and-resolution]" in workflow
-    assert "gh workflow run" not in text  # the file is not on the default branch yet
-    assert "A GitHub job at 10:00 UTC" not in text
-    assert "(after the 10:00 UTC ledger job)" not in text
-    assert "GitHub runs a\n    schedule only from the repository's default branch" in text
-    assert "Before the merge the job runs on a push to the S4 branch" in " ".join(text.split())
+    assert "push:" not in workflow
+    assert "s4-predictions-and-resolution" not in workflow
+    assert "gh workflow run ledger --ref main --repo floyda/ntsb-probable-cause" in text
+    assert "gh run list --workflow ledger --branch main --repo floyda/ntsb-probable-cause" in text
+    assert "commit --allow-empty" not in text
+    assert "Run the job before the merge" not in text
     assert "Wait until the run shows as completed, then run `make s4-verify-ledger`" in text
-    assert "the\n10:00 UTC schedule takes over" in text
 
 
 def test_resume_refused_redeploys_the_starting_digest_and_the_tag_matches_the_script() -> None:
@@ -365,9 +363,9 @@ def test_the_final_review_wave_a_steps_are_in_the_runbook() -> None:
     assert "**This is a paid night.**" in text
     assert "Claude asks you before any hand start" in flat
     assert "aws ecs list-tasks --cluster ntsb-live --desired-status RUNNING --profile ntsb" in text
-    # A20: the worktree is named, and the ledger trigger pushes HEAD to the S4 branch.
-    assert f"git -C {worktree} commit --allow-empty" in text
-    assert f"git -C {worktree} push origin HEAD:s4-predictions-and-resolution" in text
+    # A20: the worktree is no longer named; the ledger job starts by `gh workflow run`.
+    assert worktree not in text
+    assert "gh workflow run ledger --ref main" in text
     # A21: the live key is made with a $10 monthly limit and stored in pass.
     assert "pass insert -m api/openrouter-live" in text
     assert "credit limit of **$10** that resets **monthly**" in flat

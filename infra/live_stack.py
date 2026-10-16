@@ -48,7 +48,7 @@ from constructs import Construct
 # 2026-10-12). The ids also stop a deleted and re-created repository of the same name from taking
 # the role.
 GITHUB_SUBJECT_PREFIX = "repo:floyda@2824846/ntsb-probable-cause@1367368639"
-DEFAULT_LEDGER_BRANCHES = ("main", "s4-predictions-and-resolution")
+DEFAULT_LEDGER_BRANCHES = ("main",)
 PLACEHOLDER_DIGEST = "sha256:" + "0" * 64
 DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")  # an image digest, nothing else (A14)
 

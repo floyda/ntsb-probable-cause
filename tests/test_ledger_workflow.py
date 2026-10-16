@@ -8,7 +8,6 @@ import yaml
 
 WORKFLOW_PATH = Path(".github/workflows/ledger.yml")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
-S4_BRANCH = "s4-predictions-and-resolution"
 
 
 def _load() -> dict[Any, Any]:
@@ -36,11 +35,10 @@ def test_the_job_has_exactly_contents_write_and_id_token_write() -> None:
     assert _job()["permissions"] == {"contents": "write", "id-token": "write"}
 
 
-def test_triggers_are_schedule_push_to_the_s4_branch_and_dispatch() -> None:
+def test_triggers_are_schedule_and_dispatch_only() -> None:
     workflow = _load()
     on: dict[str, Any] = workflow.get("on", workflow.get(True)) or {}
-    assert set(on) == {"schedule", "push", "workflow_dispatch"}
-    assert on["push"]["branches"] == [S4_BRANCH]
+    assert set(on) == {"schedule", "workflow_dispatch"}
     assert on["schedule"] == [{"cron": "0 10 * * *"}]
 
 

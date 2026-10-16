@@ -344,7 +344,7 @@ def test_the_sample_holds_no_forbidden_value() -> None:
 - [x] **Step 4: Write `tests/board_sample.py`**: invented cases `XXX26XX001` … `XXX26XX006`, one per grade, built as `CaseFile` and `BoardRow` values; the `same_first` case has two read choices and a `scan_only` document; one case is amateur-built (its `Aircraft` carries category and engines only); `FORBIDDEN = ("N123XX", "Inventedmake", "INV-1", "Invented Owner", "lay explanation marker")` names the values its source record would hold and the sample must not. `build() -> dict[str, str]` returns `{"index.json": ..., "cases/XXX26XX001.json": ...}`, each `model.model_dump_json(indent=2) + "\n"`. Add `if __name__ == "__main__":` writing them under `tests/fixtures/board/`.
 - [x] **Step 5: Write `scripts/board_schema.py`** (`Status`: "Live tooling (S4 Task 3). Free. Writes `docs/schemas/board-1.schema.json` from `live.export`."), `main(argv)` writing `json.dumps(board_json_schema(), indent=2, sort_keys=True) + "\n"`. `Makefile`: `board-schema:` → `uv run --locked python -m scripts.board_schema`; `board-sample:` → `uv run --locked python -m tests.board_sample`. Run both.
 - [x] **Step 6: Run** the tests — PASS. `make check`.
-- [ ] **Step 7:** commit: `S4 Task 3: the board/1 format, its JSON Schema and an invented sample (decision 0173)`. **Controller:** push the branch and tell Andy S5 can start from `docs/schemas/board-1.schema.json` and `tests/fixtures/board/`.
+- [x] **Step 7:** commit: `S4 Task 3: the board/1 format, its JSON Schema and an invented sample (decision 0173)`. **Controller:** push the branch and tell Andy S5 can start from `docs/schemas/board-1.schema.json` and `tests/fixtures/board/`.
 
 ## Task 4: The names measurement on `dev-400` (decision 0180 item 4) — built by a subagent, run by the Controller
 
@@ -592,7 +592,7 @@ class MirrorSink:
   - `mark_started` is `True` once and `False` the second time on the same day (Review Focus 5);
   - `OpenRouterKeySpend.month` with `{"data": {"usage_monthly": 0.71, "limit": 10}}` → `MonthSpend(0.71, 10.0)`; with status 500, `{}`, `{"data": {"usage_monthly": "0.7", "limit": 10}}`, `{"data": {"usage_monthly": 0.7, "limit": None}}` → `LiveRefusal` with `kind == "key-unreachable"` (Review Focus 3); the request carries `Authorization: Bearer <key>` and the test never prints it;
   - `SnsAlerts.send(["outage"], {"cases": 3})` publishes once to the topic with both lines; `publish_finished` sends one data point named `NightFinished` in `Ntsb/Live`.
-- [ ] **Step 2: Run** — FAIL (no RED run was made; tests and module were written together). **Step 3: Implement.** **Step 4: Run** — PASS; `make check`; commit: `S4 Task 9: the cloud seams: bucket mirror, key spend, alerts and metric (decisions 0170, 0172, 0177)`.
+- [x] **Step 2: Run** — FAIL (no RED run was made; tests and module were written together). **Step 3: Implement.** **Step 4: Run** — PASS; `make check`; commit: `S4 Task 9: the cloud seams: bucket mirror, key spend, alerts and metric (decisions 0170, 0172, 0177)`.
 
 ## Task 10: The night, the push after each reply, and `ntsb-live run` in the image (decisions 0171, 0175, 0177)
 
@@ -786,28 +786,28 @@ jobs:
 
 ## Task 15 (Controller, with Andy): deploy, dry run and the first cloud night
 
-- [ ] Ask Andy to create the live OpenRouter key on OpenRouter with a **$10 monthly limit**, store it in `pass` as `api/openrouter-live`, and write it to Parameter Store with the runbook's command. Confirm with `aws ssm describe-parameters --profile ntsb --parameter-filters Key=Name,Values=/ntsb/live/openrouter-key` (shows the name and type, never the value).
-- [ ] Ask Andy before pushing the first image; then `make s4-image` and note the digest.
-- [ ] Ask Andy to run `cdk deploy NtsbLiveStack --profile ntsb` with the context values from the runbook (schedule disabled). Andy confirms the SNS subscription email.
-- [ ] Ask Andy before creating the `ledger` branch and its protection; then create it and set the two repository variables (or Andy does).
-- [ ] `make s4-dry-run`: checks, store, queue, one fetch; record its printed counts (no case numbers) in the Deviations log.
-- [ ] Send a test alert: `aws sns publish --profile ntsb --topic-arn <AlertTopicArn> --subject "Ellery test" --message "test"`; Andy confirms receipt (closing condition 5, first half).
-- [ ] **Ask Andy for the first cloud night**, stating: about 30 cases, about $0.15 of live-key spend at the measured $0.005 a case (worst case $9, held by the full-cap rule), about 45 minutes, starting at the next 06:00 UTC once the schedule is enabled. On his yes, Andy redeploys with `-c live_schedule=enabled` (or Claude asks to). Record the go-ahead with his words.
-- [ ] After the night: read its alert emails (if any), `make s4-export` and check it validates, `make s4-verify-ledger` after the 10:00 UTC job. Log counts and cost in Deviations.
+- [x] Ask Andy to create the live OpenRouter key on OpenRouter with a **$10 monthly limit**, store it in `pass` as `api/openrouter-live`, and write it to Parameter Store with the runbook's command. Confirm with `aws ssm describe-parameters --profile ntsb --parameter-filters Key=Name,Values=/ntsb/live/openrouter-key` (shows the name and type, never the value).
+- [x] Ask Andy before pushing the first image; then `make s4-image` and note the digest.
+- [x] Ask Andy to run `cdk deploy NtsbLiveStack --profile ntsb` with the context values from the runbook (schedule disabled). Andy confirms the SNS subscription email.
+- [x] Ask Andy before creating the `ledger` branch and its protection; then create it and set the two repository variables (or Andy does).
+- [x] `make s4-dry-run`: checks, store, queue, one fetch; record its printed counts (no case numbers) in the Deviations log.
+- [x] Send a test alert: `aws sns publish --profile ntsb --topic-arn <AlertTopicArn> --subject "Ellery test" --message "test"`; Andy confirms receipt (closing condition 5, first half).
+- [x] **Ask Andy for the first cloud night**, stating: about 30 cases, about $0.15 of live-key spend at the measured $0.005 a case (worst case $9, held by the full-cap rule), about 45 minutes, starting at the next 06:00 UTC once the schedule is enabled. On his yes, Andy redeploys with `-c live_schedule=enabled` (or Claude asks to). Record the go-ahead with his words.
+- [x] After the night: read its alert emails (if any), `make s4-export` and check it validates, `make s4-verify-ledger` after the 10:00 UTC job. Log counts and cost in Deviations.
 
 ## Task 16 (Controller): backfill, fresh closure, alarm, Mac key, report
 
-- [ ] Each morning until the backfill drains: check the night's email (none means no failure), the ledger job's run, and the night's counts from the mirror. No manual run (closing condition 2).
-- [ ] When a case closes after the backfill list was fixed and is coded and scored on the next 06:00 UTC night, note its night (no case number) (condition 3), and that the ledger holds that night's manifest hash (condition 4).
-- [ ] The alarm state test from the runbook; Andy confirms the alarm email (condition 5, second half).
-- [ ] After the first good cloud night: ask Andy to remove the Mac's key with the runbook's steps (condition 7).
-- [ ] `make s4-export` (condition 6, first half); `make s4-report`, read it, commit `docs/results/s4-live.txt` (condition 6, second half).
-- [ ] If no fresh closure within 14 days after the backfill drains, close on the rest and say so in the report and As-built (decision 0181).
-- [ ] Check the first AWS bill for a CloudWatch charge; if any, the fallback of decision 0177 item 4 is a new task.
+- [x] Each morning until the backfill drains: check the night's email (none means no failure), the ledger job's run, and the night's counts from the mirror. No manual run (closing condition 2).
+- [x] When a case closes after the backfill list was fixed and is coded and scored on the next 06:00 UTC night, note its night (no case number) (condition 3), and that the ledger holds that night's manifest hash (condition 4).
+- [x] The alarm state test from the runbook; Andy confirms the alarm email (condition 5, second half).
+- [x] After the first good cloud night: ask Andy to remove the Mac's key with the runbook's steps (condition 7).
+- [x] `make s4-export` (condition 6, first half); `make s4-report`, read it, commit `docs/results/s4-live.txt` (condition 6, second half).
+- [x] If no fresh closure within 14 days after the backfill drains, close on the rest and say so in the report and As-built (decision 0181).
+- [x] Check the first AWS bill for a CloudWatch charge; if any, the fallback of decision 0177 item 4 is a new task.
 
 ## Task 17 (Controller): final review and close-out
 
-- [ ] Final review on `opus`, split by dimension (correctness of the night and resume; the open-split fence and names; IAM and the ledger's exposure; tests), each reviewer given the spec, this plan and the diff `ebb16cb..HEAD`; fix findings in review-fix commits.
+- [x] Final review on `opus`, split by dimension (correctness of the night and resume; the open-split fence and names; IAM and the ledger's exposure; tests), each reviewer given the spec, this plan and the diff `ebb16cb..HEAD`; fix findings in review-fix commits.
 - [ ] Run the `close-stage` skill: As-built record in the specification (Delivered; Done means, with evidence; Departures; Decisions taken during the stage; Implementation record with the cloud nights' dates, commits and image digests), delete this plan, roadmap note (spec §20), `CLAUDE.md` (S4 built; "SQLite predictions store" and "Scheduler and resolution watcher" lines; the new commands and targets), `pyproject.toml` version, the close-out commit removing the S4 branch from `ledger_branches`. Pull request titled `S4: Predictions and resolution`, merged with a merge commit (decisions 0018, 0033); Andy deploys the trust change and moves the task to a `main`-built image after the merge.
 
 ---
@@ -878,3 +878,9 @@ jobs:
 - 2026-10-12 (Task 15, deploy): the first ledger run (GitHub run 38315092234) was refused by AWS: "Not authorized to perform sts:AssumeRoleWithWebIdentity". The repository's OIDC setting has `use_immutable_subject: true`, so GitHub sends the subject `repo:floyda@2824846/ntsb-probable-cause@1367368639:ref:refs/heads/<branch>`, and the ledger role trusted only `repo:floyda/ntsb-probable-cause:ref:refs/heads/<branch>`. `infra/live_stack.py` now trusts the immutable form (`GITHUB_SUBJECT_PREFIX`), and `tests/test_live_stack.py` pins it; Andy redeploys the stack for the trust change. The recorder's CI deploy role (`infra/recorder_stack.py`, `_GITHUB_REPO_SUBJECT`) uses the old form too; parked for Andy before the merge, since the merge's `image-push` job assumes it.
 - 2026-10-13 (Task 16, first night): `docs/results/s4-live.txt` printed 0 open cases watched and 0 holding a docket, because `scripts/s4_live_report.py` read them from the Mac's export, which has no store. They are now read from the night's own export (as the closures per night already were), and `tests/test_s4_live_report.py` pins it.
 - 2026-10-15 (Task 16, third night): the Mac's copy of the night export kept night 1's `_finished.json` and the night-1 and night-2 case files whose size had not changed, because `aws s3 sync` from S3 to a local folder skips a same-size file unless the local copy is newer. The bucket is rewritten each night (`cloud.BucketMirror.push_export`); only the mirror was stale. `make s4-export`'s syncs now pass `--exact-timestamps`, so a same-size file is downloaded again whenever its time differs.
+- 2026-10-12 (Task 15, dry run): `make s4-dry-run` on the Mac printed 62 queued, 30 tonight, room $9.00, limit reset monthly; the same dry run inside the image, as a one-off task with `run --dry-run`, exited 0 with the same lines and called no model.
+- 2026-10-13 to 2026-10-16 (Task 16, the cloud nights, all started by the schedule, none by hand): night 1 coded 29 and did not code 1 (`leak`), $0.1891, 42.9 minutes, 32 held back by money; night 2 coded 29, $0.1121, 32.3 minutes, 3 held back; night 3 coded the last 3, $0.0090, 4.1 minutes, so the backfill drained on 2026-10-15; night 4 coded 11 fresh closures, $0.0392, 11.5 minutes. Every night finished; the ledger job ran green after each (8 lines, 0 problems). The alarm test fired on 2026-10-13 and the alarm was `OK` after each night. Andy removed the Mac's key on 2026-10-16. `docs/results/s4-live.txt` was committed at 67a7432 with all seven conditions met.
+- 2026-10-15 (Task 16): `main` was merged into the branch (ff4bc05) to bring in pull request #35, which lets the budget code read the coding-memory side track's spend kinds. It touched no S4 file.
+- 2026-10-16 (Task 16, the bill check): October's first bill is not out yet, so AWS Cost Explorer's month to date stood in for it. CloudWatch shows $0.00036, all of it usage type `CW:GMD-Metrics` (GetMetricData calls, which the console makes when it draws a metric graph); the alarm (`AlarmMonitorUsage`) and the custom metric (`MetricMonitorUsage`) cost $0. Put to Andy under decision 0177 item 4.
+- 2026-10-16 (Task 17): the final whole-branch review ran before Task 15 (ruling logged 2026-10-12), so the first bullet of Task 17 was met there. The close-out removes the S4 branch from the ledger workflow's push trigger, `DEFAULT_LEDGER_BRANCHES` and the runbook's deploy lines, and corrects three runbook rows (`resume-failed` said nothing was spent; `money-held-back` said the queue drains only at the monthly reset; section 5 printed the whole `spec.json`).
+- 2026-10-11 (Task 9, logged at close-out): Step 2, the failing run before the code, was not made; the tests and `live/cloud.py` were written together. The task review and `make check` passed on the finished code.

@@ -13,8 +13,6 @@ name: ledger
 on:
   schedule:
     - cron: "0 10 * * *"
-  push:
-    branches: [s4-predictions-and-resolution]
   workflow_dispatch:
 
 permissions: {}
