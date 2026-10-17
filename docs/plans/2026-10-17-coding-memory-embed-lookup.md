@@ -499,7 +499,7 @@ mem-coverage: ## Lesson coverage and the gate on the steering slice, or SAMPLE=d
   `{source}-embedlookup5-{snapshot}`; spec keys `lookup_k`, `lookup_min_applies`,
   `lookup_lessons`, `lookup_by: "embedding"` (or `"pick"`), `choices_run`, `embedding_model`.
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
 
 ```python
 def test_embed_lookup_gives_each_case_exactly_its_choices(tmp_path, ...) -> None:
@@ -512,8 +512,8 @@ def test_choices_and_applies_together_are_refused(...) -> None: ...
 def test_embed_lookup_run_id_and_spec(...) -> None: ...
 ```
 
-- [ ] **Step 2:** the tests fail.
-- [ ] **Step 3: Implement.** `--choices` needs `--snapshot` and `--lookup 5`, and refuses
+- [x] **Step 2:** the tests fail.
+- [x] **Step 3: Implement.** `--choices` needs `--snapshot` and `--lookup 5`, and refuses
   `--applies`; it is refused until `EMBED_REGISTRATION` is committed. `read_choices` refuses a
   missing or unreadable folder, a summary whose sample, snapshot, hash, `k` or `min_applies`
   differ, an id not in the snapshot, or more than `k` ids for a case. The case's lessons are the
@@ -525,8 +525,8 @@ mem-coding-embed-lookup: ## The embed-lookup condition: 5 lessons per case from 
 	uv run python -m scripts.stage_spend --stage mem --estimate 4.01 && scripts/with_pass_keys.sh uv run python -m scripts.memory_coding_test tools --source $(SOURCE) --snapshot pilot-2010-recount --lookup 5 --choices $(CHOICES) $(if $(RESUME),--resume $(RESUME))
 ```
 
-- [ ] **Step 4:** tests pass; `make check` passes.
-- [ ] **Step 5:** commit.
+- [x] **Step 4:** tests pass; `make check` passes.
+- [x] **Step 5:** commit.
 
 ### Task 7: The reading and its rule
 

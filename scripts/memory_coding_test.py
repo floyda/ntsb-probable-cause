@@ -32,6 +32,10 @@ What it measures
       lessons are the best fitting of those the apply step named for the case's cause sentence
       (``scripts/memory_cause_apply.py``, ``lookup.by_fit``, decision 0211). Refused until
       ``docs/rounds/memory-cause-lookup.md`` is committed.
+    - **embed lookup** (``tools --snapshot NAME --lookup 5 --choices RUN_ID``): the same, but each
+      case's lessons are those a choices run names, in its order (``scripts/memory_coverage.py``:
+      embedding search, or the picking call over it; decision 0213). Refused until
+      ``docs/rounds/memory-embed-lookup.md`` is committed.
 
     ``suggest_codes`` is never called in the counts or memory conditions: the coding test has no
     phase-of-flight evidence, so the post-pass is given no group, and both conditions match.
@@ -59,13 +63,13 @@ Usage
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
         [--resume RUN_ID]
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
-        --lookup K [--applies RUN_ID] [--resume RUN_ID]
+        --lookup K [--applies RUN_ID | --choices RUN_ID] [--resume RUN_ID]
 """
 
 import argparse
 import contextlib
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -137,6 +141,9 @@ LOOKUP_REGISTRATION: Final = Path("docs/rounds/memory-lookup.md")
 CAUSE_LOOKUP_REGISTRATION: Final = Path("docs/rounds/memory-cause-lookup.md")
 APPLY_SUMMARY_FILE: Final = "apply.json"  # scripts.memory_cause_apply's files (decision 0211)
 APPLIES_FILE: Final = "applies.json"
+CHOICES_FILE: Final = "choices.json"  # scripts.memory_coverage's files (decision 0213)
+CHOICE_SUMMARY_FILE: Final = "choice.json"
+CHOICE_METHODS: Final = frozenset({"embedding", "pick"})
 APPLY_MODEL: Final = SONNET  # the registered applier (decision 0211, its registration's §4)
 APPLY_EFFORT: Final = "high"
 CAP_USD: Final = 0.05
@@ -263,6 +270,19 @@ def refuse_cause_lookup_without_registration() -> None:
         raise ConfigurationError(
             f"{CAUSE_LOOKUP_REGISTRATION} is not committed: the cause-lookup condition waits for "
             "its registration (decision 0211 item 4)"
+        )
+
+
+def refuse_embed_lookup_without_registration() -> None:
+    """Refuse the embed-lookup condition until its registration is committed.
+
+    Raises:
+        ConfigurationError: ``docs/rounds/memory-embed-lookup.md`` is not committed (0213 item 11).
+    """
+    if not gitinfo.is_committed(EMBED_REGISTRATION):
+        raise ConfigurationError(
+            f"{EMBED_REGISTRATION} is not committed: the embed-lookup condition waits for its "
+            "registration (decision 0213 item 11)"
         )
 
 
@@ -788,6 +808,47 @@ def read_applies(
     return {str(case_id): frozenset(map(str, ids)) for case_id, ids in raw.items()}
 
 
+def read_choices(
+    folder: Path, snapshot: str, sha: str, sample: str, lesson_ids: Collection[str]
+) -> tuple[dict[str, tuple[str, ...]], dict[str, object]]:
+    """A choices run's lesson ids per case, in order, and its summary (decision 0213).
+
+    Raises:
+        ConfigurationError: no readable choices run in ``folder``; one on another sample,
+            snapshot, snapshot file, K, support floor or method; an id that is not a lesson of
+            the snapshot; or more than K ids for a case.
+    """
+    refuse_live(_PROG, folder)
+    try:
+        summary = json.loads((folder / CHOICE_SUMMARY_FILE).read_text())
+        raw = json.loads((folder / CHOICES_FILE).read_text())
+        choices = {str(case_id): tuple(map(str, ids)) for case_id, ids in raw.items()}
+    except (OSError, ValueError, AttributeError, TypeError) as error:
+        raise ConfigurationError(
+            f"{folder.name}: not a finished choices run ({type(error).__name__})"
+        ) from None
+    if not isinstance(summary, dict):
+        raise ConfigurationError(f"{folder.name}: not a finished choices run")
+    wanted = {
+        "sample": sample,
+        "snapshot": snapshot,
+        "snapshot_sha256": sha,
+        "k": lookup.K,
+        "min_applies": lookup.MIN_APPLIES,
+    }
+    differing = [key for key, value in wanted.items() if summary.get(key) != value]
+    if summary.get("method") not in CHOICE_METHODS:
+        differing.append("method")
+    if differing:
+        raise ConfigurationError(f"{folder.name} differs in {', '.join(differing)}")
+    for ids in choices.values():
+        if len(ids) > lookup.K or not set(ids) <= set(lesson_ids):
+            raise ConfigurationError(
+                f"{folder.name}: a case has more than {lookup.K} ids, or an id the snapshot lacks"
+            )
+    return choices, summary
+
+
 def _tools_run_id(args: argparse.Namespace) -> str:
     """The derived run's id, from the source, and the repeat or the snapshot.
 
@@ -797,12 +858,18 @@ def _tools_run_id(args: argparse.Namespace) -> str:
     """
     if args.applies is not None and args.lookup is None:
         raise ConfigurationError("--applies needs --lookup K")
+    if args.choices is not None and (args.lookup is None or args.snapshot is None):
+        raise ConfigurationError("--choices needs --snapshot and --lookup K")
+    if args.choices is not None and args.applies is not None:
+        raise ConfigurationError("--choices and --applies are two conditions: name one")
     if args.snapshot is None:
         if args.lookup is not None:
             raise ConfigurationError("the lookup condition needs --snapshot")
         if args.repeat is None:
             raise ConfigurationError("the counts condition needs --repeat a or b")
         run_id = f"{args.source}-counts-{args.repeat}"
+    elif args.choices is not None:
+        run_id = f"{args.source}-embedlookup{args.lookup}-{args.snapshot}"
     elif args.applies is not None:
         run_id = f"{args.source}-causelookup{args.lookup}-{args.snapshot}"
     elif args.lookup is not None:
@@ -820,7 +887,9 @@ def _refuse_lookup_args(args: argparse.Namespace) -> None:
     """Refuse a lookup without its registration, or with K below 1 (decisions 0210, 0211)."""
     if args.lookup is None:
         return
-    if args.applies is not None:
+    if args.choices is not None:
+        refuse_embed_lookup_without_registration()
+    elif args.applies is not None:
         refuse_cause_lookup_without_registration()
     else:
         refuse_lookup_without_registration()
@@ -829,28 +898,41 @@ def _refuse_lookup_args(args: argparse.Namespace) -> None:
 
 
 def _condition(
-    memory: Memory | None, k: int | None, applied: Mapping[str, frozenset[str]] | None
+    memory: Memory | None,
+    k: int | None,
+    applied: Mapping[str, frozenset[str]] | None,
+    chosen: Mapping[str, tuple[str, ...]] | None,
 ) -> Condition:
     if memory is None:
         return "counts"
     if k is None:
         return "memory"
+    if chosen is not None:
+        return "embed-lookup"
     return "lookup" if applied is None else "cause-lookup"
 
 
-def _picked(
+def _picked(  # noqa: PLR0913 -- the memory, K, the three ways to choose, and the tables
     memory: Memory,
     k: int,
     applied: Mapping[str, frozenset[str]] | None,
     row: CodingCase,
     tables: CodeTables,
+    *,
+    chosen: Mapping[str, tuple[str, ...]] | None = None,
 ) -> tuple[Lesson, ...]:
-    """One case's lessons: by its cause sentence's apply answer, or by its first answer's codes.
+    """One case's lessons: from a choices run, an apply answer, or the first answer's codes.
+
+    ``chosen`` (decision 0213) is a choices run's ids; ``applied`` is the apply step's (0211);
+    with neither, the lessons match the first answer's codes (0210).
 
     Raises:
         ConfigurationError: the apply run has no answer for the case.
     """
     every = (*memory.lessons, *memory.pushed_out)
+    if chosen is not None:  # a case the choices run left out reads the counts text (0213)
+        by_id = {lesson.lesson_id: lesson for lesson in every}
+        return tuple(by_id[lesson_id] for lesson_id in chosen.get(row.case_id, ()))
     if applied is not None:
         if row.case_id not in applied:
             raise ConfigurationError("the apply run has no answer for a case")
@@ -875,8 +957,10 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
     (``memory.lookup``, decision 0210). A case that matches none reads the counts text. With
     ``--applies RUN_ID`` (the cause-lookup condition, decision 0211) the lessons are instead the
     best fitting of those the apply run named for the case's cause sentence (``lookup.by_fit``);
-    no code from the first answer chooses them. The sample is the source run's; on ``dev-400``
-    only counts and cause lookup are allowed (decision 0212).
+    no code from the first answer chooses them. With ``--choices RUN_ID`` (the embed-lookup
+    condition, decision 0213) they are the ids a choices run names for the case, in its order. The
+    sample is the source run's; on ``dev-400`` only counts and cause lookup are allowed (decision
+    0212), and on ``dev-seal-400`` those and the embed lookup (decision 0213).
     """
     source = args.source
     run_id = _tools_run_id(args)
@@ -889,7 +973,14 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
     applied: dict[str, frozenset[str]] | None = None
     if args.applies is not None and snapshot_sha is not None:
         applied = read_applies(ctx.runs_dir / args.applies, args.snapshot, snapshot_sha, sample)
-    condition = _condition(memory, args.lookup, applied)
+    chosen: dict[str, tuple[str, ...]] | None = None
+    choice: dict[str, object] = {}
+    if args.choices is not None and snapshot_sha is not None and memory is not None:
+        every_id = [lesson.lesson_id for lesson in (*memory.lessons, *memory.pushed_out)]
+        chosen, choice = read_choices(
+            ctx.runs_dir / args.choices, args.snapshot, snapshot_sha, sample, every_id
+        )
+    condition = _condition(memory, args.lookup, applied, chosen)
     refuse_condition(sample, condition)
     tables = load_tables()
     config = LoopConfig(
@@ -922,7 +1013,7 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         else:
             case_system = system
             if args.lookup is not None and memory is not None:
-                picked = _picked(memory, args.lookup, applied, row, tables)
+                picked = _picked(memory, args.lookup, applied, row, tables, chosen=chosen)
                 looked_up[row.case_id] = [lesson.lesson_id for lesson in picked]
                 case_system = prompts.coding_system(
                     tables, GUIDANCE, memory.model_copy(update={"lessons": picked})
@@ -957,6 +1048,12 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         }
     if applied is not None:  # only here, so a code lookup's spec is as it was
         spec |= {"lookup_by": "cause", "apply_run": args.applies}
+    if chosen is not None:  # decision 0213
+        spec |= {
+            "lookup_by": choice.get("method"),
+            "choices_run": args.choices,
+            "embedding_model": choice.get("model"),
+        }
     plan = Plan(run_id, spec, loops, skipped, order)
     return _run(ctx, plan, resume=args.resume is not None)
 
@@ -1021,6 +1118,11 @@ def main(
         "--applies",
         metavar="RUN_ID",
         help="with --lookup: choose each case's lessons from this apply run (decision 0211)",
+    )
+    t.add_argument(
+        "--choices",
+        metavar="RUN_ID",
+        help="with --lookup: each case's lessons from this choices run (decision 0213)",
     )
     t.add_argument("--resume", metavar="RUN_ID", help="continue this run's folder")
     args = parser.parse_args(argv)

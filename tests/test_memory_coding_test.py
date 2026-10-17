@@ -900,3 +900,139 @@ def test_answer_on_dev_seal_400_reads_that_sample_and_names_it(
     assert read == ["dev-seal-400"]
     folder = _folder(settings, "-dev-seal-400-mem-tables-a")
     assert json.loads((folder / "spec.json").read_text())["sample"] == "dev-seal-400"
+
+
+# --- the embed-lookup condition (decision 0213) ----------------------------------------------
+
+CHOICES_RUN = "20261017T130000Z-abc1234-memory-choices-dev-steer-400-openai-text-embedding-3-small"
+EMBED_ARGV = [*CAUSE_ARGV, "--choices", CHOICES_RUN]
+
+
+def _choices_run(settings: Settings, choices: dict[str, list[str]], **changes: object) -> None:
+    folder = settings.runs_dir / CHOICES_RUN
+    folder.mkdir(parents=True)
+    sha = snapshots.sha256_of(snapshots.snapshot_path("t", snapshots.SNAPSHOT_DIR))
+    summary: dict[str, object] = {
+        "sample": "dev-steer-400",
+        "snapshot": "t",
+        "snapshot_sha256": sha,
+        "k": 5,
+        "min_applies": 10,
+        "method": "embedding",
+        "model": "openai/text-embedding-3-small",
+        "source_run": "an-embedding-run",
+        "commit": "abc1234",
+        **changes,
+    }
+    (folder / "choice.json").write_text(json.dumps(summary))
+    (folder / "choices.json").write_text(json.dumps(choices))
+
+
+@pytest.fixture
+def embed_ready(settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    return settings
+
+
+def test_embed_lookup_gives_each_case_exactly_its_choices_in_order(embed_ready: Settings) -> None:
+    _choices_run(embed_ready, {FIRST: ["L003", "L002"]})
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, EMBED_ARGV) == 0
+    system = fake.submitted[0][0].system
+    assert "[L003]" in system
+    assert "[L002]" in system
+    assert system.index("[L003]") < system.index("[L002]")
+    assert "[L001]" not in system
+    assert "[L004]" not in system
+    folder = embed_ready.runs_dir / f"{SOURCE}-embedlookup5-t"
+    spec = json.loads((folder / "spec.json").read_text())
+    assert spec["condition"] == "embed-lookup"
+    assert spec["lookup_by"] == "embedding"
+    assert spec["choices_run"] == CHOICES_RUN
+    assert spec["embedding_model"] == "openai/text-embedding-3-small"
+    assert spec["lookup_k"] == 5
+    assert spec["lookup_min_applies"] == 10
+    assert spec["lookup_lessons"] == {FIRST: ["L003", "L002"]}
+
+
+def test_embed_lookup_gives_a_case_missing_from_the_choices_no_lesson(
+    embed_ready: Settings,
+) -> None:
+    _choices_run(embed_ready, {})
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, EMBED_ARGV) == 0
+    assert "[L00" not in fake.submitted[0][0].system
+
+
+@pytest.mark.parametrize(
+    ("choices", "changes"),
+    [
+        ({FIRST: ["L002"]}, {"sample": "dev-400"}),
+        ({FIRST: ["L002"]}, {"snapshot": "other"}),
+        ({FIRST: ["L002"]}, {"snapshot_sha256": "0" * 64}),
+        ({FIRST: ["L002"]}, {"k": 3}),
+        ({FIRST: ["L002"]}, {"min_applies": 5}),
+        ({FIRST: ["L002"]}, {"method": "guess"}),
+        ({FIRST: ["L999"]}, {}),  # not a lesson of the snapshot
+        ({FIRST: ["L001", "L002", "L003", "L004", "L001", "L002"]}, {}),  # more than K
+    ],
+)
+def test_embed_lookup_refuses_a_choices_file_that_does_not_belong(
+    embed_ready: Settings, choices: dict[str, list[str]], changes: dict[str, object]
+) -> None:
+    _choices_run(embed_ready, choices, **changes)
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, EMBED_ARGV) == 1
+    assert not fake.submitted
+
+
+def test_embed_lookup_refuses_a_missing_choices_folder(embed_ready: Settings) -> None:
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, EMBED_ARGV) == 1
+    assert not fake.submitted
+
+
+def test_embed_lookup_needs_the_registration(
+    embed_ready: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path != ct.EMBED_REGISTRATION)
+    _choices_run(embed_ready, {FIRST: ["L002"]})
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, EMBED_ARGV) == 1
+    assert not fake.submitted
+
+
+def test_choices_and_applies_together_are_refused(embed_ready: Settings) -> None:
+    _choices_run(embed_ready, {FIRST: ["L002"]})
+    _apply_run(embed_ready, {FIRST: ["L002"]})
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, [*EMBED_ARGV, "--applies", APPLY_RUN]) == 1
+    assert not fake.submitted
+
+
+def test_choices_needs_lookup_and_snapshot(embed_ready: Settings) -> None:
+    _choices_run(embed_ready, {FIRST: ["L002"]})
+    fake = FakeBatch(_tools_answer)
+    argv = ["tools", "--source", SOURCE, "--snapshot", "t", "--choices", CHOICES_RUN]
+    assert _run(embed_ready, fake, argv) == 1
+    argv = ["tools", "--source", SOURCE, "--lookup", "5", "--choices", CHOICES_RUN]
+    assert _run(embed_ready, fake, argv) == 1
+    assert not fake.submitted
+
+
+def test_embed_lookup_runs_on_a_dev_seal_400_source(
+    embed_ready: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read: list[str | None] = []
+    monkeypatch.setattr(ct, "causes", _recording_causes(read))
+    spec_path = embed_ready.runs_dir / SOURCE / "spec.json"
+    spec_path.write_text(
+        json.dumps({"sample": "dev-seal-400", "condition": "tables", "repeat": "a"})
+    )
+    _choices_run(embed_ready, {FIRST: ["L002"]}, sample="dev-seal-400")
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, EMBED_ARGV) == 0
+    assert read == ["dev-seal-400"]
