@@ -156,6 +156,10 @@ def send(
     return applied, failed
 
 
+def _decision(sample: str) -> str:
+    return "decision 0211" if sample == SAMPLE else "decisions 0211 and 0212"
+
+
 def report(memory: Memory, applied: Mapping[str, Sequence[str]], summary: ApplySummary) -> str:
     """The counts-only reading of what the apply step named and what the lookup would give."""
     every = memory.lessons
@@ -167,7 +171,7 @@ def report(memory: Memory, applied: Mapping[str, Sequence[str]], summary: ApplyS
     return "\n".join(
         [
             f"apply step on {summary.sample}'s cause sentences, {summary.snapshot}, "
-            f"{summary.model} at {summary.effort} (decision 0211); counts only",
+            f"{summary.model} at {summary.effort} ({_decision(summary.sample)}); counts only",
             "",
             f"lessons shown: {summary.lessons_shown}; the lookup may choose: {eligible} "
             f"(floor {lookup.MIN_APPLIES})",
@@ -183,7 +187,20 @@ def report(memory: Memory, applied: Mapping[str, Sequence[str]], summary: ApplyS
 
 
 def _run_id(args: argparse.Namespace, commit: str) -> str:
+    """The run's id: ``--resume``'s, refused unless it names the same sample, or a fresh one.
+
+    Raises:
+        ConfigurationError: ``--resume`` names a run made on another sample than ``--sample``,
+            which would send that sample's cases into the other run's folder.
+    """
     if args.resume is not None:
+        confirm = memory_coding_test.CONFIRM_SAMPLE
+        names_confirm = f"-memory-cause-apply-{confirm}-" in args.resume
+        if names_confirm != (args.sample == confirm):
+            raise ConfigurationError(
+                f"--resume {args.resume} was not made on {args.sample}: resume it with the "
+                "sample it was started with"
+            )
         return str(args.resume)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     # The steering slice's ids are as decision 0211 made them; another sample is named.

@@ -302,3 +302,32 @@ def test_the_steering_slice_keeps_decision_0211s_run_id(tmp_path: Path) -> None:
     h = Harness(tmp_path, _by_cause)
     assert h.run() == 0
     assert h.folder().name.endswith("-memory-cause-apply-t")
+
+
+@pytest.mark.parametrize(
+    ("resume", "sample"),
+    [
+        ("20261017T000000Z-abc1234-memory-cause-apply-dev-400-t", None),
+        ("20261017T000000Z-abc1234-memory-cause-apply-t", "dev-400"),
+    ],
+)
+def test_a_resume_on_another_sample_is_refused_before_anything_is_sent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, resume: str, sample: str | None
+) -> None:
+    registered = {ca.REGISTRATION, memory_coding_test.CONFIRM_REGISTRATION}
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path in registered)
+    h = Harness(tmp_path, _by_cause)
+    argv = ["--resume", resume, *(["--sample", sample] if sample else [])]
+    assert h.run(*argv) == 1
+    assert h.messages.batch_keys == []
+    assert not h.out.exists()
+
+
+def test_a_dev_400_reading_names_decision_0212(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    registered = {ca.REGISTRATION, memory_coding_test.CONFIRM_REGISTRATION}
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path in registered)
+    h = Harness(tmp_path, _by_cause)
+    assert h.run("--sample", "dev-400") == 0
+    assert "(decisions 0211 and 0212)" in h.out.read_text().splitlines()[0]

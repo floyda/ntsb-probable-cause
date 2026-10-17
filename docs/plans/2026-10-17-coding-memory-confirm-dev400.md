@@ -56,3 +56,11 @@ Luna batch over OpenRouter for the coding test.
 - [ ] `make mem-confirm-result ...`; commit the result, the spec note and the CLAUDE.md line.
 
 ## Deviations
+
+- 2026-10-17, independent review of Tasks 1 and 2: nothing blocked. Fixed: (1) a resume of the
+  apply step on another sample than `--sample` would have sent that sample's cases into the other
+  run's folder and overwritten the other sample's counts file; `_run_id` now refuses it. (3) The
+  `dev-400` counts file's header names decisions 0211 and 0212. (4) The registration's §3, §8 and
+  §10 now name the script behind each figure, or say a count was unscripted. Not fixed: (2) the
+  reading trusts the cause-lookup spec's `apply_run` without opening it; the coding run already
+  refuses an apply run on another sample (`read_applies`), so only a hand-edited spec gets past.
