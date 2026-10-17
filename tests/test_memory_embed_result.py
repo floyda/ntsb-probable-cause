@@ -6,6 +6,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from scripts import memory_embed
 from scripts import memory_embed_result as er
 from scripts import memory_pilot_result as pr
 from scripts.memory_coding_test import CodingCase
@@ -148,10 +149,27 @@ def test_main_writes_a_counts_only_reading_that_ends_with_the_rule(
     assert "not passed: finding recall@10" in text
 
 
+def _steering_winner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str) -> None:
+    path = tmp_path / "memory-coverage-dev.txt"
+    path.write_text(f"lesson coverage ...\nwinner: {model}\n")
+    monkeypatch.setattr(memory_embed, "STEERING_COVERAGE", path)
+
+
+def test_dev_seal_reading_refuses_a_model_other_than_the_steering_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    test = EmbedRuns(tmp_path, monkeypatch, sample="dev-seal-400")
+    _steering_winner(tmp_path, monkeypatch, "openai/text-embedding-3-small")
+    assert er.main(test.argv(), settings=test.settings) == 1
+    assert "only the steering winner openai/text-embedding-3-small" in capsys.readouterr().out
+    assert not test.out.exists()
+
+
 def test_main_reads_dev_seal_400_once_registered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     test = EmbedRuns(tmp_path, monkeypatch, sample="dev-seal-400")
+    _steering_winner(tmp_path, monkeypatch, "qwen/qwen3-embedding-8b")
     assert er.main(test.argv(), settings=test.settings) == 0
     assert test.out.read_text().strip().splitlines()[-1] == "rule on dev-seal-400: FAIL"
     monkeypatch.setattr(gitinfo, "is_committed", lambda path, repo=Path(): False)

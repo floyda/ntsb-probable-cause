@@ -922,6 +922,7 @@ def _choices_run(settings: Settings, choices: dict[str, list[str]], **changes: o
         "model": "openai/text-embedding-3-small",
         "source_run": "an-embedding-run",
         "commit": "abc1234",
+        "dirty": False,
         **changes,
     }
     (folder / "choice.json").write_text(json.dumps(summary))
@@ -976,6 +977,8 @@ def test_embed_lookup_gives_a_case_missing_from_the_choices_no_lesson(
         ({FIRST: ["L002"]}, {"k": 3}),
         ({FIRST: ["L002"]}, {"min_applies": 5}),
         ({FIRST: ["L002"]}, {"method": "guess"}),
+        ({FIRST: ["L002"]}, {"dirty": True}),
+        ({FIRST: ["L002"]}, {"dirty": None}),
         ({FIRST: ["L999"]}, {}),  # not a lesson of the snapshot
         ({FIRST: ["L001", "L002", "L003", "L004", "L001", "L002"]}, {}),  # more than K
     ],

@@ -15,9 +15,12 @@ What it reads
 What it prints and writes
     Per lookup: hit rate, precision, lessons handed out, cases with none, and, for each embedding
     run, its hit rate minus today's with the paired 95% interval. On the steering slice, the gate
-    (``gate_rule``, the registered text) and the last line ``winner: <model>`` or ``winner:
-    none``; the winner's choices are written. On ``dev-seal-400`` no gate: the choices of
-    ``--model`` are written, and the last line says the reading is a description only. Output:
+    (``gate_rule``, the registered text) over all three candidates' runs, and the last line
+    ``winner: <model>`` or ``winner: none``; the winner's choices are written. On ``dev-seal-400``
+    no gate: one run, of the steering winner (``memory_embed.steering_winner``, read from the
+    committed steering reading), named by ``--model``; its choices are written, and the last line
+    says the reading is a description only. A dirty tree is refused before anything is written,
+    and ``choice.json`` records the clean tree the coding test requires. Output:
     ``docs/results/memory-coverage-dev.txt`` or ``-devseal.txt``. The choices folder,
     ``<runs>/<stamp>-<commit>-memory-choices-<sample>-<model>/``, holds ``choices.json`` (each
     case's lesson ids, in order) and ``choice.json`` (what made them); the coding test's
@@ -160,6 +163,7 @@ def _write_choices(  # noqa: PLR0913 -- the choices and every fact that made the
         "model": model,
         "source_run": source_run,
         "commit": commit,
+        "dirty": False,
     }
     (folder / CHOICE_SUMMARY_FILE).write_text(json.dumps(summary, indent=1) + "\n")
     return run_id
@@ -175,8 +179,17 @@ def reading(args: argparse.Namespace, settings: Settings, now: datetime) -> str:
     if sample not in OUTS:
         raise ConfigurationError(f"lesson coverage reads {STEERING} or {SEAL}, not {sample}")
     memory_coding_test.refuse_sample(sample)
-    if sample == SEAL and args.model is None:
-        raise ConfigurationError(f"on {SEAL}, --model names the method the steering slice chose")
+    # Before anything is written: a choices folder from uncommitted code would feed a paid run.
+    commit, dirty = gitinfo.commit_state()
+    memory_embed.require_clean(dirty)
+    if sample == SEAL:
+        if args.model is None:
+            raise ConfigurationError(
+                f"on {SEAL}, --model names the method the steering slice chose"
+            )
+        if len(args.embeds) != 1:
+            raise ConfigurationError(f"on {SEAL}, name one embedding run: the steering winner's")
+        memory_embed.refuse_other_than_winner(args.model, SEAL)
     memory = snapshots.load_checked(args.snapshot, snapshots.SNAPSHOT_DIR)
     sha = snapshots.sha256_of(snapshots.snapshot_path(args.snapshot, snapshots.SNAPSHOT_DIR))
     every = (*memory.lessons, *memory.pushed_out)
@@ -194,6 +207,11 @@ def reading(args: argparse.Namespace, settings: Settings, now: datetime) -> str:
         raise ConfigurationError("two embedding runs of one model: name one run per model")
     if args.model is not None and args.model not in by_model:
         raise ConfigurationError(f"--model {args.model} names no embedding run given")
+    if sample == STEERING and set(by_model) != set(memory_embed.CANDIDATES):
+        raise ConfigurationError(
+            "the gate reads all three candidates' embedding runs (decision 0213): "
+            f"{len(by_model)} given"
+        )
     cases, left_out = verdict_cases_for(settings.data_dir / "processed", sample)
 
     today_chosen: Chosen = {
@@ -222,7 +240,6 @@ def reading(args: argparse.Namespace, settings: Settings, now: datetime) -> str:
         run = by_model[model]
         label = f"{model} (embedding run {run.run_id}; {len(run.failed_cases)} failed)"
         out += [*_block(label, cov, chosen[model]), _paired_line(cov, today)]
-    commit = gitinfo.commit_state()[0]
     if sample == STEERING:
         prices = memory_embed.load_prices(settings.data_dir)
         winner, lines = gate_rule(today, scored, prices)

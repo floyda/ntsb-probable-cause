@@ -474,10 +474,17 @@ def test_embed_refuses_dev_seal_400_before_registration(
     assert "memory-embed-lookup.md is not committed" in capsys.readouterr().out
 
 
+def _steering_winner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, last: str) -> None:
+    path = tmp_path / "memory-coverage-dev.txt"
+    path.write_text(f"lesson coverage ...\n{last}\n")
+    monkeypatch.setattr(memory_embed, "STEERING_COVERAGE", path)
+
+
 def test_embed_runs_on_dev_seal_400_once_registered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     setup = EmbedSetup(tmp_path, monkeypatch, sample="dev-seal-400")
+    _steering_winner(tmp_path, monkeypatch, "winner: qwen/qwen3-embedding-8b")
     assert setup.run(httpx.MockTransport(Embedder())) == 0
     assert setup.vectors()["sample"] == "dev-seal-400"
     (folder,) = setup.settings.runs_dir.glob(f"*/{memory_embed.VECTORS_FILE}")
@@ -508,3 +515,43 @@ def test_embed_refuses_a_dirty_tree(
     _committed(monkeypatch, registered=True, dirty=True)
     assert setup.run(httpx.MockTransport(Embedder())) == 1
     assert "uncommitted changes" in capsys.readouterr().out
+
+
+def test_embed_on_dev_seal_400_runs_only_the_steering_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch, sample="dev-seal-400")
+    _steering_winner(tmp_path, monkeypatch, "winner: openai/text-embedding-3-small")
+
+    def never(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request for a model the steering slice did not choose")
+
+    assert setup.run(httpx.MockTransport(never)) == 1
+    assert "only the steering winner openai/text-embedding-3-small" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("last", ["winner: none", "winner: another/model", "description only"])
+def test_steering_winner_needs_a_registered_model_on_the_last_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, last: str
+) -> None:
+    _committed(monkeypatch, registered=True)
+    _steering_winner(tmp_path, monkeypatch, last)
+    with pytest.raises(ConfigurationError, match="names no embedding winner"):
+        memory_embed.steering_winner()
+
+
+def test_steering_winner_needs_the_reading_committed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _committed(monkeypatch, registered=False)
+    _steering_winner(tmp_path, monkeypatch, "winner: qwen/qwen3-embedding-8b")
+    with pytest.raises(ConfigurationError, match="is not committed"):
+        memory_embed.steering_winner()
+
+
+def test_steering_winner_reads_the_last_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _committed(monkeypatch, registered=True)
+    _steering_winner(tmp_path, monkeypatch, "winner: openai/text-embedding-3-large")
+    assert memory_embed.steering_winner() == "openai/text-embedding-3-large"

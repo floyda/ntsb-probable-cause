@@ -815,8 +815,8 @@ def read_choices(
 
     Raises:
         ConfigurationError: no readable choices run in ``folder``; one on another sample,
-            snapshot, snapshot file, K, support floor or method; an id that is not a lesson of
-            the snapshot; or more than K ids for a case.
+            snapshot, snapshot file, K, support floor or method, or not made from a clean tree;
+            an id that is not a lesson of the snapshot; or more than K ids for a case.
     """
     refuse_live(_PROG, folder)
     try:
@@ -839,6 +839,8 @@ def read_choices(
     differing = [key for key, value in wanted.items() if summary.get(key) != value]
     if summary.get("method") not in CHOICE_METHODS:
         differing.append("method")
+    if summary.get("dirty") is not False:
+        differing.append("dirty")
     if differing:
         raise ConfigurationError(f"{folder.name} differs in {', '.join(differing)}")
     for ids in choices.values():

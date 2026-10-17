@@ -73,6 +73,9 @@ PROBE_TEXTS: Final = (
     "the pilot did not maintain airspeed in the turn",
 )
 VECTORS_FILE: Final = "vectors.json"
+# The steering gate's committed reading; its last line names the model dev-seal-400 confirms.
+STEERING_COVERAGE: Final = Path("docs/results/memory-coverage-dev.txt")
+WINNER_PREFIX: Final = "winner: "
 CACHE_DIR: Final = "memory-embed-cache"
 SNAPSHOT: Final = "pilot-2010-recount"
 EMBED_SAMPLES: Final = (memory_coding_test.SAMPLE, memory_coding_test.SEAL_SAMPLE)
@@ -135,6 +138,44 @@ def refuse_embed_arguments(model: str, sample: str) -> None:
             f"{sample}"
         )
     memory_coding_test.refuse_sample(sample)
+    refuse_other_than_winner(model, sample)
+
+
+def steering_winner() -> str:
+    """The embedding model the steering gate chose: the last line of its committed reading.
+
+    Raises:
+        ConfigurationError: ``docs/results/memory-coverage-dev.txt`` is not committed, or its last
+            line names no candidate (``winner: none`` leads to the picking call, Task 8).
+    """
+    if not gitinfo.is_committed(STEERING_COVERAGE):
+        raise ConfigurationError(
+            f"{STEERING_COVERAGE} is not committed: dev-seal-400 confirms the steering slice's "
+            "winner only (decision 0213)"
+        )
+    lines = STEERING_COVERAGE.read_text().strip().splitlines()
+    last = lines[-1] if lines else ""
+    model = last.removeprefix(WINNER_PREFIX)
+    if not last.startswith(WINNER_PREFIX) or model not in CANDIDATES:
+        raise ConfigurationError(
+            f"{STEERING_COVERAGE} names no embedding winner on its last line (decision 0213)"
+        )
+    return model
+
+
+def refuse_other_than_winner(model: str, sample: str) -> None:
+    """On ``dev-seal-400``, refuse any embedding model but the steering slice's winner.
+
+    Raises:
+        ConfigurationError: ``sample`` is ``dev-seal-400`` and ``model`` is not
+            :func:`steering_winner` (decision 0213: nothing is chosen on ``dev-seal-400``).
+    """
+    if sample == memory_coding_test.SEAL_SAMPLE:
+        winner = steering_winner()
+        if model != winner:
+            raise ConfigurationError(
+                f"on {sample} only the steering winner {winner} runs (decision 0213), not {model}"
+            )
 
 
 @dataclass(frozen=True)

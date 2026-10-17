@@ -673,3 +673,21 @@ mem-cause-pick: ## The picking call over MODEL's 20 closest lessons (0213; paid,
   first and the fixtures after, and saves them even when a request or that write fails
   (`test_probe_writes_the_result_before_the_fixtures`). The probe is run once more; both runs'
   spend rows stand (under a thousandth of a cent each). The first run's replies are not committed.
+- 2026-10-17, Task 5: `--picks` and its test move to Task 8, where the pick run's format is made;
+  the gate and the choices writer are shared, so Task 8 adds only the reader. Until then
+  `make mem-coverage ... PICKS=` (registration §4 step 5) is not wired: step 5 runs only after
+  `winner: none`, which needs Task 8 first.
+- 2026-10-17, Task 5: `read_vectors` was written in `scripts/memory_embed.py` ahead of Task 4's
+  `embed` command, because the coverage reading reads it.
+- 2026-10-17, Task 4: `embed` refuses `dev-400` although `refuse_sample` allows it: the
+  registration embeds only `dev-steer-400` and `dev-seal-400`, and `dev-400` is not read again.
+- 2026-10-17, Task 4: a case with no cause sentence is listed in `vectors.json` as
+  `no_cause_cases`, not as failed, and does not count toward the 2% rule: it was never sent, and
+  it gets no lesson, as in today's cause lookup. Identical texts (a cause sentence shared by
+  several cases) are sent once; the cache is keyed by the text.
+- 2026-10-17, final review (three Important findings, fixed with tests): the steering gate now
+  needs all three candidates' runs; `mem-coverage` refuses a dirty tree before writing a choices
+  folder, `choice.json` records `dirty`, and the coding test refuses choices not made from a clean
+  tree; on `dev-seal-400`, `mem-embed`, `mem-coverage` and `mem-embed-result` accept only the
+  steering winner, read from the last line of the committed
+  `docs/results/memory-coverage-dev.txt`, and `mem-coverage` takes one embedding run there.

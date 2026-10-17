@@ -14,8 +14,9 @@ What it reads
     --applies RUN``) and the embed lookup (``--lookup 5 --choices RUN``), all on
     ``pilot-2010-recount``. The runs must belong together: the cause-lookup reading's refusal
     (``memory_cause_lookup_result.refuse_unrelated``) for the first four, and the same checks for
-    the embed lookup, which must name a choices run. Each case is scored as in the pilot's reading,
-    failed cases as wrong (decision 0136).
+    the embed lookup, which must name a choices run; on ``dev-seal-400`` its embedding model must
+    be the steering winner (``memory_embed.steering_winner``). Each case is scored as in the
+    pilot's reading, failed cases as wrong (decision 0136).
 
 What it prints
     Per run: the three measures with intervals, ``n`` and failed cases. Paired: the noise,
@@ -40,7 +41,7 @@ from ntsb_probable_cause.scoring import samples
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.settings import Settings
 from scripts import memory_cause_lookup_result as cause_lookup
-from scripts import memory_coding_test
+from scripts import memory_coding_test, memory_embed
 from scripts._s3_runs import write_result
 from scripts.memory_lookup_result import SAME_SETTINGS, lookup_counts
 from scripts.memory_pilot_result import (
@@ -173,6 +174,9 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
         }
         refuse_unequal_cases(runs)
         refuse_unrelated(runs, snapshots.SNAPSHOT_DIR)
+        memory_embed.refuse_other_than_winner(
+            str(runs[EMBED].spec.get("embedding_model")), args.sample
+        )
         processed = settings.data_dir / "processed"
         ids = sorted({row.case_id for run in runs.values() for row in run.rows})
         try:

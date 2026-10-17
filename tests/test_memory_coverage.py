@@ -271,6 +271,7 @@ def test_steering_reading_gates_and_writes_the_winners_choices(
         "model": QWEN,
         "source_run": runs[2],
         "commit": "abc1234",
+        "dirty": False,
     }
 
 
@@ -279,7 +280,8 @@ def test_no_winner_writes_no_choices(
 ) -> None:
     settings, sha = setup
     _apply_run(settings, sha, {"A": ["L1"], "B": ["L2"]})  # today: both hit, precision 100%
-    runs = [_embed_run(settings, SMALL, sha, {"A": [1.0, 0.1], "B": [0.1, 1.0]})]
+    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
+    runs = [_embed_run(settings, m, sha, near) for m in (SMALL, LARGE, QWEN)]
     assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs) == 0
     text = capsys.readouterr().out
     assert text.splitlines()[-1] == "winner: none"
@@ -313,10 +315,20 @@ def test_two_runs_of_one_model_are_refused(
     assert "two embedding runs" in capsys.readouterr().out
 
 
+def _steering_winner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str) -> None:
+    path = tmp_path / "memory-coverage-dev.txt"
+    path.write_text(f"lesson coverage ...\nwinner: {model}\n")
+    monkeypatch.setattr(memory_embed, "STEERING_COVERAGE", path)
+
+
 def test_dev_seal_reading_names_no_winner_and_writes_the_named_models_choices(
-    setup: tuple[Settings, str], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    setup: tuple[Settings, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     settings, sha = setup
+    _steering_winner(tmp_path, monkeypatch, SMALL)
     monkeypatch.setattr(mc, "verdict_cases_for", lambda processed, sample: (dict(CASES), 0))
     _apply_run(settings, sha, {"A": ["L1"], "B": []}, sample="dev-seal-400")
     run = _embed_run(
@@ -352,3 +364,58 @@ def test_dev_seal_reading_is_refused_before_registration(
     argv = ["--sample", "dev-seal-400", "--applies", APPLY_RUN, "--embeds", run, "--model", SMALL]
     assert _main(settings, *argv) == 1
     assert "0213" in capsys.readouterr().out
+
+
+def test_steering_gate_needs_all_three_candidates(
+    setup: tuple[Settings, str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings, sha = setup
+    _apply_run(settings, sha, {"A": [], "B": []})
+    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
+    runs = [_embed_run(settings, m, sha, near) for m in (SMALL, QWEN)]
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs) == 1
+    assert "all three" in capsys.readouterr().out
+    assert not list(settings.runs_dir.glob("*-memory-choices-*"))
+
+
+def test_a_dirty_tree_is_refused_before_choices_are_written(
+    setup: tuple[Settings, str], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings, sha = setup
+    monkeypatch.setattr(gitinfo, "commit_state", lambda *a, **k: ("abc1234", True))
+    _apply_run(settings, sha, {"A": ["L2"], "B": []})
+    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
+    runs = [_embed_run(settings, m, sha, near) for m in (SMALL, LARGE, QWEN)]
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs) == 1
+    assert "uncommitted changes" in capsys.readouterr().out
+    assert not list(settings.runs_dir.glob("*-memory-choices-*"))
+
+
+def test_choices_record_a_clean_tree(setup: tuple[Settings, str]) -> None:
+    settings, sha = setup
+    _apply_run(settings, sha, {"A": ["L2"], "B": []})
+    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
+    runs = [_embed_run(settings, m, sha, near) for m in (SMALL, LARGE, QWEN)]
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs) == 0
+    (summary,) = settings.runs_dir.glob(f"*-memory-choices-*/{mc.CHOICE_SUMMARY_FILE}")
+    assert json.loads(summary.read_text())["dirty"] is False
+
+
+def test_dev_seal_reading_takes_one_run_of_the_steering_winner(
+    setup: tuple[Settings, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings, sha = setup
+    _steering_winner(tmp_path, monkeypatch, SMALL)
+    _apply_run(settings, sha, {"A": [], "B": []}, sample="dev-seal-400")
+    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
+    small = _embed_run(settings, SMALL, sha, near, sample="dev-seal-400")
+    large = _embed_run(settings, LARGE, sha, near, sample="dev-seal-400")
+    base = ["--sample", "dev-seal-400", "--applies", APPLY_RUN]
+    assert _main(settings, *base, "--embeds", small, large, "--model", SMALL) == 1
+    assert "one embedding run" in capsys.readouterr().out
+    assert _main(settings, *base, "--embeds", large, "--model", LARGE) == 1
+    assert f"only the steering winner {SMALL}" in capsys.readouterr().out
+    assert not list(settings.runs_dir.glob("*-memory-choices-*"))
