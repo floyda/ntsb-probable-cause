@@ -1,0 +1,55 @@
+coding memory cause-lookup test, dev-steer-400 (decision 0211); counts only
+
+tables-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a)
+  occurrence top-1: 23.2% [19.3%, 27.6%] n=401
+  occurrence top-3: 29.7% [25.4%, 34.3%] n=401
+  finding recall@10: 33.4% [30.1%, 36.5%] n=401
+  failed cases: 0
+
+counts-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-a)
+  occurrence top-1: 25.7% [21.7%, 30.2%] n=401
+  occurrence top-3: 30.2% [25.9%, 34.8%] n=401
+  finding recall@10: 41.7% [38.5%, 45.1%] n=401
+  failed cases: 0
+
+counts-b (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-b)
+  occurrence top-1: 25.9% [21.9%, 30.4%] n=401
+  occurrence top-3: 30.9% [26.6%, 35.6%] n=401
+  finding recall@10: 41.4% [38.1%, 44.6%] n=401
+  failed cases: 0
+
+code-lookup (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-lookup5-pilot-2010-recount)
+  occurrence top-1: 26.9% [22.8%, 31.5%] n=401
+  occurrence top-3: 34.7% [30.2%, 39.4%] n=401
+  finding recall@10: 41.7% [38.6%, 45.0%] n=401
+  failed cases: 0
+
+cause-lookup (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-causelookup5-pilot-2010-recount)
+  occurrence top-1: 28.2% [24.0%, 32.8%] n=401
+  occurrence top-3: 34.2% [29.7%, 38.9%] n=401
+  finding recall@10: 44.6% [41.2%, 48.0%] n=401
+  failed cases: 0
+
+paired differences (first minus second, cases in both)
+counts(b) - counts(a), the noise
+  occurrence top-1: +0.2 points [-1.2, +2.0] n=401
+  occurrence top-3: +0.7 points [-1.2, +3.0] n=401
+  finding recall@10: -0.3 points [-2.3, +1.6] n=401
+cause lookup - counts(a), read by the rule
+  occurrence top-1: +2.5 points [+0.5, +4.5] n=401
+  occurrence top-3: +4.0 points [+1.2, +6.7] n=401
+  finding recall@10: +2.9 points [+0.6, +5.3] n=401
+code lookup - counts(a), as decision 0210 read it
+  occurrence top-1: +1.2 points [-1.0, +3.5] n=401
+  occurrence top-3: +4.5 points [+2.0, +7.2] n=401
+  finding recall@10: +0.0 points [-2.2, +2.2] n=401
+cause lookup - code lookup
+  occurrence top-1: +1.2 points [-0.7, +3.2] n=401
+  occurrence top-3: -0.5 points [-3.5, +2.2] n=401
+  finding recall@10: +2.9 points [+1.0, +4.9] n=401
+
+code lookup: 401 cases sent; mean 4.96 lessons a case; 1 with none; 93 distinct lessons used
+cause lookup: 401 cases sent; mean 2.19 lessons a case; 39 with none; 95 distinct lessons used
+cause lookup's apply run: 20261017T090550Z-0b949a6-memory-cause-apply-pilot-2010-recount
+
+rule on the cause-lookup run: PASS

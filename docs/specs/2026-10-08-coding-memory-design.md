@@ -480,6 +480,22 @@ refilled note (13 lessons, corrected ranking), minus counts (a): finding recall@
 top-1 +1.5 [−0.5, +3.5], top-3 +2.7 [+0.5, +5.0]; it decides nothing. As registered (§10), the
 side track stops here and is reported as it stands. Cost: $0.3306 on OpenRouter for the two runs.
 
+**Added 2026-10-17: a cause-sentence lookup passed.** Andy overrode that stop (decision
+[0211](../decisions/0211-a-second-lookup-test-chooses-lessons-from-the-cause-sentence.md),
+registration `docs/rounds/memory-cause-lookup.md`): the 0210 query was the model's codes, so a lesson
+could rarely bring in a category the answer lacked. The learner's apply step (Sonnet 5.5, high) read
+each steering case's cause sentence against all 198 `pilot-2010-recount` lessons, with no code; 0 of
+401 replies failed (`docs/results/memory-cause-apply-dev.txt`). Up to five of the lessons it named,
+by fit, went into the counts post-pass: a mean of 2.19 a case, 39 cases with none. **Cause lookup
+minus counts (a), as registered** (`docs/results/memory-cause-lookup-dev.txt`): finding recall@10
++2.9 points [+0.6, +5.3], against a noise of 0.3; top-1 +2.5 [+0.5, +4.5]; top-3 +4.0 [+1.2, +6.7].
+The rule passed, and the finding gain's interval is above zero. Against the code lookup: finding
+recall@10 +2.9 [+1.0, +4.9], top-1 +1.2 [−0.7, +3.2], top-3 −0.5 [−3.5, +2.2]. This is the steering
+slice's fourth look at a memory, so as registered (§10) the next step recommended is a registered
+confirmation on a fresh development sample, with its own counts runs, before any relearning. Cost:
+$1.5604 of plan credit for the apply step (397 calls: four cause sentences repeat another word for
+word), $0.1814 on OpenRouter for the coding run.
+
 ## Glossary
 
 - **Coding memory**: a short file of written lessons about how the NTSB codes accidents,

@@ -617,7 +617,12 @@ passed its stop rule on 2026-10-16, by a thin margin** (`docs/results/memory-pil
 0.3; top-1 +0.2, top-3 +2.2. Learner spend $33.1308 of credit; coding tests $0.81. A counting defect was then found and fixed
 (0209), and a lookup test of five lessons per case, matched to the model's first answer, **did not
 pass** its registered rule (0210, `docs/rounds/memory-lookup.md`, `docs/results/memory-lookup-dev.txt`):
-finding recall@10 +0.0 points over counts, top-3 +4.5. As registered, the side track stops there. Learner spend rows are kind `learning`, on their own monthly line
+finding recall@10 +0.0 points over counts, top-3 +4.5. Andy overrode that stop (0211,
+`docs/rounds/memory-cause-lookup.md`): up to five lessons per case chosen by the learner's apply step
+from the cause sentence alone, with no code, **passed** (`docs/results/memory-cause-lookup-dev.txt`):
+finding recall@10 +2.9 points [+0.6, +5.3] over counts, against a noise of 0.3; top-1 +2.5, top-3
++4.0. As registered, a confirmation on a fresh development sample comes before any relearning; it is
+Andy's call. Learner spend rows are kind `learning`, on their own monthly line
 `NTSB_LEARNING_MONTHLY_BUDGET_USD` (default $90, never counted by the $40 guard; raised for one
 command by 0208); coding-test rows are kind `coding-test`, on the $40 guard and the side track's
 $10 line. The learner reads `ANTHROPIC_API_KEY`, which `scripts/with_pass_keys.sh` takes from `pass`

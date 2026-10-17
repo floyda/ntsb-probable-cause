@@ -72,7 +72,7 @@ Luna batch over OpenRouter for the coding test.
 
 - [x] Andy signs; the registration is committed.
 - [x] `make mem-cause-apply SNAPSHOT=pilot-2010-recount`; commit its counts file.
-- [ ] `make mem-coding-cause-lookup ...`; `make mem-cause-lookup-result ...`; commit the result,
+- [x] `make mem-coding-cause-lookup ...`; `make mem-cause-lookup-result ...`; commit the result,
   the spec note and the CLAUDE.md line.
 
 ## Deviations
@@ -89,3 +89,7 @@ Luna batch over OpenRouter for the coding test.
   holds in code. (3) `read_applies` now refuses an apply run whose model or effort is not the
   registered Sonnet 5.5 at high. (4) The `causes` docstring now names the apply step as the
   second reader of the cause sentence.
+- 2026-10-17, Task 5: the apply step billed 397 calls, not 401. Four steering cases repeat another
+  case's cause sentence word for word, and a call's key is its request text, so each pair shared one
+  call and one answer; every case still has its lessons (`applies.json`, 401 entries). Cost $1.5604
+  of credit against the estimate of about $1.40; the coding run $0.1814 against about $0.20.
