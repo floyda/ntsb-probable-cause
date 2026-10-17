@@ -1,0 +1,5 @@
+embeddings shape probe at commit b6d79f5, 2026-10-17 (decision 0213)
+qwen/qwen3-embedding-8b: status=200 keys=data,id,model,object,provider,usage vectors=2 length=4096 usage=cost,cost_details,is_byok,prompt_tokens,total_tokens cost_usd=0.00000023
+openai/text-embedding-3-small: status=200 keys=data,id,model,object,provider,usage vectors=2 length=1536 usage=cost,cost_details,is_byok,prompt_tokens,total_tokens cost_usd=0.00000042
+openai/text-embedding-3-large: status=200 keys=data,id,model,object,provider,usage vectors=2 length=3072 usage=cost,cost_details,is_byok,prompt_tokens,total_tokens cost_usd=0.00000273
+check every reply holds one vector per text, of one length: ok

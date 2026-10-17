@@ -148,7 +148,7 @@ mem-embed-probe: ## The embeddings shape probe, ONCE (0213; paid, cents)
 - [x] **Step 4:** tests pass; `make check` passes (apart from the known `test_store_sync` boto3
   failure).
 - [x] **Step 5:** commit (`budget.py`, `scripts/memory_embed.py`, `Makefile`, the test).
-- [ ] **Step 6 (paid, cents; after Task 1's signature):** `make mem-embed-models`, then
+- [x] **Step 6 (paid, cents; after Task 1's signature):** `make mem-embed-models`, then
   `make mem-embed-probe`. Read the saved replies. Commit the fixtures and
   `docs/results/memory-embed-probe.txt`. Any shape that differs from Task 3's sketch goes in
   Deviations, and Task 3 follows the fixture.
