@@ -70,7 +70,7 @@ Luna batch over OpenRouter for the coding test.
 
 ### Task 5: The runs (paid, under $2)
 
-- [ ] Andy signs; the registration is committed.
+- [x] Andy signs; the registration is committed.
 - [ ] `make mem-cause-apply SNAPSHOT=pilot-2010-recount`; commit its counts file.
 - [ ] `make mem-coding-cause-lookup ...`; `make mem-cause-lookup-result ...`; commit the result,
   the spec note and the CLAUDE.md line.
