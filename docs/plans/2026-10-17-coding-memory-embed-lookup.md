@@ -658,12 +658,12 @@ mem-cause-pick: ## The picking call over MODEL's 20 closest lessons (0213; paid,
 
 ### Task 11: Close the records
 
-- [ ] Spec §13: an "Added" note with the result, every figure from the committed results files;
+- [x] Spec §13: an "Added" note with the result, every figure from the committed results files;
   its Status line updated.
-- [ ] CLAUDE.md's coding-memory paragraph: one sentence on 0213's result and the new targets.
-- [ ] `make s33-continuity` reports `+t` e7811b387b31; then
+- [x] CLAUDE.md's coding-memory paragraph: one sentence on 0213's result and the new targets.
+- [x] `make s33-continuity` reports `+t` e7811b387b31; then
   `git checkout -- docs/results/s33-fingerprint-continuity.txt`.
-- [ ] `make check` passes; commit.
+- [x] `make check` passes; commit.
 
 ## Deviations
 
@@ -698,3 +698,7 @@ mem-cause-pick: ## The picking call over MODEL's 20 closest lessons (0213; paid,
   records `embed_model` and `shortlist`. `mem-coverage` now passes `PICKS=`. On `dev-seal-400` the
   picking call runs only if `pick:<model>` won on steering, and the coverage reading and the result
   then require it; if the embedding lookup alone had won, `--picks` would be refused there.
+- 2026-10-17, Tasks 9 and 10: the gate printed `winner: none` twice, the second time with the
+  picking call (`docs/results/memory-coverage-dev.txt`, committed in ec6d14f and a9665d8). As
+  registered (§4 step 5), the method stopped: Task 9's coding run and reading, and all of Task 10
+  (`dev-seal-400`), were not run. Their boxes stay unticked; `dev-seal-400` stays unread.

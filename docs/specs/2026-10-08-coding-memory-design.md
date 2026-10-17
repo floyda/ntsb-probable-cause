@@ -1,6 +1,6 @@
 # A coding memory learned from closed cases: design note
 
-Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). A better lookup designed 2026-10-17, Draft (§13). Drafted 2026-10-08; refreshed 2026-10-14. A declared
+Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). A better lookup designed 2026-10-17 (§13); it stopped at its gate the same day (§13.12). Drafted 2026-10-08; refreshed 2026-10-14. A declared
 experiment on development cases: Andy chose on 2026-10-14 to run its pilot now, as a side track
 beside S4 (§11, question 1), answered the other questions in §11 the same day, and the decisions
 in §10 are recorded. The implementation plan is in `docs/plans/`. The memory reaches the agent
@@ -511,8 +511,10 @@ $0.5529 on OpenRouter for the four runs, $1.4307 of plan credit for the apply st
 
 ## 13. A better lookup: embedding search (design, 2026-10-17)
 
-Status: Draft, for Andy's review. Agreed with Andy in conversation on 2026-10-17, one choice at a
-time; recorded as the next numbered decision when the plan is written. Nothing here has run.
+Status: Approved by Andy, 2026-10-17, as decision
+[0213](../decisions/0213-an-embedding-lookup-is-tried-on-the-steering-slice-and-confirmed-on-dev-seal-400.md)
+and its registration (`docs/rounds/memory-embed-lookup.md`). Ran the same day: neither the
+embedding lookup nor the picking call passed the gate, so the method stopped (§13.12).
 
 ### 13.1 The question
 
@@ -702,6 +704,29 @@ data.
 Ellery version 1, its fingerprint and S4's nights; the board; `dev-seal-s3-400`, sealed for
 version 2 (0141); `dev-400`, already read once by the memory (0212); the learner's lessons and
 their support counts.
+
+### 13.12 Added 2026-10-17: the method stopped at the gate
+
+Every figure is from `docs/results/memory-coverage-dev.txt` (lesson coverage on `dev-steer-400`,
+401 cases, `pilot-2010-recount`, K=5, floor 10) and `docs/results/memory-embed-probe.txt`. The
+shape probe found all three models' replies as expected. Today's cause lookup: hit rate 53.6%,
+precision 45.6% (400 of 878 lessons), 2.19 lessons a case, 39 cases with none.
+
+- **The embedding lookup** hands out five lessons to every case, so its precision is about half
+  today's: `qwen/qwen3-embedding-8b` hit rate 54.9%, precision 21.9%;
+  `openai/text-embedding-3-small` 55.9% and 22.7%; `openai/text-embedding-3-large` 57.6% and
+  23.6%. Against today's lookup, paired: +1.2 points [−2.2, +4.7], +2.2 [−1.5, +6.0] and +4.0
+  [+0.5, +7.5]. Only the large model's interval is above zero, and none passes on precision:
+  `winner: none`.
+- **The picking call** (§13.5), over the large model's 20 nearest lessons, 0 of 401 replies
+  failed: hit rate 59.1%, precision 36.3% (552 of 1519), 3.79 lessons a case, 14 with none; paired
+  +5.5 points [+2.7, +8.2]. Its precision is still below today's: `winner: none` again.
+
+As registered, the method stops here and the result is published: no coding run was made, and
+`dev-seal-400` stays unread. Today's cause lookup (0211, 0212) stays the memory's method. What
+the readings show is a trade: every new way of choosing found more cases with an agreeing lesson,
+and each did it by handing out more lessons that do not agree. The gate asked for both, and
+neither was offered.
 
 ## Glossary
 
