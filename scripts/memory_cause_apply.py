@@ -1,24 +1,28 @@
-"""The apply step on the steering slice: the lessons each case's cause sentence calls for (0211).
+"""The apply step on a sample: the lessons each case's cause sentence calls for (0211, 0212).
 
 Status
     Live tool for the cause-lookup test, paid from plan credits like the learner (0202, 0207):
     Sonnet 5.5 at effort high, in batches, the applier the agreement test chose. It refuses a
     dirty tree and runs only once ``docs/rounds/memory-cause-lookup.md`` is committed. It checks
-    the month's learner line (``NTSB_LEARNING_MONTHLY_BUDGET_USD``) before sending.
+    the month's learner line (``NTSB_LEARNING_MONTHLY_BUDGET_USD``) before sending. Its sample is
+    ``dev-steer-400``, or ``dev-400`` for decision 0212's confirmation once
+    ``docs/rounds/memory-confirm-dev400.md`` is committed (``memory_coding_test.refuse_sample``).
 
 What it sends
-    For each ``dev-steer-400`` case with a probable-cause sentence, one apply request: the
+    For each of the sample's cases with a probable-cause sentence, one apply request: the
     learner's apply prompt (``memory_learn.apply_call``) over every lesson of a checked snapshot,
     kept or pushed out, in id order, and the case's cause sentence alone. No code from any answer
     or verdict is sent. The request's role is ``test-apply``; its client keeps every case of the
-    samples the ``mem`` statistics leave out forbidden, and lets that role alone read the steering
-    slice's (``LearningClient.allow_for_test_apply``, decision 0211 item 3). It writes no lesson.
+    samples the ``mem`` statistics leave out forbidden, and lets that role alone read the chosen
+    sample's (``LearningClient.allow_for_test_apply``, decision 0211 item 3, 0212). It writes no
+    lesson.
 
 What it writes
     ``<runs>/<run id>/``: the client's ``calls.jsonl`` and ``batches.jsonl`` (so a resumed run
     never pays again for a usable reply), ``applies.json`` (each case's lesson ids) and
     ``apply.json`` (the snapshot, its hash, the applier, and counts). Then, counts only,
-    ``docs/results/memory-cause-apply-dev.txt``: what the apply step named, and what the cause
+    ``docs/results/memory-cause-apply-dev.txt`` (``-dev400.txt`` for ``dev-400``): what the apply
+    step named, and what the cause
     lookup (``lookup.by_fit``) would give each case. No score is read.
 
 Resume
@@ -28,7 +32,8 @@ Resume
     §8).
 
 Usage
-    uv run python -m scripts.memory_cause_apply --snapshot NAME [--resume RUN_ID] [--out PATH]
+    uv run python -m scripts.memory_cause_apply --snapshot NAME [--sample S] [--resume RUN_ID]
+        [--out PATH]
 """
 
 import argparse
@@ -60,6 +65,7 @@ APPLIER: Final[memory_learn.Applier] = "sonnet-high"
 APPLIES_FILE: Final = "applies.json"
 SUMMARY_FILE: Final = "apply.json"
 DEFAULT_OUT: Final = Path("docs/results/memory-cause-apply-dev.txt")
+CONFIRM_OUT: Final = Path("docs/results/memory-cause-apply-dev400.txt")
 _ID: Final = re.compile(r"L(\d+)")
 
 
@@ -103,9 +109,9 @@ def refuse_finished(folder: Path) -> None:
         raise ConfigurationError(f"{folder.name} is finished: its failed replies stand (0211)")
 
 
-def steering_ids() -> frozenset[str]:
-    """The steering slice's cases: the ones ``test-apply`` calls may read (0211 item 3)."""
-    return frozenset(samples.sample_ids(SAMPLE))
+def allowed_ids(sample: str = SAMPLE) -> frozenset[str]:
+    """The sample's cases: the ones ``test-apply`` calls may read (0211 item 3, 0212)."""
+    return frozenset(samples.sample_ids(sample))
 
 
 def _number(lesson: Lesson) -> int:
@@ -180,7 +186,9 @@ def _run_id(args: argparse.Namespace, commit: str) -> str:
     if args.resume is not None:
         return str(args.resume)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return f"{stamp}-{commit}-memory-cause-apply-{args.snapshot}"
+    # The steering slice's ids are as decision 0211 made them; another sample is named.
+    sample = "" if args.sample == SAMPLE else f"{args.sample}-"
+    return f"{stamp}-{commit}-memory-cause-apply-{sample}{args.snapshot}"
 
 
 def main(
@@ -189,31 +197,39 @@ def main(
     settings: Settings | None = None,
     client_factory: memory_learn.ClientFactory = memory_learn.default_factory,
 ) -> int:
-    """Run the apply step on the steering slice, or resume it. 0 on success, 1 on a refusal."""
+    """Run the apply step on a sample, or resume it. 0 on success, 1 on a refusal."""
     parser = argparse.ArgumentParser(prog=PROG)
     parser.add_argument("--snapshot", required=True, help="a checked snapshot's name")
     parser.add_argument("--resume", metavar="RUN_ID", help="reuse a run folder")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--sample",
+        choices=(SAMPLE, memory_coding_test.CONFIRM_SAMPLE),
+        default=SAMPLE,
+        help=f"{memory_coding_test.CONFIRM_SAMPLE} only for decision 0212's confirmation",
+    )
+    parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    out = args.out or (DEFAULT_OUT if args.sample == SAMPLE else CONFIRM_OUT)
     settings = settings or Settings()
     try:
         commit, dirty = gitinfo.commit_state()
         memory_learn.require_clean(dirty)
         refuse_without_registration()
+        memory_coding_test.refuse_sample(args.sample)
         memory = apply_memory(snapshots.load_checked(args.snapshot, snapshots.SNAPSHOT_DIR))
         sha = snapshots.sha256_of(snapshots.snapshot_path(args.snapshot, snapshots.SNAPSHOT_DIR))
-        causes = memory_coding_test.causes(settings.data_dir / "processed")
+        causes = memory_coding_test.causes(settings.data_dir / "processed", args.sample)
         found = {case_id: cause for case_id, cause in causes.items() if cause is not None}
         run_id = _run_id(args, commit)
         refuse_finished(settings.runs_dir / run_id)
         client = client_factory(settings, run_id, (commit, dirty), pool.excluded_ids())
-        client.allow_for_test_apply(steering_ids())
+        client.allow_for_test_apply(allowed_ids(args.sample))
         if client.skipped_lines:
             print(f"{client.skipped_lines} unreadable record lines skipped in run {run_id}")
         applied, failed = send(settings, client, memory, found)
         model, effort = memory_learn.APPLIERS[APPLIER]
         summary = ApplySummary(
-            sample=SAMPLE,
+            sample=args.sample,
             snapshot=args.snapshot,
             snapshot_sha256=sha,
             model=model,
@@ -229,7 +245,7 @@ def main(
         (folder / SUMMARY_FILE).write_text(summary.model_dump_json(indent=1) + "\n")
         text = report(memory, applied, summary)
         print(f"{run_id}\n{text}")
-        write_result(PROG, args.out, text)
+        write_result(PROG, out, text)
     except (ConfigurationError, BudgetError) as exc:
         print(f"refused: {exc}")
         return 1

@@ -143,7 +143,8 @@ def report(runs: Mapping[str, RunRead], scored: Mapping[str, dict[str, CaseMeasu
     return "\n".join(out)
 
 
-def _folder(runs_dir: Path, name: str) -> Path:
+def folder(runs_dir: Path, name: str) -> Path:
+    """A run folder given as a path, or by name under the runs directory."""
     path = Path(name)
     return path if path.is_dir() else runs_dir / name
 
@@ -159,7 +160,7 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
     try:
         runs = {
             name: load_run(
-                _folder(settings.runs_dir, getattr(args, name.replace("-", "_"))), LABELS[name][0]
+                folder(settings.runs_dir, getattr(args, name.replace("-", "_"))), LABELS[name][0]
             )
             for name in LABELS
         }

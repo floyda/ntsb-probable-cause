@@ -234,18 +234,20 @@ class RunRead:
         return sum(row.hypothesis is None for row in self.rows)
 
 
-def load_run(folder: Path, condition: str) -> RunRead:
+def load_run(folder: Path, condition: str, sample: str = SAMPLE) -> RunRead:
     """Read a run after the fence, the sample check and the condition check.
 
     Args:
         folder: the run folder.
         condition: ``tables``, ``counts`` or ``memory``; the spec must say the same, and a memory
             run must name a snapshot.
+        sample: the sample the spec must name: the steering slice unless a later reading
+            (decision 0212's confirmation) names ``dev-400``.
 
     Raises:
         SystemExit: a live run (``refuse_live``), before anything else is read.
-        ConfigurationError: not a finished coding-test run, a sample other than the steering
-            slice, or another condition than expected.
+        ConfigurationError: not a finished coding-test run, a sample other than ``sample``, or
+            another condition than expected.
     """
     refuse_live(PROG, folder)
     try:
@@ -259,8 +261,10 @@ def load_run(folder: Path, condition: str) -> RunRead:
         raise ConfigurationError(
             f"{folder.name}: not a finished coding-test run ({type(error).__name__})"
         ) from None
-    if not isinstance(spec, dict) or spec.get("sample") != SAMPLE:
-        raise ConfigurationError(f"{folder.name} is not a {SAMPLE} run: the pilot reads that only")
+    if not isinstance(spec, dict) or spec.get("sample") != sample:
+        raise ConfigurationError(
+            f"{folder.name} is not a {sample} run: this reading reads that only"
+        )
     if spec.get("condition") != condition:
         raise ConfigurationError(
             f"{folder.name} is a {spec.get('condition')} run, not the {condition} run expected"

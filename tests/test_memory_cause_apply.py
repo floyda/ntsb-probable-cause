@@ -137,9 +137,9 @@ def _setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(gitinfo, "commit_state", lambda *a, **k: ("abc1234", False))
     monkeypatch.setattr(gitinfo, "is_committed", lambda path: path == ca.REGISTRATION)
     monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
-    monkeypatch.setattr(memory_coding_test, "causes", lambda processed: dict(CAUSES))
+    monkeypatch.setattr(memory_coding_test, "causes", lambda processed, sample=None: dict(CAUSES))
     monkeypatch.setattr(pool, "excluded_ids", lambda: frozenset({"XXX09LA001", "OTHER01"}))
-    monkeypatch.setattr(ca, "steering_ids", lambda: frozenset(CAUSES))
+    monkeypatch.setattr(ca, "allowed_ids", lambda sample=None: frozenset(CAUSES))
     _snapshot(tmp_path / "snapshots")
 
 
@@ -242,9 +242,12 @@ def test_the_steering_slice_is_the_sample_the_mem_statistics_leave_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.undo()
-    steer = ca.steering_ids()
+    steer = ca.allowed_ids()
     assert steer == frozenset(samples.sample_ids("dev-steer-400"))
     assert steer <= pool.excluded_ids()
+    confirm = ca.allowed_ids("dev-400")
+    assert confirm == frozenset(samples.sample_ids("dev-400"))
+    assert confirm <= pool.excluded_ids()
 
 
 def test_only_test_apply_calls_may_read_the_allowed_cases(tmp_path: Path) -> None:
@@ -259,3 +262,43 @@ def test_only_test_apply_calls_may_read_the_allowed_cases(tmp_path: Path) -> Non
         call = ml.apply_call(role, model, effort, memory, case_id=case_id, cause="a cause")
         with pytest.raises(ConfigurationError):
             client.send_batch([call])
+
+
+def test_dev_400_is_refused_until_the_confirmation_is_registered(tmp_path: Path) -> None:
+    h = Harness(tmp_path, _by_cause)
+    assert h.run("--sample", "dev-400") == 1
+    assert h.messages.batch_keys == []
+
+
+def test_dev_400_runs_once_registered_and_names_its_sample(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    registered = {ca.REGISTRATION, memory_coding_test.CONFIRM_REGISTRATION}
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path in registered)
+    seen: list[str | None] = []
+    allowed: list[str | None] = []
+
+    def causes(processed: Path, sample: str | None = None) -> dict[str, str | None]:
+        del processed
+        seen.append(sample)
+        return dict(CAUSES)
+
+    def allowed_ids(sample: str | None = None) -> frozenset[str]:
+        allowed.append(sample)
+        return frozenset(CAUSES)
+
+    monkeypatch.setattr(memory_coding_test, "causes", causes)
+    monkeypatch.setattr(ca, "allowed_ids", allowed_ids)
+    h = Harness(tmp_path, _by_cause)
+    assert h.run("--sample", "dev-400") == 0
+    assert seen == ["dev-400"]
+    assert allowed == ["dev-400"]
+    assert "-memory-cause-apply-dev-400-t" in h.folder().name
+    summary = json.loads((h.folder() / ca.SUMMARY_FILE).read_text())
+    assert summary["sample"] == "dev-400"
+
+
+def test_the_steering_slice_keeps_decision_0211s_run_id(tmp_path: Path) -> None:
+    h = Harness(tmp_path, _by_cause)
+    assert h.run() == 0
+    assert h.folder().name.endswith("-memory-cause-apply-t")

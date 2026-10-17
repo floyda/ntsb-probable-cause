@@ -2,10 +2,12 @@
 
 Status
     Live tool for the coding memory's pilot (decision 0204), paid on OpenRouter: GPT-6 Luna
-    batch, about a cent or less a case. Development only: ``dev-steer-400`` and nothing else in
-    this plan. It refuses a dirty tree before anything is read, so every run names a clean
-    commit. Its spend rows are kind ``coding-test``: the $40 monthly guard counts them, and so
-    does the side track's $10 line (``make mem-spend``, decision 0207).
+    batch, about a cent or less a case. Development only: ``dev-steer-400``, and ``dev-400`` for
+    the confirmation of decision 0212 (tables, counts and cause lookup only, once
+    ``docs/rounds/memory-confirm-dev400.md`` is committed). It refuses a dirty tree before
+    anything is read, so every run names a clean commit. Its spend rows are kind
+    ``coding-test``: the $40 monthly guard counts them, and so does the side track's $10 line
+    (``make mem-spend``, decision 0207).
 
 What it measures
     Coding alone: the reading of the evidence is taken out, so a change in score is the coding's
@@ -48,7 +50,8 @@ Resume
     may still be billed) until it is resumed or released (``ntsb-eval release``).
 
 Usage
-    uv run python -m scripts.memory_coding_test answer --repeat {a,b} [--resume RUN_ID]
+    uv run python -m scripts.memory_coding_test answer --repeat {a,b} [--sample S]
+        [--resume RUN_ID]
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --repeat {a,b}
         [--resume RUN_ID]
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
@@ -111,6 +114,7 @@ __all__ = [
     "gitinfo",
     "main",
     "refuse_cause_lookup_without_registration",
+    "refuse_condition",
     "refuse_lookup_without_registration",
     "refuse_memory_without_registration",
     "refuse_sample",
@@ -118,6 +122,10 @@ __all__ = [
 ]
 
 SAMPLE: Final = "dev-steer-400"
+CONFIRM_SAMPLE: Final = "dev-400"  # decision 0212's confirmation
+CONFIRM_REGISTRATION: Final = Path("docs/rounds/memory-confirm-dev400.md")
+# The conditions the confirmation registered; the others stay on the steering slice.
+CONFIRM_CONDITIONS: Final = frozenset({"tables", "counts", "cause-lookup"})
 GUIDANCE: Final = ("r3-loc-stall", "r6-aircraft-control")
 REGISTRATION: Final = Path("docs/rounds/memory-pilot.md")
 LOOKUP_REGISTRATION: Final = Path("docs/rounds/memory-lookup.md")
@@ -169,17 +177,38 @@ class CodingCase(BaseModel):
 
 
 def refuse_sample(sample: str) -> None:
-    """Refuse every sample but the steering slice, and a statistics pool that holds it.
+    """Refuse every sample but the steering slice and a registered ``dev-400``.
 
     Raises:
-        ConfigurationError: ``sample`` is not ``dev-steer-400`` (decisions 0203, 0204), or the
-            ``mem`` statistics' pool holds it (``coding_stats.refuse_pool_holding``).
+        ConfigurationError: ``sample`` is neither ``dev-steer-400`` (decisions 0203, 0204) nor
+            ``dev-400`` with ``docs/rounds/memory-confirm-dev400.md`` committed (decision 0212),
+            or the ``mem`` statistics' pool holds it (``coding_stats.refuse_pool_holding``).
     """
-    if sample != SAMPLE:
+    if sample == CONFIRM_SAMPLE:
+        if not gitinfo.is_committed(CONFIRM_REGISTRATION):
+            raise ConfigurationError(
+                f"{CONFIRM_REGISTRATION} is not committed: {CONFIRM_SAMPLE} waits for the "
+                "confirmation's registration (decision 0212)"
+            )
+    elif sample != SAMPLE:
         raise ConfigurationError(
-            f"the coding test runs on {SAMPLE} only (decisions 0203, 0204), not {sample}"
+            f"the coding test runs on {SAMPLE} only, and {CONFIRM_SAMPLE} for decision 0212's "
+            f"confirmation (decisions 0203, 0204), not {sample}"
         )
     coding_stats.refuse_pool_holding(STATS, sample)
+
+
+def refuse_condition(sample: str, condition: Condition) -> None:
+    """Refuse on ``dev-400`` a condition the confirmation did not register (decision 0212).
+
+    Raises:
+        ConfigurationError: ``sample`` is ``dev-400`` and ``condition`` is not tables, counts or
+            cause lookup.
+    """
+    if sample == CONFIRM_SAMPLE and condition not in CONFIRM_CONDITIONS:
+        raise ConfigurationError(
+            f"the {condition} condition is not registered on {CONFIRM_SAMPLE} (decision 0212)"
+        )
 
 
 def refuse_memory_without_registration() -> None:
@@ -224,14 +253,14 @@ def refuse_cause_lookup_without_registration() -> None:
 # What the test reads. ----------------------------------------------------------------------
 
 
-def causes(processed: Path) -> dict[str, str | None]:
-    """Every steering-slice case's probable-cause sentence, in sample order; None for none.
+def causes(processed: Path, sample: str = SAMPLE) -> dict[str, str | None]:
+    """Every case's probable-cause sentence, in ``sample``'s order; None for none.
 
     The sentence is verdict text, read through ``fields`` from the raw record; it reaches the
     coding model only through ``Payload.for_coding_test`` (decision 0205), and the learner's
     apply step only through ``scripts/memory_cause_apply.py`` (decision 0211).
     """
-    ids = samples.sample_ids(SAMPLE)
+    ids = samples.sample_ids(sample)
     raws = samples.load_cases(processed, ids)
     return {
         case_id: fields.probable_cause(raw) or None for case_id, raw in zip(ids, raws, strict=True)
@@ -617,10 +646,10 @@ def _run(ctx: Context, plan: Plan, *, resume: bool) -> int:
 
 
 def _base_spec(
-    condition: Condition, repeat: str | None, commit: tuple[str, bool]
+    condition: Condition, repeat: str | None, commit: tuple[str, bool], sample: str = SAMPLE
 ) -> dict[str, object]:
     return {
-        "sample": SAMPLE,
+        "sample": sample,
         "condition": condition,
         "repeat": repeat,
         "model": sources.DEFAULT_MODEL,
@@ -645,29 +674,30 @@ def _stamp(now: datetime) -> str:
 
 
 def answer(args: argparse.Namespace, ctx: Context) -> int:
-    """The tables condition on the steering slice: every case with a cause, coded once."""
-    refuse_sample(SAMPLE)
+    """The tables condition on the sample: every case with a cause, coded once."""
+    sample = args.sample
+    refuse_sample(sample)
     tables = load_tables()
     system = prompts.coding_system(tables, GUIDANCE, None)
-    found = causes(_processed(ctx.settings))
+    found = causes(_processed(ctx.settings), sample)
     loops = [
         CodingAnswerLoop(case_id, cause, system, tables)
         for case_id, cause in found.items()
         if cause is not None
     ]
     skipped = {case_id: NO_CAUSE for case_id, cause in found.items() if cause is None}
-    run_id = args.resume or f"{_stamp(ctx.now())}-{ctx.commit[0]}-{SAMPLE}-mem-tables-{args.repeat}"
-    spec = {**_base_spec("tables", args.repeat, ctx.commit), "case_ids": list(found)}
+    run_id = args.resume or f"{_stamp(ctx.now())}-{ctx.commit[0]}-{sample}-mem-tables-{args.repeat}"
+    spec = {**_base_spec("tables", args.repeat, ctx.commit, sample), "case_ids": list(found)}
     plan = Plan(run_id, spec, loops, skipped, tuple(found))
     return _run(ctx, plan, resume=args.resume is not None)
 
 
-def _read_source(folder: Path) -> list[CodingCase]:
-    """A tables run's cases, after its spec is checked: refused unless it is one.
+def _read_source(folder: Path) -> tuple[list[CodingCase], str]:
+    """A tables run's cases and its sample, after its spec is checked: refused unless it is one.
 
     Raises:
         ConfigurationError: no such run, a spec or cases file that cannot be read, or a run that
-            is not the tables condition on the steering slice.
+            is not the tables condition on a sample ``refuse_sample`` allows.
     """
     refuse_live(_PROG, folder)
     try:
@@ -682,8 +712,9 @@ def _read_source(folder: Path) -> list[CodingCase]:
         ) from None
     if not isinstance(spec, dict) or spec.get("condition") != "tables":
         raise ConfigurationError(f"{folder.name} is not a tables run: the post-pass needs one")
-    refuse_sample(str(spec.get("sample")))
-    return rows
+    sample = str(spec.get("sample"))
+    refuse_sample(sample)
+    return rows, sample
 
 
 def _checked_memory(name: str) -> tuple[Memory, str]:
@@ -703,7 +734,9 @@ def _checked_memory(name: str) -> tuple[Memory, str]:
     return memory, snapshots.sha256_of(snapshots.snapshot_path(name, snapshots.SNAPSHOT_DIR))
 
 
-def read_applies(folder: Path, snapshot: str, sha: str) -> dict[str, frozenset[str]]:
+def read_applies(
+    folder: Path, snapshot: str, sha: str, sample: str = SAMPLE
+) -> dict[str, frozenset[str]]:
     """An apply run's lesson ids per case, refused unless it read this sample and snapshot.
 
     Raises:
@@ -722,7 +755,7 @@ def read_applies(folder: Path, snapshot: str, sha: str) -> dict[str, frozenset[s
     if not isinstance(summary, dict) or not isinstance(raw, dict):
         raise ConfigurationError(f"{folder.name}: not a finished apply run")
     wanted = {
-        "sample": SAMPLE,
+        "sample": sample,
         "snapshot": snapshot,
         "snapshot_sha256": sha,
         "model": APPLY_MODEL,
@@ -826,7 +859,8 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
     (``memory.lookup``, decision 0210). A case that matches none reads the counts text. With
     ``--applies RUN_ID`` (the cause-lookup condition, decision 0211) the lessons are instead the
     best fitting of those the apply run named for the case's cause sentence (``lookup.by_fit``);
-    no code from the first answer chooses them.
+    no code from the first answer chooses them. The sample is the source run's; on ``dev-400``
+    only counts and cause lookup are allowed (decision 0212).
     """
     source = args.source
     run_id = _tools_run_id(args)
@@ -835,11 +869,12 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
     _refuse_lookup_args(args)
     if args.snapshot is not None:
         memory, snapshot_sha = _checked_memory(args.snapshot)
-    first = _read_source(ctx.runs_dir / source)
+    first, sample = _read_source(ctx.runs_dir / source)
     applied: dict[str, frozenset[str]] | None = None
     if args.applies is not None and snapshot_sha is not None:
-        applied = read_applies(ctx.runs_dir / args.applies, args.snapshot, snapshot_sha)
+        applied = read_applies(ctx.runs_dir / args.applies, args.snapshot, snapshot_sha, sample)
     condition = _condition(memory, args.lookup, applied)
+    refuse_condition(sample, condition)
     tables = load_tables()
     config = LoopConfig(
         tables=tables,
@@ -858,7 +893,7 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         reasoning_effort=REASONING,
     )
     system = prompts.coding_system(tables, GUIDANCE, None if args.lookup else memory)
-    found = causes(_processed(ctx.settings))
+    found = causes(_processed(ctx.settings), sample)
     loops: list[Loop] = []
     skipped: dict[str, str] = {}
     looked_up: dict[str, list[str]] = {}
@@ -891,7 +926,7 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
     repeat = args.repeat if memory is None else None  # memory and lookup: one run each
     order = [row.case_id for row in first]
     spec = {
-        **_base_spec(condition, repeat, ctx.commit),
+        **_base_spec(condition, repeat, ctx.commit, sample),
         "source_run": source,
         "snapshot": args.snapshot,
         "snapshot_sha256": snapshot_sha,
@@ -945,6 +980,12 @@ def main(
     sub = parser.add_subparsers(dest="command", required=True)
     a = sub.add_parser("answer", help="the tables condition")
     a.add_argument("--repeat", choices=("a", "b"), required=True)
+    a.add_argument(
+        "--sample",
+        choices=(SAMPLE, CONFIRM_SAMPLE),
+        default=SAMPLE,
+        help=f"{CONFIRM_SAMPLE} only for decision 0212's confirmation",
+    )
     a.add_argument("--resume", metavar="RUN_ID", help="continue this run's folder")
     t = sub.add_parser("tools", help="the counts condition, or memory with --snapshot")
     t.add_argument("--source", required=True, help="the tables run to start from")

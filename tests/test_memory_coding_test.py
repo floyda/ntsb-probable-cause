@@ -102,7 +102,7 @@ def _case(request: BatchRequest) -> str:
 @pytest.fixture
 def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     monkeypatch.setattr(gitinfo, "commit_state", lambda *a, **k: ("abc1234", False))
-    monkeypatch.setattr(ct, "causes", lambda processed: dict(CAUSES))
+    monkeypatch.setattr(ct, "causes", lambda processed, sample=None: dict(CAUSES))
     return Settings(data_dir=tmp_path / "data", monthly_budget_usd=40.0)
 
 
@@ -122,7 +122,8 @@ def _cases(folder: Path) -> dict[str, ct.CodingCase]:
 # --- the refusals ---------------------------------------------------------------------------
 
 
-def test_only_the_steering_slice_is_accepted() -> None:
+def test_only_the_steering_slice_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ct.gitinfo, "is_committed", lambda path: False)
     ct.refuse_sample("dev-steer-400")
     for other in ("dev-400", "dev-seal-s3-400", "heldout-400", "live"):
         with pytest.raises(ConfigurationError):
@@ -221,7 +222,7 @@ def test_a_rejected_answer_is_asked_again_once_then_recorded_as_failed(
 def test_a_case_with_no_cause_is_recorded_and_never_sent(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(ct, "causes", lambda processed: {**CAUSES, FIRST: None})
+    monkeypatch.setattr(ct, "causes", lambda processed, sample=None: {**CAUSES, FIRST: None})
     fake = FakeBatch(_tables_answer)
     assert _run(settings, fake, ["answer", "--repeat", "a"]) == 0
     assert {_case(r) for r in fake.requests()} == {SECOND}
@@ -233,10 +234,10 @@ def test_a_case_with_no_cause_is_recorded_and_never_sent(
 # --- the counts and memory conditions -------------------------------------------------------
 
 
-def _source(settings: Settings) -> None:
+def _source(settings: Settings, sample: str = "dev-steer-400") -> None:
     folder = settings.runs_dir / SOURCE
     folder.mkdir(parents=True)
-    spec = {"sample": "dev-steer-400", "condition": "tables", "repeat": "a"}
+    spec = {"sample": sample, "condition": "tables", "repeat": "a"}
     (folder / "spec.json").write_text(json.dumps(spec))
     answered = {**HYPOTHESIS, "findings": [{**HYPOTHESIS["findings"][0], "item8": "02063015"}]}  # type: ignore[index]
     rows = [
@@ -746,3 +747,110 @@ def test_applies_needs_lookup(settings: Settings) -> None:
     argv = ["tools", "--source", SOURCE, "--snapshot", "t", "--applies", APPLY_RUN]
     assert _run(settings, fake, argv) == 1
     assert not fake.submitted
+
+
+# --- the dev-400 confirmation (decision 0212) -----------------------------------------------
+
+
+def _recording_causes(read: list[str | None]) -> Callable[..., dict[str, str | None]]:
+    """A stand-in for ``causes`` that records the sample it was asked for."""
+
+    def fake(processed: Path, sample: str | None = None) -> dict[str, str | None]:
+        del processed
+        read.append(sample)
+        return dict(CAUSES)
+
+    return fake
+
+
+def test_dev_400_is_accepted_only_once_the_confirmation_is_registered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ct.gitinfo, "is_committed", lambda path: path != ct.CONFIRM_REGISTRATION)
+    with pytest.raises(ConfigurationError, match="0212"):
+        ct.refuse_sample("dev-400")
+    monkeypatch.setattr(ct.gitinfo, "is_committed", lambda path: True)
+    ct.refuse_sample("dev-400")
+    for other in ("dev-seal-400", "dev-seal-s3-400", "heldout-400", "live"):
+        with pytest.raises(ConfigurationError):
+            ct.refuse_sample(other)
+
+
+@pytest.mark.parametrize("condition", ["memory", "lookup"])
+def test_dev_400_refuses_the_conditions_the_confirmation_did_not_register(
+    condition: ct.Condition,
+) -> None:
+    with pytest.raises(ConfigurationError, match="not registered"):
+        ct.refuse_condition("dev-400", condition)
+    ct.refuse_condition("dev-steer-400", condition)
+    for allowed in ("tables", "counts", "cause-lookup"):
+        ct.refuse_condition("dev-400", allowed)
+
+
+def test_answer_on_dev_400_is_refused_until_registered(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path != ct.CONFIRM_REGISTRATION)
+    fake = FakeBatch(_tables_answer)
+    assert _run(settings, fake, ["answer", "--repeat", "a", "--sample", "dev-400"]) == 1
+    assert not fake.submitted
+
+
+def test_answer_on_dev_400_reads_that_sample_and_names_it(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    read: list[str | None] = []
+    monkeypatch.setattr(ct, "causes", _recording_causes(read))
+    fake = FakeBatch(_tables_answer)
+    assert _run(settings, fake, ["answer", "--repeat", "a", "--sample", "dev-400"]) == 0
+    assert read == ["dev-400"]
+    folder = _folder(settings, "-dev-400-mem-tables-a")
+    assert json.loads((folder / "spec.json").read_text())["sample"] == "dev-400"
+
+
+def test_counts_on_a_dev_400_source_reads_and_names_that_sample(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    read: list[str | None] = []
+    monkeypatch.setattr(ct, "causes", _recording_causes(read))
+    _source(settings, "dev-400")
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, ["tools", "--source", SOURCE, "--repeat", "b"]) == 0
+    assert read == ["dev-400"]
+    folder = settings.runs_dir / f"{SOURCE}-counts-b"
+    assert json.loads((folder / "spec.json").read_text())["sample"] == "dev-400"
+
+
+def test_the_code_lookup_is_refused_on_a_dev_400_source(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings, "dev-400")
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, CAUSE_ARGV) == 1
+    assert not fake.submitted
+
+
+def test_cause_lookup_on_dev_400_needs_an_apply_run_on_dev_400(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings, "dev-400")
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    _apply_run(settings, {FIRST: ["L002"]})  # made on the steering slice
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, [*CAUSE_ARGV, "--applies", APPLY_RUN]) == 1
+    assert not fake.submitted
+    (settings.runs_dir / APPLY_RUN / ct.APPLY_SUMMARY_FILE).unlink()
+    (settings.runs_dir / APPLY_RUN / ct.APPLIES_FILE).unlink()
+    (settings.runs_dir / APPLY_RUN).rmdir()
+    _apply_run(settings, {FIRST: ["L002"]}, sample="dev-400")
+    assert _run(settings, fake, [*CAUSE_ARGV, "--applies", APPLY_RUN]) == 0
+    spec = json.loads((settings.runs_dir / f"{SOURCE}-causelookup5-t" / "spec.json").read_text())
+    assert spec["sample"] == "dev-400"
+    assert spec["lookup_lessons"] == {FIRST: ["L002"]}
