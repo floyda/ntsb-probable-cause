@@ -80,9 +80,9 @@ coding test. No learner (Claude) call anywhere in this plan.
 
 ### Task 6: The runs (paid, under $1)
 
-- [ ] The refilled notebook: `make mem-coding-tools SOURCE=<tables-a> SNAPSHOT=pilot-2010-recount`.
-- [ ] The lookup: `make mem-coding-lookup SOURCE=<tables-a> SNAPSHOT=pilot-2010-recount K=5`.
-- [ ] `make mem-lookup-result`; commit `docs/results/memory-lookup-dev.txt`; report to Andy.
+- [x] The refilled notebook: `make mem-coding-tools SOURCE=<tables-a> SNAPSHOT=pilot-2010-recount`.
+- [x] The lookup: `make mem-coding-lookup SOURCE=<tables-a> SNAPSHOT=pilot-2010-recount K=5`.
+- [x] `make mem-lookup-result`; commit `docs/results/memory-lookup-dev.txt`; report to Andy.
 
 ## Deviations
 

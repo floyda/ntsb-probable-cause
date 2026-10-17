@@ -473,6 +473,13 @@ case's first answer instead of one capped note for every case (decision
 [0210](../decisions/0210-a-lookup-test-gives-each-case-the-lessons-that-match-its-first-answer.md),
 registration `docs/rounds/memory-lookup.md`).
 
+**The lookup test did not pass (2026-10-17, `docs/results/memory-lookup-dev.txt`).** Five lessons
+per case matched to the model's first answer, minus counts (a): finding recall@10 +0.0 points
+[−2.2, +2.2], against a noise of 0.3; top-1 +1.2 [−1.0, +3.5]; top-3 +4.5 [+2.0, +7.2]. The
+refilled note (13 lessons, corrected ranking), minus counts (a): finding recall@10 +1.5 [−0.5, +3.5],
+top-1 +1.5 [−0.5, +3.5], top-3 +2.7 [+0.5, +5.0]; it decides nothing. As registered (§10), the
+side track stops here and is reported as it stands. Cost: $0.3306 on OpenRouter for the two runs.
+
 ## Glossary
 
 - **Coding memory**: a short file of written lessons about how the NTSB codes accidents,

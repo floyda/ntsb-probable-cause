@@ -614,8 +614,10 @@ capped at 6,000 estimated tokens (`memory/` package; `memory/claude.py` is the o
 guidance. Nothing connects the memory to the agent, the harness or the board (0201). **The pilot
 passed its stop rule on 2026-10-16, by a thin margin** (`docs/results/memory-pilot-dev.txt`): after
 2010, finding recall@10 +0.7 points [−1.4, +2.7] over the counts condition, against a noise of
-0.3; top-1 +0.2, top-3 +2.2. Learner spend $33.1308 of credit; coding tests $0.81. Whether to run
-the full pass is Andy's decision. Learner spend rows are kind `learning`, on their own monthly line
+0.3; top-1 +0.2, top-3 +2.2. Learner spend $33.1308 of credit; coding tests $0.81. A counting defect was then found and fixed
+(0209), and a lookup test of five lessons per case, matched to the model's first answer, **did not
+pass** its registered rule (0210, `docs/rounds/memory-lookup.md`, `docs/results/memory-lookup-dev.txt`):
+finding recall@10 +0.0 points over counts, top-3 +4.5. As registered, the side track stops there. Learner spend rows are kind `learning`, on their own monthly line
 `NTSB_LEARNING_MONTHLY_BUDGET_USD` (default $90, never counted by the $40 guard; raised for one
 command by 0208); coding-test rows are kind `coding-test`, on the $40 guard and the side track's
 $10 line. The learner reads `ANTHROPIC_API_KEY`, which `scripts/with_pass_keys.sh` takes from `pass`

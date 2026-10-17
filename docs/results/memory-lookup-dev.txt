@@ -1,0 +1,64 @@
+coding memory lookup test, dev-steer-400 (decision 0210); counts only
+
+tables-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a)
+  occurrence top-1: 23.2% [19.3%, 27.6%] n=401
+  occurrence top-3: 29.7% [25.4%, 34.3%] n=401
+  finding recall@10: 33.4% [30.1%, 36.5%] n=401
+  failed cases: 0
+
+counts-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-a)
+  occurrence top-1: 25.7% [21.7%, 30.2%] n=401
+  occurrence top-3: 30.2% [25.9%, 34.8%] n=401
+  finding recall@10: 41.7% [38.5%, 45.1%] n=401
+  failed cases: 0
+
+counts-b (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-b)
+  occurrence top-1: 25.9% [21.9%, 30.4%] n=401
+  occurrence top-3: 30.9% [26.6%, 35.6%] n=401
+  finding recall@10: 41.4% [38.1%, 44.6%] n=401
+  failed cases: 0
+
+note (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-memory-pilot-2010-recount)
+  occurrence top-1: 27.2% [23.1%, 31.7%] n=401
+  occurrence top-3: 32.9% [28.5%, 37.7%] n=401
+  finding recall@10: 43.2% [39.9%, 46.5%] n=401
+  failed cases: 0
+
+lookup (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-lookup5-pilot-2010-recount)
+  occurrence top-1: 26.9% [22.8%, 31.5%] n=401
+  occurrence top-3: 34.7% [30.2%, 39.4%] n=401
+  finding recall@10: 41.7% [38.6%, 45.0%] n=401
+  failed cases: 0
+
+pilot-memory (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-memory-pilot-2010)
+  occurrence top-1: 25.9% [21.9%, 30.4%] n=401
+  occurrence top-3: 32.4% [28.0%, 37.1%] n=401
+  finding recall@10: 42.4% [39.1%, 45.5%] n=401
+  failed cases: 0
+
+paired differences (first minus second, cases in both)
+counts(b) - counts(a), the noise
+  occurrence top-1: +0.2 points [-1.2, +2.0] n=401
+  occurrence top-3: +0.7 points [-1.2, +3.0] n=401
+  finding recall@10: -0.3 points [-2.3, +1.6] n=401
+lookup - counts(a), read by the rule
+  occurrence top-1: +1.2 points [-1.0, +3.5] n=401
+  occurrence top-3: +4.5 points [+2.0, +7.2] n=401
+  finding recall@10: +0.0 points [-2.2, +2.2] n=401
+note - counts(a)
+  occurrence top-1: +1.5 points [-0.5, +3.5] n=401
+  occurrence top-3: +2.7 points [+0.5, +5.0] n=401
+  finding recall@10: +1.5 points [-0.5, +3.5] n=401
+lookup - note
+  occurrence top-1: -0.2 points [-2.2, +2.0] n=401
+  occurrence top-3: +1.7 points [-0.7, +4.5] n=401
+  finding recall@10: -1.5 points [-3.6, +0.7] n=401
+pilot memory - counts(a), as the pilot read it
+  occurrence top-1: +0.2 points [-1.7, +2.2] n=401
+  occurrence top-3: +2.2 points [+0.0, +4.5] n=401
+  finding recall@10: +0.7 points [-1.4, +2.7] n=401
+
+lookup: 401 cases sent; mean 4.96 lessons a case; 1 with none; 93 distinct lessons used
+
+not passed: finding recall@10 +0.000 is not beyond the noise 0.003
+rule on the lookup run: FAIL
