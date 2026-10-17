@@ -38,9 +38,16 @@ class SpendRecord(BaseModel):
 
     job_id: str
     # ``learning`` (Claude credit, its own monthly line) and ``coding-test`` (OpenRouter, the
-    # coding-memory side track's line): decision 0207.
+    # coding-memory side track's line): decision 0207. ``embedding`` (OpenRouter embeddings, the
+    # same line): decision 0213.
     kind: Literal[
-        "inventory", "transcriber-test", "transcription", "probe", "learning", "coding-test"
+        "inventory",
+        "transcriber-test",
+        "transcription",
+        "probe",
+        "learning",
+        "coding-test",
+        "embedding",
     ]
     model: str
     started: datetime

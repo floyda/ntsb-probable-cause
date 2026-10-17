@@ -92,7 +92,7 @@ picking call.
   `slug(model: str) -> str` (`"qwen/qwen3-embedding-8b"` to `"qwen-qwen3-embedding-8b"`);
   fixtures `tests/fixtures/openrouter/embeddings/<slug>.json`.
 
-- [ ] **Step 1: Failing tests.** In `tests/test_memory_embed.py`:
+- [x] **Step 1: Failing tests.** In `tests/test_memory_embed.py`:
 
 ```python
 def test_spend_record_accepts_embedding() -> None:
@@ -122,8 +122,8 @@ def test_probe_saves_each_reply_and_a_counts_report(tmp_path, monkeypatch) -> No
 `_save_list` writes `{"data": [{"id": m, "pricing": {"prompt": p, "completion": "0"}}, ...]}`, the
 shape of the list saved on 2026-10-17 (`GET https://openrouter.ai/api/v1/embeddings/models`).
 
-- [ ] **Step 2:** `uv run pytest tests/test_memory_embed.py -v` fails (no module, no kind).
-- [ ] **Step 3: Implement.** `models`: `GET {base_url}/api/v1/embeddings/models` (public; no key
+- [x] **Step 2:** `uv run pytest tests/test_memory_embed.py -v` fails (no module, no kind).
+- [x] **Step 3: Implement.** `models`: `GET {base_url}/api/v1/embeddings/models` (public; no key
   needed), saved verbatim to `<data_dir>/mem/openrouter-embedding-models.json`, printing the three
   candidates' prices; free, no registration needed. `probe`: refuses a dirty tree and an
   uncommitted registration; checks the monthly guard with `budget.reserve_within_budget(runs_dir,
@@ -145,9 +145,9 @@ mem-embed-probe: ## The embeddings shape probe, ONCE (0213; paid, cents)
 	uv run python -m scripts.stage_spend --stage mem --estimate 0.01 && scripts/with_pass_keys.sh uv run python -m scripts.memory_embed probe --out docs/results/memory-embed-probe.txt
 ```
 
-- [ ] **Step 4:** tests pass; `make check` passes (apart from the known `test_store_sync` boto3
+- [x] **Step 4:** tests pass; `make check` passes (apart from the known `test_store_sync` boto3
   failure).
-- [ ] **Step 5:** commit (`budget.py`, `scripts/memory_embed.py`, `Makefile`, the test).
+- [x] **Step 5:** commit (`budget.py`, `scripts/memory_embed.py`, `Makefile`, the test).
 - [ ] **Step 6 (paid, cents; after Task 1's signature):** `make mem-embed-models`, then
   `make mem-embed-probe`. Read the saved replies. Commit the fixtures and
   `docs/results/memory-embed-probe.txt`. Any shape that differs from Task 3's sketch goes in

@@ -343,7 +343,12 @@ def test_memory_is_refused_without_the_registration(
     assert not (settings.runs_dir / f"{SOURCE}-memory-t").exists()
 
 
-def test_tools_refuses_a_source_that_is_not_a_tables_run(settings: Settings) -> None:
+def test_tools_refuses_a_source_that_is_not_a_tables_run(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # dev-400 is refused here because its registration is taken as not committed (decision 0212):
+    # the real repository has had it committed since 2026-10-17, so the test must say so itself.
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: False)
     _source(settings)
     spec = settings.runs_dir / SOURCE / "spec.json"
     spec.write_text(json.dumps({"sample": "dev-steer-400", "condition": "counts"}))
