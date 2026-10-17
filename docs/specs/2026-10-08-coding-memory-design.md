@@ -1,6 +1,6 @@
 # A coding memory learned from closed cases: design note
 
-Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). Drafted 2026-10-08; refreshed 2026-10-14. A declared
+Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). A better lookup designed 2026-10-17, Draft (§13). Drafted 2026-10-08; refreshed 2026-10-14. A declared
 experiment on development cases: Andy chose on 2026-10-14 to run its pilot now, as a side track
 beside S4 (§11, question 1), answered the other questions in §11 the same day, and the decisions
 in §10 are recorded. The implementation plan is in `docs/plans/`. The memory reaches the agent
@@ -509,6 +509,197 @@ asked, a better lookup is tried on the steering slice and confirmed once on `dev
 its own decision; connecting the memory to the agent is a separate decision after that. Cost:
 $0.5529 on OpenRouter for the four runs, $1.4307 of plan credit for the apply step.
 
+## 13. A better lookup: embedding search (design, 2026-10-17)
+
+Status: Draft, for Andy's review. Agreed with Andy in conversation on 2026-10-17, one choice at a
+time; recorded as the next numbered decision when the plan is written. Nothing here has run.
+
+### 13.1 The question
+
+Can a lookup that finds lessons by embedding search help GPT-6 Luna code better than today's
+cause lookup (decision 0211), on cases that had no part in choosing it?
+
+**Why ask it.** Today's lookup is limited by how few lessons the apply step names, not by how it
+ranks them. On the steering slice the apply step named a mean of 2.34 lessons a case and none for
+19; after the support floor, 39 cases got no lesson and only 19 got the full five
+(`docs/results/memory-cause-apply-dev.txt`). On `dev-400`, 33 of 401 got none and 26 the full five
+(`docs/results/memory-cause-apply-dev400.txt`). A better ranking of the same short
+lists would change little. A way to find more of the right lessons might.
+
+**The bar** (Andy, 2026-10-17): the new lookup must beat today's cause lookup, not only the counts
+condition.
+
+**A new method, not a re-tuning** (Andy, 2026-10-17). Today's lookup is not changed. The new
+method is chosen on the steering slice, among three embedding models, and read there first, so
+its steering result can still partly fit those 401 cases by chance. That is why `dev-seal-400`
+decides. This is the steering slice's fifth look at a memory method.
+
+### 13.2 The method
+
+1. **Embedding search.** Each lesson's statement and scope, and each case's cause sentence, are
+   turned into a vector by an embedding model, through OpenRouter's embeddings service
+   (`POST /api/v1/embeddings`; [API reference](https://openrouter.ai/docs/api-reference/embeddings)).
+   All 198 `pilot-2010-recount` lessons are embedded; the lookup may choose only the 106 that
+   apply to at least 10 learning cases (the support floor of 0211).
+2. **The lookup.** For one case: the five eligible lessons whose vectors are closest to the
+   cause sentence's (cosine similarity). Ties: higher fit, then more cases applied to, then lesson
+   id, so the same input always gives the same five. It always returns five, unless the case has
+   no cause-sentence vector.
+3. **Three candidate models**, from OpenRouter's embedding model list fetched on 2026-10-17
+   (`GET /api/v1/embeddings/models`), with their list prices per million input tokens:
+   `qwen/qwen3-embedding-8b` ($0.01, open weight), `openai/text-embedding-3-small` ($0.02) and
+   `openai/text-embedding-3-large` ($0.13). The build saves that list under `NTSB_DATA_DIR` and
+   reads the ids and prices from the saved file. Embedding the lessons and both samples' cause
+   sentences is about 75,000 tokens at four characters a token (149,360 characters of lessons,
+   74,725 of steering cause sentences, and a similar amount for `dev-seal-400`), so under 3 cents
+   for the dearest model even at twice the token count.
+4. **Fixed, not chosen:** five lessons a case, the support floor of 10, the embedded text (each
+   lesson's statement and scope; each case's cause sentence alone, as in 0211), the snapshot
+   `pilot-2010-recount`, and everything in the coding test: the counts post-pass, GPT-6 Luna batch
+   at reasoning `medium`, guidance `r3-loc-stall` and `r6-aircraft-control`, the `mem`
+   statistics, the $0.05 per-case cap. The only choice is the model.
+
+### 13.3 Lesson coverage, the free stand-in
+
+Before any coding run, a script scores each lookup against the NTSB's verdicts on the steering
+slice, with no model call. A chosen lesson **agrees** with a case by the test the learner's
+support count uses (`memory/curate.py:agrees`, decision 0209): on each part the lesson predicts,
+the case's codes match. Its predicted first occurrence code is the case's first code, and at least
+one of its predicted finding categories is among the case's finding categories.
+
+- **Hit rate:** the share of the 401 cases where at least one chosen lesson agrees. A case with no
+  lesson counts as a miss.
+- **Precision:** the share of all lessons handed out that agree.
+
+Today's lookup is scored from its existing apply run
+(`20261017T090550Z-0b949a6-memory-cause-apply-pilot-2010-recount`), with no new call.
+
+Lesson coverage is only a stand-in. A lesson can predict the right codes and still not help the
+coder, so the coding test decides.
+
+### 13.4 The gate to a coding run
+
+Each candidate is compared with today's lookup on the same 401 steering cases. A candidate
+passes only if both hold:
+
+- its hit rate is higher, with the paired 95% interval of the difference above zero (the paired
+  interval the coding readings use, `scripts/memory_pilot_result.py:paired`);
+- its precision is no lower (point estimates).
+
+If more than one passes, the highest hit rate goes forward; an exact tie goes to the lower list
+price. The reading's last line names the winner, or `none`.
+
+**Expected risk, stated now.** Today's lookup hands out a mean of 2.19 lessons a case, chosen by
+fit, while embedding search always hands out five. Its precision may therefore fall below
+today's even when it finds more right lessons, and the gate would send the method to the
+fallback. That is the gate working as agreed: a lookup that adds weak lessons needs judgement on
+top.
+
+### 13.5 The fallback: a picking call (only if no model passes)
+
+For each case, the winning-hit-rate model's 20 closest eligible lessons go to the learner (Sonnet
+5.5 at effort high, through the Claude API batch, plan credit, kind `learning`, role
+`test-apply`, built on the apply step's machinery: resume, the 2% failure refusal, the
+worst-case projection before sending). It reads the cause sentence and the 20 lessons (ids,
+statements and scopes, never codes, as `render_for_apply` shows them) and names up to five that
+cover the case, best first, or none. Its choices go through the same coverage reading and gate.
+If the fallback fails the gate, the method stops there, and the result is published.
+
+The picking call runs on the Claude API, which decision 0202 allows for development only. Any
+live use of the memory needs its own decision first (0201), and that decision would also have to
+move this call to OpenRouter (0009).
+
+### 13.6 The rules
+
+**On the steering slice.** One coding run, condition `embed-lookup`, over the steering tables run
+that today's cause lookup used (`20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a`), so the
+two lookups differ only in the lessons each case gets. With L = embed-lookup − today's cause
+lookup (`...-mem-tables-a-causelookup5-pilot-2010-recount`) and N = counts(b) − counts(a), the
+existing steering noise (top-1 +0.2, top-3 +0.7, finding recall@10 −0.3,
+`docs/results/memory-cause-lookup-dev.txt`), it passes only if all three hold:
+
+- L(finding recall@10) > |N(finding recall@10)|;
+- L(top-1) ≥ −|N(top-1)|;
+- L(top-3) ≥ −|N(top-3)|.
+
+**On `dev-seal-400`, only if steering passes.** Its own tables run; two counts runs over it (the
+noise); today's apply step and cause lookup over it; the embeddings of its cause sentences with
+the winning model; and embed-lookup over it, unchanged. The same three inequalities, with L and N
+read from `dev-seal-400`'s runs. Lesson coverage is printed there too, as a description; it
+decides nothing. Every memory script refuses `dev-seal-400` until the registration is committed.
+
+**What follows, fixed in the registration:**
+
+- **Passes on `dev-seal-400`, and the finding gain's 95% interval is above zero:** embedding search
+  (or the picking call over it) replaces today's cause lookup as the memory's method. Connecting
+  the memory to the agent stays a separate decision (0201).
+- **Passes, and the interval includes zero:** a thin confirmation. Today's lookup stays the method
+  unless Andy decides otherwise, in a record.
+- **Fails on either sample:** today's cause lookup stays the method, and the result is published.
+
+### 13.7 What is built
+
+1. **`model/embeddings.py`:** the OpenRouter embeddings client. It sends a list of texts and
+   returns one vector per text and the call's cost. It is written only after a **shape probe**:
+   one small request per candidate model, the real replies saved as test fixtures (rule 2).
+2. **A vector cache** under `NTSB_RUNS_DIR`, never committed, keyed by model id and a fingerprint
+   of the text. A rerun reads the cache and spends nothing.
+3. **`memory/lookup.py:by_similarity`:** the lookup of §13.2, a pure function beside `by_fit`. No
+   model call and no case text.
+4. **`scripts/memory_coverage.py`:** the coverage reading and the gate (free). It writes a
+   counts-only result file under `docs/results/`, and, for the lookup that goes forward, each
+   case's chosen lesson ids to a **choices file** in the runs folder.
+5. **The coding test's `embed-lookup` condition:** the cause lookup's condition with the lessons
+   read from a choices file.
+6. **`scripts/memory_cause_pick.py`:** the picking call, built only if the fallback is needed.
+7. **`dev-seal-400` in the memory scripts**, gated by the registration as `dev-400` was (0212).
+
+**Text sent out.** The cause sentence is verdict text. Decision 0205 already lets it reach GPT-6
+Luna in the coding test through OpenRouter. Embedding sends it, and the lessons, to the embedding
+models' providers through the same transport. Development cases only; the text is public NTSB
+data.
+
+### 13.8 Failures and refusals
+
+- A failed embedding request is retried once. All 198 lessons must embed, or the step stops. At
+  most 2% of a sample's cause sentences (8 of 401) may fail; a case without a vector gets no
+  lessons, and the count is printed.
+- A reply that does not match the probe's saved shape (wrong number of vectors, vectors of
+  different lengths) is refused, and nothing reaches the cache.
+- Cost: the price the reply reports; if none, computed from the saved list's price. The worst
+  case is checked against the side track's $10 line before sending. Embedding calls have their
+  own spend kind, `embedding`, counted on the $40 guard and the side track's line.
+- Refused: a choices file from another sample, model or snapshot; a coverage reading over
+  unrelated runs; any memory step on `dev-seal-400` before the registration is committed; a
+  resume onto another sample. Every paid step needs a clean tree.
+
+### 13.9 Tests (offline)
+
+- The client against the probe's saved replies, including a malformed reply and a failed request.
+- `by_similarity`: the support floor, the order of ties, and the same output on every call.
+- Hit rate and precision on a few invented cases with known answers.
+- The gate: one passes; two pass with a tie, and the lower price goes forward; none pass, and the
+  fallback is named; the fallback fails, and the method stops.
+- `embed-lookup` reads exactly the lessons in its choices file.
+- Every refusal in §13.8.
+- At the end, `make s33-continuity` reports Ellery version 1's `+t` unchanged.
+
+### 13.10 Spend
+
+- **OpenRouter** (kind `coding-test` and `embedding`, the $40 guard and the side track's $10 line,
+  $8.13 left on 2026-10-17): the probe and embeddings under $0.05; steering embed-lookup about
+  $0.18 (the steering cause lookup cost $0.1814); `dev-seal-400` about $0.75 (`dev-400`'s four
+  runs cost $0.5529, plus about $0.18 for embed-lookup). About $0.97 in all.
+- **Plan credit** (kind `learning`, the $90 line): `dev-seal-400`'s apply step, about $1.50 (it
+  cost $1.5604 on steering and $1.4307 on `dev-400`). The picking call, if built, is checked by its
+  worst-case projection before each run.
+
+### 13.11 What this does not touch
+
+Ellery version 1, its fingerprint and S4's nights; the board; `dev-seal-s3-400`, sealed for
+version 2 (0141); `dev-400`, already read once by the memory (0212); the learner's lessons and
+their support counts.
+
 ## Glossary
 
 - **Coding memory**: a short file of written lessons about how the NTSB codes accidents,
@@ -536,3 +727,11 @@ $0.5529 on OpenRouter for the four runs, $1.4307 of plan credit for the apply st
 - **Top-3**: the defining event's code is any one of the agent's up to three guesses.
 - **Plan credits**: the monthly Claude API credit included with some Claude plans; spent first,
   expiring at the end of each billing cycle.
+- **Embedding / vector**: a list of numbers an embedding model returns for a text; texts whose
+  vectors are close tend to say similar things.
+- **Lesson coverage**: hit rate and precision of a lookup's lessons against the NTSB's verdicts,
+  scored by a script; a free stand-in for usefulness (§13.3).
+- **Choices file**: each case's chosen lesson ids, written once by the coverage reading and read
+  by the coding test, so the coding run uses exactly what was scored.
+- **Picking call**: the learner reading one cause sentence and a shortlist of 20 lessons, and
+  naming up to five (§13.5).
