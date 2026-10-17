@@ -71,7 +71,7 @@ picking call.
 
 - [x] Decision 0213 and its README row; this plan; spec §13 amended (client in the memory package,
   the interval helper named). Commit together.
-- [ ] Andy signs the registration ("Approved by Andy, <date>" as its last line); commit it alone.
+- [x] Andy signs the registration ("Approved by Andy, <date>" as its last line); commit it alone.
 
 ### Task 2: The spend kind, the model list and the shape probe
 
