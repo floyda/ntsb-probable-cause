@@ -4,15 +4,19 @@ Nothing here calls the network, reads a key or opens a case file.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
 import pytest
-from scripts import memory_embed
+from scripts import memory_coding_test, memory_embed
 
 from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.memory import checks, snapshots
+from ntsb_probable_cause.memory.embeddings import VectorCache
+from ntsb_probable_cause.memory.lessons import Lesson, Memory, Prediction, Support
+from ntsb_probable_cause.scoring import budget
 from ntsb_probable_cause.scoring.budget import SPEND_FILE, SpendRecord
 from ntsb_probable_cause.scoring.records import read_jsonl
 from ntsb_probable_cause.settings import Settings
@@ -226,3 +230,281 @@ def test_probe_writes_the_result_before_the_fixtures(
         )
     assert seen == [False]
     assert len(list(fixtures.glob("*.json"))) == len(memory_embed.CANDIDATES)
+
+
+# --- embed -----------------------------------------------------------------------------------
+
+LESSON_WORDS = {"L1": "one", "L2": "two", "L3": "three"}
+
+
+def _lesson(lid: str) -> Lesson:
+    return Lesson(
+        lesson_id=lid,
+        kind="evidence",
+        statement=f"lesson {LESSON_WORDS[lid]}",
+        scope="a scope",
+        predicts=Prediction(finding_categories=("010101",)),
+        written_in=2010,
+        support=Support(applies=20, agrees=10),
+    )
+
+
+def _stamped_snapshot(directory: Path) -> str:
+    directory.mkdir(parents=True)
+    memory = Memory(
+        name="t",
+        periods=(2010,),
+        lessons=(_lesson("L1"), _lesson("L2")),
+        pushed_out=(_lesson("L3"),),
+    )
+    path = snapshots.save(memory, directory)
+    stamp = checks.Stamp(
+        snapshot="t",
+        sha256=snapshots.sha256_of(path),
+        withheld_texts_compared=1,
+        causes_compared=1,
+        checked_on=date(2026, 10, 17),
+        commit="abc1234",
+        dirty=False,
+    )
+    snapshots.stamp_path("t", directory).write_text(stamp.model_dump_json())
+    return snapshots.sha256_of(path)
+
+
+class Embedder:
+    """A fake embeddings service: a two-number vector per text; texts in ``failing`` fail."""
+
+    def __init__(self, failing: frozenset[str] = frozenset()) -> None:
+        self.failing = failing
+        self.sent: list[list[str]] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        texts = json.loads(request.content)["input"]
+        self.sent.append(texts)
+        if self.failing.intersection(texts):
+            return httpx.Response(503, json={})
+        data = [{"index": i, "embedding": [float(len(t)), 1.0]} for i, t in enumerate(texts)]
+        usage = {"prompt_tokens": len(texts), "cost": 0.000001 * len(texts)}
+        return httpx.Response(200, json={"data": data, "usage": usage})
+
+
+class EmbedSetup:
+    """A stamped snapshot, a saved model list and a sample of ``n`` cases with cause sentences."""
+
+    def __init__(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, n: int = 5, sample: str = ""
+    ) -> None:
+        _committed(monkeypatch, registered=True)
+        monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+        self.sha = _stamped_snapshot(tmp_path / "snapshots")
+        self.settings = Settings(
+            data_dir=tmp_path / "data", runs_dir=tmp_path / "runs", openrouter_api_key="test-key"
+        )
+        _save_list(self.settings.data_dir, PRICES)
+        # Two cases share a sentence; the last case has none.
+        self.causes: dict[str, str | None] = {
+            f"ZZZ10LA{i:03d}": f"the pilot's cause sentence number {i // 2 if i < 2 else i}"
+            for i in range(n - 1)
+        }
+        self.causes[f"ZZZ10LA{n - 1:03d}"] = None
+        self.sample = sample or "dev-steer-400"
+        monkeypatch.setattr(
+            memory_coding_test, "causes", lambda processed, sample: dict(self.causes)
+        )
+        monkeypatch.setattr(memory_embed, "_sleep", lambda seconds: None)
+
+    def run(self, transport: httpx.BaseTransport, *extra: str) -> int:
+        argv = ["embed", "--model", "qwen/qwen3-embedding-8b", "--snapshot", "t", *extra]
+        if self.sample != "dev-steer-400":
+            argv += ["--sample", self.sample]
+        return memory_embed.main(argv, settings=self.settings, transport=transport, now=lambda: NOW)
+
+    def spend_rows(self) -> list[SpendRecord]:
+        return [
+            row
+            for path in sorted(self.settings.runs_dir.glob(f"*/{SPEND_FILE}"))
+            for row in read_jsonl(path, SpendRecord)
+        ]
+
+    def vectors(self) -> dict[str, object]:
+        (path,) = self.settings.runs_dir.glob(f"*/{memory_embed.VECTORS_FILE}")
+        body: dict[str, object] = json.loads(path.read_text())
+        return body
+
+
+def test_embed_sends_only_uncached_texts_and_records_spend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch)
+    cached = "lesson two (scope: a scope)"
+    VectorCache(setup.settings.runs_dir / memory_embed.CACHE_DIR, "qwen/qwen3-embedding-8b").put(
+        cached, [9.0, 9.0]
+    )
+    reserved: list[float] = []
+    real_reserve = budget.reserve_within_budget
+
+    def reserve(
+        runs_dir: Path, job_id: str, projected: float, cap: float, *, now: datetime
+    ) -> None:
+        reserved.append(projected)
+        real_reserve(runs_dir, job_id, projected, cap, now=now)
+
+    monkeypatch.setattr(budget, "reserve_within_budget", reserve)
+    embedder = Embedder()
+    assert setup.run(httpx.MockTransport(embedder)) == 0
+    sent = [text for chunk in embedder.sent for text in chunk]
+    assert cached not in sent
+    assert sent == list(dict.fromkeys(sent))  # each text once: the shared sentence too
+    assert len(sent) == 2 + 3  # two uncached lessons, three distinct cause sentences
+    chars = sum(len(text) for text in sent)
+    assert reserved == [pytest.approx(chars / 4 * 2.43 * 0.00000001)]
+    body = setup.vectors()
+    assert body["model"] == "qwen/qwen3-embedding-8b"
+    assert (body["sample"], body["snapshot"], body["snapshot_sha256"]) == (
+        "dev-steer-400",
+        "t",
+        setup.sha,
+    )
+    assert body["lessons"] == {
+        "L1": [float(len("lesson one (scope: a scope)")), 1.0],
+        "L2": [9.0, 9.0],
+        "L3": [float(len("lesson three (scope: a scope)")), 1.0],
+    }
+    cases = body["cases"]
+    assert isinstance(cases, dict)
+    assert sorted(cases) == sorted(k for k, v in setup.causes.items() if v)
+    assert body["failed_cases"] == []
+    assert body["no_cause_cases"] == ["ZZZ10LA004"]
+    (row,) = setup.spend_rows()
+    assert (row.kind, row.model, row.calls) == ("embedding", "qwen/qwen3-embedding-8b", 1)
+    assert row.cost_usd == pytest.approx(0.000001 * 5)
+    assert not list(setup.settings.runs_dir.glob("*/reservation.json"))
+    out = capsys.readouterr().out
+    assert not any(cause in out for cause in setup.causes.values() if cause)
+    assert "lesson one" not in out
+    assert not any(case_id in out for case_id in setup.causes)
+
+
+def test_embed_sends_chunks_of_sixty_four(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch, n=200)
+    embedder = Embedder()
+    assert setup.run(httpx.MockTransport(embedder)) == 0
+    assert [len(chunk) for chunk in embedder.sent] == [64, 64, 64, 9]  # 3 lessons + 198 sentences
+    assert setup.spend_rows()[0].calls == 4
+
+
+def test_embed_rerun_sends_nothing_and_writes_a_zero_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch)
+    assert setup.run(httpx.MockTransport(Embedder())) == 0
+    first = setup.vectors()
+    for path in setup.settings.runs_dir.glob(f"*/{memory_embed.VECTORS_FILE}"):
+        path.unlink()
+
+    def never(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("every text is cached")
+
+    later = NOW.replace(minute=5)
+    argv = ["embed", "--model", "qwen/qwen3-embedding-8b", "--snapshot", "t"]
+    code = memory_embed.main(
+        argv, settings=setup.settings, transport=httpx.MockTransport(never), now=lambda: later
+    )
+    assert code == 0
+    assert setup.vectors() == first
+    rows = setup.spend_rows()
+    assert [(row.calls, row.cost_usd) for row in rows][1] == (0, 0.0)
+
+
+def test_embed_stops_when_a_lesson_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch)
+    failing = frozenset({"lesson three (scope: a scope)"})
+    assert setup.run(httpx.MockTransport(Embedder(failing))) == 1
+    assert "refused:" in capsys.readouterr().out
+    assert not list(setup.settings.runs_dir.glob(f"*/{memory_embed.VECTORS_FILE}"))
+    (row,) = setup.spend_rows()
+    assert row.kind == "embedding"
+    assert not list(setup.settings.runs_dir.glob("*/reservation.json"))
+
+
+def _failing_causes(setup: EmbedSetup, count: int) -> frozenset[str]:
+    return frozenset(cause for cause in list(setup.causes.values())[2 : 2 + count] if cause)
+
+
+def test_embed_stops_past_two_percent_failed_causes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # 9 of 400 cause sentences fail twice: refused, the vectors file is not written.
+    setup = EmbedSetup(tmp_path, monkeypatch, n=401)
+    monkeypatch.setattr(memory_embed, "CHUNK_SIZE", 1)
+    assert setup.run(httpx.MockTransport(Embedder(_failing_causes(setup, 9)))) == 1
+    out = capsys.readouterr().out
+    assert "9 of 400" in out
+    assert not list(setup.settings.runs_dir.glob(f"*/{memory_embed.VECTORS_FILE}"))
+
+
+def test_embed_allows_eight_failed_causes_and_lists_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch, n=401)
+    monkeypatch.setattr(memory_embed, "CHUNK_SIZE", 1)
+    failing = _failing_causes(setup, 8)
+    assert setup.run(httpx.MockTransport(Embedder(failing))) == 0
+    body = setup.vectors()
+    expected = sorted(case_id for case_id, cause in setup.causes.items() if cause in failing)
+    assert body["failed_cases"] == expected
+    assert len(expected) == 8
+    cases = body["cases"]
+    assert isinstance(cases, dict)
+    assert not set(expected) & set(cases)
+
+
+def test_embed_refuses_dev_seal_400_before_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch, sample="dev-seal-400")
+    _committed(monkeypatch, registered=False)
+
+    def never(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request before the registration is committed")
+
+    assert setup.run(httpx.MockTransport(never)) == 1
+    assert "memory-embed-lookup.md is not committed" in capsys.readouterr().out
+
+
+def test_embed_runs_on_dev_seal_400_once_registered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch, sample="dev-seal-400")
+    assert setup.run(httpx.MockTransport(Embedder())) == 0
+    assert setup.vectors()["sample"] == "dev-seal-400"
+    (folder,) = setup.settings.runs_dir.glob(f"*/{memory_embed.VECTORS_FILE}")
+    assert folder.parent.name.endswith("-memory-embed-dev-seal-400-qwen-qwen3-embedding-8b")
+
+
+def test_embed_refuses_dev_400(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch, sample="dev-400")
+    assert setup.run(httpx.MockTransport(Embedder())) == 1
+    assert "dev-400" in capsys.readouterr().out
+
+
+def test_embed_refuses_a_model_not_in_the_candidates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch)
+    argv = ["embed", "--model", "another/embedder", "--snapshot", "t"]
+    assert memory_embed.main(argv, settings=setup.settings, now=lambda: NOW) == 1
+    assert "another/embedder is not a registered candidate" in capsys.readouterr().out
+
+
+def test_embed_refuses_a_dirty_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    setup = EmbedSetup(tmp_path, monkeypatch)
+    _committed(monkeypatch, registered=True, dirty=True)
+    assert setup.run(httpx.MockTransport(Embedder())) == 1
+    assert "uncommitted changes" in capsys.readouterr().out

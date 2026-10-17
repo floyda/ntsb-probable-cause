@@ -288,7 +288,7 @@ def lesson_text(lesson: Lesson) -> str:
   Path("docs/rounds/memory-embed-lookup.md")`, `SEAL_CONDITIONS: Final = frozenset({"tables",
   "counts", "cause-lookup", "embed-lookup"})`.
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
 
 ```python
 # tests/test_memory_lookup.py
@@ -333,8 +333,8 @@ def test_dev_seal_400_apply_writes_its_own_counts_file(...) -> None:
 def test_resume_of_a_dev_seal_run_needs_its_sample(...) -> None: ...
 ```
 
-- [ ] **Step 2:** the tests fail.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2:** the tests fail.
+- [x] **Step 3: Implement.**
   - `embed --model M [--sample S] [--snapshot pilot-2010-recount]`: refuse a dirty tree, an
     uncommitted registration, a model not in `CANDIDATES`, and a sample `refuse_sample` refuses.
     Texts: every lesson of the snapshot, kept or pushed out (`lesson_text`), then each case's cause
@@ -361,8 +361,8 @@ mem-embed: ## Embed the lessons and a sample's cause sentences with MODEL (0213;
 ```
 
   Also `SAMPLE=` help text on `mem-coding-answer` and `mem-cause-apply` names `dev-seal-400`.
-- [ ] **Step 4:** tests pass; `make check` passes.
-- [ ] **Step 5:** commit.
+- [x] **Step 4:** tests pass; `make check` passes.
+- [x] **Step 5:** commit.
 
 ### Task 5: Lesson coverage, the gate and the choices file
 
