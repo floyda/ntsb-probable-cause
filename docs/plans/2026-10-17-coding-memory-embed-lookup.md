@@ -615,12 +615,12 @@ The lessons:
   The reply schema is `prompts.ApplyReply`; ids not in the shortlist are dropped, and the rest are
   cut to five in the reply's order.
 
-- [ ] **Step 1: Failing tests:** the request shows the 20 shortlisted lessons by
+- [x] **Step 1: Failing tests:** the request shows the 20 shortlisted lessons by
   `render_for_apply` (no codes) and the cause sentence alone; unknown ids dropped and order kept; a
   sixth id cut; more than 2% failed replies refused at the coverage reading; resume of a finished
   run refused; `dev-seal-400` refused before registration; the budget checked before sending.
-- [ ] **Step 2:** the tests fail.
-- [ ] **Step 3: Implement**, following `scripts/memory_cause_apply.py` throughout (Sonnet 5.5 at
+- [x] **Step 2:** the tests fail.
+- [x] **Step 3: Implement**, following `scripts/memory_cause_apply.py` throughout (Sonnet 5.5 at
   high, role `test-apply`, kind `learning`). Makefile:
 
 ```make
@@ -628,8 +628,8 @@ mem-cause-pick: ## The picking call over MODEL's 20 closest lessons (0213; paid,
 	scripts/with_pass_keys.sh uv run python -m scripts.memory_cause_pick --embeds $(EMBEDS) $(if $(SAMPLE),--sample $(SAMPLE)) $(if $(RESUME),--resume $(RESUME))
 ```
 
-- [ ] **Step 4:** tests pass; `make check` passes.
-- [ ] **Step 5:** commit.
+- [x] **Step 4:** tests pass; `make check` passes.
+- [x] **Step 5:** commit.
 
 ### Task 9: The steering runs (paid: cents, then about $0.18)
 
@@ -691,3 +691,10 @@ mem-cause-pick: ## The picking call over MODEL's 20 closest lessons (0213; paid,
   tree; on `dev-seal-400`, `mem-embed`, `mem-coverage` and `mem-embed-result` accept only the
   steering winner, read from the last line of the committed
   `docs/results/memory-coverage-dev.txt`, and `mem-coverage` takes one embedding run there.
+- 2026-10-17, Task 8 (needed: the steering gate printed `winner: none`): the picking call shows
+  each case's 20 nearest eligible lessons in id order, as the apply step shows lessons, so the
+  order says nothing of the embedding's ranking. It is the gate's candidate `pick:<model>`, priced
+  as that model for a tie only; its choices carry method `pick` and that model. `pick.json` also
+  records `embed_model` and `shortlist`. `mem-coverage` now passes `PICKS=`. On `dev-seal-400` the
+  picking call runs only if `pick:<model>` won on steering, and the coverage reading and the result
+  then require it; if the embedding lookup alone had won, `--picks` would be refused there.

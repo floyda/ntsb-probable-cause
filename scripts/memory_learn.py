@@ -369,6 +369,22 @@ def apply_call(  # noqa: PLR0913 -- the request's role, model and effort, the me
     )
 
 
+def pick_call(  # noqa: PLR0913 -- the request's role, model and effort, the shortlist, and the case
+    role: str, model: str, effort: Effort, shortlist: Memory, *, case_id: str, cause: str
+) -> Call:
+    """One case's picking request: its shortlist and cause sentence alone (decision 0213)."""
+    return Call(
+        role=role,
+        model=model,
+        effort=effort,
+        system=prompts.SYSTEM_PICK + render_for_apply(shortlist),
+        user=prompts.pick_user(cause),
+        schema=strict_schema(prompts.ApplyReply),
+        max_tokens=MAX_TOKENS_SONNET_APPLY,
+        case_ids=(case_id,),
+    )
+
+
 def call_for_apply(
     role: str, model: str, effort: Effort, memory: Memory, case: LearningCase
 ) -> Call:

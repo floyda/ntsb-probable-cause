@@ -76,6 +76,8 @@ VECTORS_FILE: Final = "vectors.json"
 # The steering gate's committed reading; its last line names the model dev-seal-400 confirms.
 STEERING_COVERAGE: Final = Path("docs/results/memory-coverage-dev.txt")
 WINNER_PREFIX: Final = "winner: "
+# The gate's name for the picking call over a model's shortlist (decision 0213's fallback).
+PICK_PREFIX: Final = "pick:"
 CACHE_DIR: Final = "memory-embed-cache"
 SNAPSHOT: Final = "pilot-2010-recount"
 EMBED_SAMPLES: Final = (memory_coding_test.SAMPLE, memory_coding_test.SEAL_SAMPLE)
@@ -142,11 +144,13 @@ def refuse_embed_arguments(model: str, sample: str) -> None:
 
 
 def steering_winner() -> str:
-    """The embedding model the steering gate chose: the last line of its committed reading.
+    """What the steering gate chose: the last line of its committed reading.
+
+    A model, or ``pick:<model>`` for the picking call over that model's shortlist.
 
     Raises:
         ConfigurationError: ``docs/results/memory-coverage-dev.txt`` is not committed, or its last
-            line names no candidate (``winner: none`` leads to the picking call, Task 8).
+            line names no candidate (``winner: none``: the method stopped).
     """
     if not gitinfo.is_committed(STEERING_COVERAGE):
         raise ConfigurationError(
@@ -155,27 +159,37 @@ def steering_winner() -> str:
         )
     lines = STEERING_COVERAGE.read_text().strip().splitlines()
     last = lines[-1] if lines else ""
-    model = last.removeprefix(WINNER_PREFIX)
-    if not last.startswith(WINNER_PREFIX) or model not in CANDIDATES:
+    winner = last.removeprefix(WINNER_PREFIX)
+    if not last.startswith(WINNER_PREFIX) or winner.removeprefix(PICK_PREFIX) not in CANDIDATES:
         raise ConfigurationError(
             f"{STEERING_COVERAGE} names no embedding winner on its last line (decision 0213)"
         )
-    return model
+    return winner
 
 
-def refuse_other_than_winner(model: str, sample: str) -> None:
-    """On ``dev-seal-400``, refuse any embedding model but the steering slice's winner.
+def refuse_other_than_winner(model: str, sample: str, *, method: str | None = None) -> None:
+    """On ``dev-seal-400``, refuse any embedding model or method but the steering slice's winner.
 
     Raises:
-        ConfigurationError: ``sample`` is ``dev-seal-400`` and ``model`` is not
-            :func:`steering_winner` (decision 0213: nothing is chosen on ``dev-seal-400``).
+        ConfigurationError: ``sample`` is ``dev-seal-400`` and ``model`` is not the winner's
+            embedding model, or ``method`` (``embedding`` or ``pick``, when given) is not the
+            winner's (decision 0213: nothing is chosen on ``dev-seal-400``).
     """
-    if sample == memory_coding_test.SEAL_SAMPLE:
-        winner = steering_winner()
-        if model != winner:
-            raise ConfigurationError(
-                f"on {sample} only the steering winner {winner} runs (decision 0213), not {model}"
-            )
+    if sample != memory_coding_test.SEAL_SAMPLE:
+        return
+    winner = steering_winner()
+    expected = "pick" if winner.startswith(PICK_PREFIX) else "embedding"
+    wanted = winner.removeprefix(PICK_PREFIX)
+    if model != wanted:
+        raise ConfigurationError(
+            f"on {sample} only the steering winner {wanted} runs (decision 0213), not {model}"
+        )
+    if method is not None and method != expected:
+        names = {"pick": "the picking call", "embedding": "the embedding lookup alone"}
+        raise ConfigurationError(
+            f"on {sample} the steering winner is {names[expected]} (decision 0213), not "
+            f"{names.get(method, method)}"
+        )
 
 
 @dataclass(frozen=True)

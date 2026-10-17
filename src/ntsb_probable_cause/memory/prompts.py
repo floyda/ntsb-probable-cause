@@ -57,6 +57,16 @@ coded. Answer with the ids of every lesson that covers it, or an empty list.
 The lessons:
 """
 
+# Decision 0213's fallback: the apply step's text, asking for the best five of a shortlist.
+SYSTEM_PICK: Final = """You decide which coding lessons best cover an accident, from the NTSB's \
+probable-cause sentence alone. A lesson covers the accident when its situation and scope describe \
+what the sentence says happened. Judge by the situation only; do not guess how the accident was \
+coded. Answer with the ids of at most five lessons that cover it, the best first, or an empty list \
+if none does.
+
+The lessons:
+"""
+
 SYSTEM_REVISE: Final = f"""You maintain coding lessons about how the NTSB codes closed US \
 general-aviation accidents. The lesson below was judged to cover the cases shown, but the NTSB's \
 codes disagree with it in more of them than they agree. Either edit it so its situation, scope and \
@@ -143,6 +153,14 @@ def propose_user(memory_text: str, cases: Sequence[LearningCase], tables: CodeTa
 def apply_user(cause: str) -> str:
     """The apply step's user text: the cause sentence and nothing else."""
     return f"Probable cause: {cause}\n\nWhich lessons cover this accident?"
+
+
+def pick_user(cause: str) -> str:
+    """The picking call's user text: the cause sentence and nothing else (decision 0213)."""
+    return (
+        f"Probable cause: {cause}\n\nWhich lessons best cover this accident? At most five, "
+        "the best first."
+    )
 
 
 def revise_user(

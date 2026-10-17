@@ -69,3 +69,18 @@ def test_the_learner_prompts_state_a_codes_shape() -> None:
     for system in (prompts.SYSTEM_PROPOSE, prompts.SYSTEM_REVISE):
         assert "first six digits" in system
         assert "no labels" in system
+
+
+def test_the_pick_question_carries_only_the_cause_and_asks_for_five_at_most() -> None:
+    text = prompts.pick_user(CASE.cause)
+    assert CASE.cause in text
+    assert "552230" not in text
+    assert "ERA09LA123" not in text
+    assert "five" in text
+
+
+def test_the_pick_system_text_asks_for_five_at_most_best_first_from_the_situation() -> None:
+    assert "at most five" in prompts.SYSTEM_PICK
+    assert "best first" in prompts.SYSTEM_PICK
+    assert "do not guess how the accident was" in prompts.SYSTEM_PICK
+    assert prompts.SYSTEM_PICK.endswith("The lessons:\n")

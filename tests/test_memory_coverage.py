@@ -419,3 +419,143 @@ def test_dev_seal_reading_takes_one_run_of_the_steering_winner(
     assert _main(settings, *base, "--embeds", large, "--model", LARGE) == 1
     assert f"only the steering winner {SMALL}" in capsys.readouterr().out
     assert not list(settings.runs_dir.glob("*-memory-choices-*"))
+
+
+# --- the picking call's run (decision 0213's fallback) -----------------------------------------
+
+PICK_RUN = "20261017T190000Z-abc1234-memory-cause-pick-dev-steer-400-openai-text-embedding-3-large"
+EIGHT = {cid: _case(cid, (LOC,) if i % 2 == 0 else (STALL,)) for i, cid in enumerate("ABCDEFGH")}
+NEAR_EIGHT = {cid: [1.0, 0.1] if i % 2 == 0 else [0.1, 1.0] for i, cid in enumerate("ABCDEFGH")}
+RIGHT_PICKS = {cid: ["L1"] if i % 2 == 0 else ["L2"] for i, cid in enumerate("ABCDEFGH")}
+
+
+def _pick_run(
+    settings: Settings, sha: str, source: str, picks: dict[str, list[str]], **changes: object
+) -> str:
+    folder = settings.runs_dir / PICK_RUN
+    folder.mkdir(parents=True)
+    summary: dict[str, object] = {
+        "sample": "dev-steer-400",
+        "snapshot": "t",
+        "snapshot_sha256": sha,
+        "embed_run": source,
+        "embed_model": LARGE,
+        "model": "claude-sonnet-5-5",
+        "effort": "high",
+        "shortlist": 20,
+        "cases_sent": len(picks),
+        "failed": 0,
+        "commit": "abc1234",
+        **changes,
+    }
+    (folder / "pick.json").write_text(json.dumps(summary))
+    (folder / "picks.json").write_text(json.dumps(picks))
+    return PICK_RUN
+
+
+@pytest.fixture
+def eight(setup: tuple[Settings, str], monkeypatch: pytest.MonkeyPatch) -> tuple[Settings, str]:
+    """Eight cases; today's lookup hits one with one lesson; the embeddings hit all at 33%."""
+    settings, sha = setup
+    monkeypatch.setattr(mc, "verdict_cases_for", lambda processed, sample: (dict(EIGHT), 0))
+    _apply_run(settings, sha, {"A": ["L1"]})
+    return settings, sha
+
+
+def _three(settings: Settings, sha: str) -> list[str]:
+    return [_embed_run(settings, m, sha, NEAR_EIGHT) for m in (SMALL, LARGE, QWEN)]
+
+
+def test_picks_are_scored_and_gated_the_same_way(
+    eight: tuple[Settings, str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings, sha = eight
+    runs = _three(settings, sha)
+    pick = _pick_run(settings, sha, runs[1], RIGHT_PICKS)
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs, "--picks", pick) == 0
+    text = capsys.readouterr().out
+    assert f"pick:{LARGE}: hit rate +87.5 points" in text
+    assert f"{SMALL}: hit rate +87.5 points" in text  # passes the interval, not precision
+    assert text.splitlines()[-1] == f"winner: pick:{LARGE}"
+    (summary_path,) = settings.runs_dir.glob(f"*-memory-choices-*/{mc.CHOICE_SUMMARY_FILE}")
+    assert "-memory-choices-dev-steer-400-pick-openai-text-embedding-3-large" in str(summary_path)
+    summary = json.loads(summary_path.read_text())
+    assert (summary["method"], summary["model"], summary["source_run"]) == ("pick", LARGE, pick)
+    chosen = json.loads((summary_path.parent / mc.CHOICES_FILE).read_text())
+    assert chosen == RIGHT_PICKS
+
+
+def test_picks_past_two_percent_failed_replies_are_refused(
+    eight: tuple[Settings, str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings, sha = eight
+    runs = _three(settings, sha)
+    pick = _pick_run(settings, sha, runs[1], RIGHT_PICKS, cases_sent=401, failed=9)
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs, "--picks", pick) == 1
+    assert "9 of 401" in capsys.readouterr().out
+    assert not list(settings.runs_dir.glob("*-memory-choices-*"))
+
+
+def test_eight_failed_replies_of_401_are_allowed(eight: tuple[Settings, str]) -> None:
+    settings, sha = eight
+    runs = _three(settings, sha)
+    pick = _pick_run(settings, sha, runs[1], RIGHT_PICKS, cases_sent=401, failed=8)
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs, "--picks", pick) == 0
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"sample": "dev-seal-400"}, "differs in sample"),
+        ({"snapshot_sha256": "0" * 64}, "differs in snapshot_sha256"),
+        ({"embed_run": "another-run"}, "not one of the --embeds runs"),
+        ({"embed_model": SMALL}, "differs in embed_model"),
+    ],
+)
+def test_a_pick_run_that_does_not_belong_is_refused(
+    eight: tuple[Settings, str],
+    capsys: pytest.CaptureFixture[str],
+    changes: dict[str, object],
+    message: str,
+) -> None:
+    settings, sha = eight
+    runs = _three(settings, sha)
+    pick = _pick_run(settings, sha, runs[1], RIGHT_PICKS, **changes)
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs, "--picks", pick) == 1
+    assert message in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "picks", [{"A": ["L1", "L9"]}, {"A": ["L1", "L2", "L3", "L4", "L1", "L2"]}]
+)
+def test_pick_ids_must_be_lessons_and_at_most_five(
+    eight: tuple[Settings, str], capsys: pytest.CaptureFixture[str], picks: dict[str, list[str]]
+) -> None:
+    settings, sha = eight
+    runs = _three(settings, sha)
+    pick = _pick_run(settings, sha, runs[1], picks)
+    assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs, "--picks", pick) == 1
+    assert "refused" in capsys.readouterr().out
+
+
+def test_dev_seal_reading_takes_the_picks_when_the_picking_call_won(
+    setup: tuple[Settings, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings, sha = setup
+    _apply_run(settings, sha, {"A": [], "B": []}, sample="dev-seal-400")
+    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
+    run = _embed_run(settings, LARGE, sha, near, sample="dev-seal-400")
+    pick = _pick_run(settings, sha, run, {"A": ["L1"], "B": ["L2"]}, sample="dev-seal-400")
+    base = ["--sample", "dev-seal-400", "--applies", APPLY_RUN, "--embeds", run, "--model", LARGE]
+    _steering_winner(tmp_path, monkeypatch, f"pick:{LARGE}")
+    assert _main(settings, *base) == 1
+    assert "the picking call" in capsys.readouterr().out
+    assert _main(settings, *base, "--picks", pick) == 0
+    text = capsys.readouterr().out
+    assert "-memory-choices-dev-seal-400-pick-" in text
+    _steering_winner(tmp_path, monkeypatch, LARGE)
+    assert _main(settings, *base, "--picks", pick) == 1
+    assert "the embedding lookup alone" in capsys.readouterr().out

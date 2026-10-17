@@ -209,3 +209,14 @@ def test_main_refuses_runs_that_do_not_belong_together(
     assert out.startswith("refused: ")
     assert label in out
     assert not test.out.exists()
+
+
+def test_dev_seal_reading_refuses_the_lookup_alone_when_the_picking_call_won(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    test = EmbedRuns(tmp_path, monkeypatch, sample="dev-seal-400")
+    _steering_winner(tmp_path, monkeypatch, "pick:qwen/qwen3-embedding-8b")
+    assert er.main(test.argv(), settings=test.settings) == 1
+    assert "the picking call" in capsys.readouterr().out
+    test.edit_spec("el", lookup_by="pick")
+    assert er.main(test.argv(), settings=test.settings) == 0

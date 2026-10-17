@@ -174,8 +174,9 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
         }
         refuse_unequal_cases(runs)
         refuse_unrelated(runs, snapshots.SNAPSHOT_DIR)
+        embed = runs[EMBED].spec
         memory_embed.refuse_other_than_winner(
-            str(runs[EMBED].spec.get("embedding_model")), args.sample
+            str(embed.get("embedding_model")), args.sample, method=str(embed.get("lookup_by"))
         )
         processed = settings.data_dir / "processed"
         ids = sorted({row.case_id for run in runs.values() for row in run.rows})
