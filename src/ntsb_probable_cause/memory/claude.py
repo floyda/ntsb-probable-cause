@@ -28,7 +28,9 @@ from ntsb_probable_cause.scoring.budget import SpendRecord, write_spend
 
 SONNET: Final = "claude-sonnet-5-5"
 HAIKU: Final = "claude-haiku-5-5"
-ROLES: Final = frozenset({"propose", "apply", "revise", "agreement", "probe"})
+# ``test-apply``: the apply step on the steering slice's cause sentences, decision 0211; only it
+# may read the cases a client was told to allow (``LearningClient.allow_for_test_apply``).
+ROLES: Final = frozenset({"propose", "apply", "revise", "agreement", "probe", "test-apply"})
 CALLS_FILE: Final = "calls.jsonl"
 BATCHES_FILE: Final = "batches.jsonl"
 FAILED_STOPS: Final = frozenset({"refusal", "max_tokens"})
@@ -257,6 +259,7 @@ class LearningClient:
         self._run_id = run_id
         self._commit = commit
         self._forbidden = forbidden
+        self._test_apply_only: frozenset[str] = frozenset()
         self._folder = runs_dir / run_id
         self._folder.mkdir(parents=True, exist_ok=True)
         self._replies: dict[str, Reply] = {}
@@ -267,12 +270,23 @@ class LearningClient:
         skipped += _parsed(self._folder / BATCHES_FILE, BatchRow)[1]
         self.skipped_lines = skipped
 
+    def allow_for_test_apply(self, case_ids: frozenset[str]) -> None:
+        """Let ``test-apply`` calls, and only those, read these forbidden cases (decision 0211).
+
+        Every other role still refuses them; a ``test-apply`` call still refuses every other
+        forbidden case.
+        """
+        self._test_apply_only = case_ids
+
     def _check(self, call: Call) -> None:
         if call.role not in ROLES:
             raise ConfigurationError(
                 f"the Claude transport serves learning calls only, not {call.role!r} (0202)"
             )
-        if hit := set(call.case_ids) & self._forbidden:
+        hit = set(call.case_ids) & self._forbidden
+        if call.role == "test-apply":
+            hit -= self._test_apply_only
+        if hit:
             raise ConfigurationError(f"{len(hit)} case(s) outside the learning part (0200)")
         prompt = estimated_tokens(call.system + call.user)
         if call.model == HAIKU and prompt > sources.HAIKU_55_PROMPT_LIMIT:

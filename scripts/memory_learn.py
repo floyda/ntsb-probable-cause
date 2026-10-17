@@ -300,7 +300,7 @@ def projected_usd(calls: Sequence[Call], *, batch: bool) -> float:
     return total
 
 
-def _check_budget(settings: Settings, calls: Sequence[Call], *, batch: bool, label: str) -> None:
+def check_budget(settings: Settings, calls: Sequence[Call], *, batch: bool, label: str) -> None:
     """Refuse a phase that would pass the month's learner line; print its projection."""
     projection = projected_usd(calls, batch=batch)
     print(f"{label}: {len(calls)} calls, projected at most ${projection:.4f}")
@@ -312,9 +312,10 @@ def _check_budget(settings: Settings, calls: Sequence[Call], *, batch: bool, lab
     )
 
 
-def _default_factory(
+def default_factory(
     settings: Settings, run_id: str, commit: tuple[str, bool], forbidden: frozenset[str]
 ) -> LearningClient:
+    """The real learner client, keyed from the environment."""
     return LearningClient(
         claude.sdk_from_key(settings.require_anthropic_key()),
         settings.runs_dir,
@@ -352,20 +353,27 @@ def _load_draft(settings: Settings, run_id: str) -> Memory:
     return Memory.model_validate_json(path.read_text())
 
 
-def call_for_apply(
-    role: str, model: str, effort: Effort, memory: Memory, case: LearningCase
+def apply_call(  # noqa: PLR0913 -- the request's role, model and effort, the memory, and the case
+    role: str, model: str, effort: Effort, memory: Memory, *, case_id: str, cause: str
 ) -> Call:
-    """One case's apply request; ``scripts.memory_recount`` rebuilds its key (decision 0209)."""
+    """One case's apply request, from its id and cause sentence alone (decisions 0209, 0211)."""
     return Call(
         role=role,
         model=model,
         effort=effort,
         system=prompts.SYSTEM_APPLY + render_for_apply(memory),
-        user=prompts.apply_user(case.cause),
+        user=prompts.apply_user(cause),
         schema=strict_schema(prompts.ApplyReply),
         max_tokens=MAX_TOKENS_HAIKU if model == HAIKU else MAX_TOKENS_SONNET_APPLY,
-        case_ids=(case.case_id,),
+        case_ids=(case_id,),
     )
+
+
+def call_for_apply(
+    role: str, model: str, effort: Effort, memory: Memory, case: LearningCase
+) -> Call:
+    """One case's apply request; ``scripts.memory_recount`` rebuilds its key (decision 0209)."""
+    return apply_call(role, model, effort, memory, case_id=case.case_id, cause=case.cause)
 
 
 def run_apply(
@@ -384,7 +392,7 @@ def run_apply(
         return {}, 0
     model, effort = APPLIERS[applier]
     calls = [call_for_apply(role, model, effort, memory, c) for c in cases]
-    _check_budget(run.settings, calls, batch=True, label=f"apply ({applier})")
+    check_budget(run.settings, calls, batch=True, label=f"apply ({applier})")
     replies = run.client.send_batch(calls)
     known = {lesson.lesson_id for lesson in memory.lessons}
     found: dict[str, frozenset[str]] = {}
@@ -452,7 +460,7 @@ def propose(args: argparse.Namespace, run: Run) -> int:
     draft_file = _draft_path(settings, run_id)
     print(f"{_recorded_calls(folder)} calls already recorded in this run")
     # The memory grows with each chunk, so the projection prices every chunk at today's memory.
-    _check_budget(settings, [make_call(b) for b in batches], batch=False, label="propose")
+    check_budget(settings, [make_call(b) for b in batches], batch=False, label="propose")
     used = {lesson.lesson_id for lesson in (*draft.lessons, *draft.pushed_out)}
 
     def next_id() -> str:
@@ -611,7 +619,7 @@ def _revise(  # noqa: PLR0913 -- the run, the memory, and the counts its revisio
         lesson.lesson_id: _revise_call(lesson, support, cases, applies, run.tables)
         for lesson in revisable
     }
-    _check_budget(run.settings, list(calls.values()), batch=False, label="revise")
+    check_budget(run.settings, list(calls.values()), batch=False, label="revise")
     for lesson in revisable:
         reply = run.client.send(calls[lesson.lesson_id])
         if not reply.ok or reply.text is None:
@@ -735,7 +743,8 @@ def _revise_call(
     )
 
 
-def _require_clean(dirty: bool) -> None:
+def require_clean(dirty: bool) -> None:
+    """Refuse a dirty tree, so every run names a clean commit."""
     if dirty:
         raise ConfigurationError("the tree has uncommitted changes: commit first")
 
@@ -744,7 +753,7 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     settings: Settings | None = None,
-    client_factory: ClientFactory = _default_factory,
+    client_factory: ClientFactory = default_factory,
 ) -> int:
     """Run one subcommand.
 
@@ -768,7 +777,7 @@ def main(
     settings = settings or Settings()
     try:
         commit, dirty = gitinfo.commit_state()
-        _require_clean(dirty)
+        require_clean(dirty)
         tables = load_tables()
         forbidden = pool.excluded_ids()
         if args.command == "propose" and not args.resume:

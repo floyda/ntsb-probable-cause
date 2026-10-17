@@ -654,3 +654,95 @@ def test_lookup_needs_a_snapshot_and_a_positive_k(
     fake = FakeBatch(_tools_answer)
     assert _run(settings, fake, argv) == 1
     assert not fake.submitted
+
+
+# --- the cause lookup (decision 0211) -------------------------------------------------------
+
+APPLY_RUN = "20261017T090000Z-abc1234-memory-cause-apply-t"
+
+
+def _apply_run(settings: Settings, applies: dict[str, list[str]], **changes: object) -> None:
+    folder = settings.runs_dir / APPLY_RUN
+    folder.mkdir(parents=True)
+    sha = snapshots.sha256_of(snapshots.snapshot_path("t", snapshots.SNAPSHOT_DIR))
+    summary: dict[str, object] = {"sample": "dev-steer-400", "snapshot": "t"}
+    summary |= {"snapshot_sha256": sha, "cases_sent": 401, "failed": 8}
+    summary |= {"model": "claude-sonnet-5-5", "effort": "high", **changes}
+    (folder / ct.APPLY_SUMMARY_FILE).write_text(json.dumps(summary))
+    (folder / ct.APPLIES_FILE).write_text(json.dumps(applies))
+
+
+CAUSE_ARGV = ["tools", "--source", SOURCE, "--snapshot", "t", "--lookup", "5"]
+
+
+def test_cause_lookup_gives_the_lessons_the_apply_step_named_not_those_the_codes_match(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path != ct.LOOKUP_REGISTRATION)
+    _apply_run(settings, {FIRST: ["L002", "L004"], SECOND: ["L001"]})
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, [*CAUSE_ARGV, "--applies", APPLY_RUN]) == 0
+    answer = fake.submitted[0][0]
+    assert "[L002]" in answer.system  # named by the apply step; its code is not in the answer
+    assert "[L001]" not in answer.system  # its code matches the answer, but it was not named
+    assert "[L004]" not in answer.system  # named, but below the support floor
+    folder = settings.runs_dir / f"{SOURCE}-causelookup5-t"
+    spec = json.loads((folder / "spec.json").read_text())
+    assert spec["condition"] == "cause-lookup"
+    assert spec["lookup_by"] == "cause"
+    assert spec["apply_run"] == APPLY_RUN
+    assert spec["lookup_k"] == 5
+    assert spec["lookup_lessons"] == {FIRST: ["L002"]}
+
+
+def test_cause_lookup_is_refused_without_its_own_registration(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path != ct.CAUSE_LOOKUP_REGISTRATION)
+    _apply_run(settings, {FIRST: ["L002"]})
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, [*CAUSE_ARGV, "--applies", APPLY_RUN]) == 1
+    assert not fake.submitted
+
+
+@pytest.mark.parametrize(
+    ("applies", "changes"),
+    [
+        ({"XXX09LA002": ["L002"]}, {}),  # no answer for the case sent
+        ({FIRST: ["L002"]}, {"snapshot": "other"}),
+        ({FIRST: ["L002"]}, {"snapshot_sha256": "0" * 64}),
+        ({FIRST: ["L002"]}, {"sample": "dev-400"}),
+        ({FIRST: ["L002"]}, {"failed": 9}),  # more than 2% of 401 replies failed
+        ({FIRST: ["L002"]}, {"model": "claude-haiku-5-5"}),
+        ({FIRST: ["L002"]}, {"effort": "low"}),
+    ],
+)
+def test_cause_lookup_refuses_an_apply_run_that_does_not_belong(
+    settings: Settings,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    applies: dict[str, list[str]],
+    changes: dict[str, object],
+) -> None:
+    _source(settings)
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    _apply_run(settings, applies, **changes)
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, [*CAUSE_ARGV, "--applies", APPLY_RUN]) == 1
+    assert not fake.submitted
+
+
+def test_applies_needs_lookup(settings: Settings) -> None:
+    _source(settings)
+    fake = FakeBatch(_tools_answer)
+    argv = ["tools", "--source", SOURCE, "--snapshot", "t", "--applies", APPLY_RUN]
+    assert _run(settings, fake, argv) == 1
+    assert not fake.submitted

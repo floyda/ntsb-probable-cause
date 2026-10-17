@@ -1,7 +1,9 @@
-"""The lessons for one case, matched to the model's own first answer (decision 0210).
+"""The lessons for one case, by its first answer's codes (0210) or its cause sentence (0211).
 
-A script, not a model: a lesson matches when a code it predicts is among the answer's codes. The
-query is the answer's occurrence codes and finding categories only; no case text is read here.
+A script, not a model. ``lookup`` matches a lesson when a code it predicts is among the model's
+first answer's codes; its query is the answer's occurrence codes and finding categories only.
+``by_fit`` reads no code: it ranks the lessons the apply step named for the case's cause sentence.
+No case text is read here.
 """
 
 from collections.abc import Collection, Sequence
@@ -78,3 +80,31 @@ def lookup(
     ]
     found = sorted((item for item in eligible if item[1].exact or item[1].event), key=rank)
     return tuple(lesson for lesson, _ in found[:k])
+
+
+def by_fit(
+    lessons: Sequence[Lesson],
+    applied: Collection[str],
+    *,
+    k: int = K,
+    min_applies: int = MIN_APPLIES,
+) -> tuple[Lesson, ...]:
+    """Up to ``k`` of the lessons whose ids are in ``applied``, by fit (decision 0211).
+
+    ``applied`` is what the apply step named for one case's cause sentence. Only lessons that
+    apply to at least ``min_applies`` learning cases may be chosen. Order: highest fit, then most
+    cases applied to, then lesson id, so the same answer always gets the same lessons.
+    """
+
+    def rank(lesson: Lesson) -> tuple[float, int, str]:
+        applies = lesson.support.applies if lesson.support is not None else 0
+        return (-fit(lesson), -applies, lesson.lesson_id)
+
+    eligible = [
+        lesson
+        for lesson in lessons
+        if lesson.lesson_id in applied
+        and lesson.support is not None
+        and lesson.support.applies >= min_applies
+    ]
+    return tuple(sorted(eligible, key=rank)[:k])

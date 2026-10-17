@@ -92,3 +92,25 @@ def test_an_answer_that_matches_nothing_gets_no_lessons() -> None:
 
 def test_the_registered_defaults() -> None:
     assert (lk.K, lk.MIN_APPLIES) == (5, 10)
+
+
+# by_fit (decision 0211): the apply step chose the lessons; the script ranks them. -------------
+
+
+def test_by_fit_keeps_only_the_applied_lessons_ranked_by_fit_then_support_then_id() -> None:
+    high = _lesson("L5", agrees=18)
+    big = _lesson("L4", applies=40, agrees=8)
+    small = _lesson("L3", applies=20, agrees=4)
+    tie = _lesson("L2", applies=20, agrees=4)
+    not_named = _lesson("L1", agrees=20)
+    found = lk.by_fit([not_named, tie, small, big, high], {"L2", "L3", "L4", "L5"})
+    assert _ids(found) == ["L5", "L4", "L2", "L3"]
+
+
+def test_by_fit_reads_no_code_and_keeps_k_above_the_floor() -> None:
+    lessons = [_lesson(f"L{i}", first=(OTHER,), agrees=i) for i in range(1, 8)]
+    thin = _lesson("L9", applies=9, agrees=9)
+    found = lk.by_fit([*lessons, thin], {x.lesson_id for x in [*lessons, thin]}, k=5)
+    assert _ids(found) == ["L7", "L6", "L5", "L4", "L3"]
+    assert lk.by_fit([thin], {"L9"}) == ()
+    assert lk.by_fit(lessons, set()) == ()

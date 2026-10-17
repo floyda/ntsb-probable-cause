@@ -24,6 +24,10 @@ What it measures
       text: up to K of the snapshot's lessons, kept or pushed out, matched by script to that
       case's first answer (``memory.lookup``, decision 0210). Refused until
       ``docs/rounds/memory-lookup.md`` is committed. The spec records each case's lesson ids.
+    - **cause lookup** (``tools --snapshot NAME --lookup K --applies RUN_ID``): the same, but the
+      lessons are the best fitting of those the apply step named for the case's cause sentence
+      (``scripts/memory_cause_apply.py``, ``lookup.by_fit``, decision 0211). Refused until
+      ``docs/rounds/memory-cause-lookup.md`` is committed.
 
     ``suggest_codes`` is never called in the counts or memory conditions: the coding test has no
     phase-of-flight evidence, so the post-pass is given no group, and both conditions match.
@@ -50,7 +54,7 @@ Usage
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
         [--resume RUN_ID]
     uv run python -m scripts.memory_coding_test tools --source RUN_ID --snapshot NAME
-        --lookup K [--resume RUN_ID]
+        --lookup K [--applies RUN_ID] [--resume RUN_ID]
 """
 
 import argparse
@@ -80,7 +84,8 @@ from ntsb_probable_cause.agent.steps import sanitised
 from ntsb_probable_cause.agent.trail import StepKind
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError, ModelError, SchemaError
 from ntsb_probable_cause.memory import lookup, prompts, snapshots
-from ntsb_probable_cause.memory.lessons import Memory
+from ntsb_probable_cause.memory.claude import SONNET
+from ntsb_probable_cause.memory.lessons import Lesson, Memory
 from ntsb_probable_cause.model.batch import BatchClient
 from ntsb_probable_cause.model.client import ModelReply, ModelSettings, Payload, Turn, cost_usd
 from ntsb_probable_cause.model.openrouter import OpenRouterClient
@@ -105,6 +110,7 @@ __all__ = [
     "causes",
     "gitinfo",
     "main",
+    "refuse_cause_lookup_without_registration",
     "refuse_lookup_without_registration",
     "refuse_memory_without_registration",
     "refuse_sample",
@@ -115,6 +121,11 @@ SAMPLE: Final = "dev-steer-400"
 GUIDANCE: Final = ("r3-loc-stall", "r6-aircraft-control")
 REGISTRATION: Final = Path("docs/rounds/memory-pilot.md")
 LOOKUP_REGISTRATION: Final = Path("docs/rounds/memory-lookup.md")
+CAUSE_LOOKUP_REGISTRATION: Final = Path("docs/rounds/memory-cause-lookup.md")
+APPLY_SUMMARY_FILE: Final = "apply.json"  # scripts.memory_cause_apply's files (decision 0211)
+APPLIES_FILE: Final = "applies.json"
+APPLY_MODEL: Final = SONNET  # the registered applier (decision 0211, its registration's §4)
+APPLY_EFFORT: Final = "high"
 CAP_USD: Final = 0.05
 EXPECTED_USD_PER_CASE: Final = 0.01
 STATS: Final = "mem"
@@ -130,7 +141,7 @@ SPEC_FILE: Final = "spec.json"
 CASES_FILE: Final = "cases.jsonl"
 _PROG: Final = "memory_coding_test"
 
-Condition = Literal["tables", "counts", "memory", "lookup"]
+Condition = Literal["tables", "counts", "memory", "lookup", "cause-lookup"]
 BatchFactory = Callable[[Settings], BatchRunner]
 Clock = Callable[[], datetime]
 
@@ -197,6 +208,19 @@ def refuse_lookup_without_registration() -> None:
         )
 
 
+def refuse_cause_lookup_without_registration() -> None:
+    """Refuse the cause-lookup condition until its registration is committed.
+
+    Raises:
+        ConfigurationError: ``docs/rounds/memory-cause-lookup.md`` is not committed (0211 item 4).
+    """
+    if not gitinfo.is_committed(CAUSE_LOOKUP_REGISTRATION):
+        raise ConfigurationError(
+            f"{CAUSE_LOOKUP_REGISTRATION} is not committed: the cause-lookup condition waits for "
+            "its registration (decision 0211 item 4)"
+        )
+
+
 # What the test reads. ----------------------------------------------------------------------
 
 
@@ -204,7 +228,8 @@ def causes(processed: Path) -> dict[str, str | None]:
     """Every steering-slice case's probable-cause sentence, in sample order; None for none.
 
     The sentence is verdict text, read through ``fields`` from the raw record; it reaches the
-    model only through ``Payload.for_coding_test`` (decision 0205).
+    coding model only through ``Payload.for_coding_test`` (decision 0205), and the learner's
+    apply step only through ``scripts/memory_cause_apply.py`` (decision 0211).
     """
     ids = samples.sample_ids(SAMPLE)
     raws = samples.load_cases(processed, ids)
@@ -678,6 +703,42 @@ def _checked_memory(name: str) -> tuple[Memory, str]:
     return memory, snapshots.sha256_of(snapshots.snapshot_path(name, snapshots.SNAPSHOT_DIR))
 
 
+def read_applies(folder: Path, snapshot: str, sha: str) -> dict[str, frozenset[str]]:
+    """An apply run's lesson ids per case, refused unless it read this sample and snapshot.
+
+    Raises:
+        ConfigurationError: no finished apply run in ``folder``, one on another sample,
+            snapshot, snapshot file or applier, or one where more than 2% of the replies failed
+            (decision 0211, its registration's §8).
+    """
+    refuse_live(_PROG, folder)
+    try:
+        summary = json.loads((folder / APPLY_SUMMARY_FILE).read_text())
+        raw = json.loads((folder / APPLIES_FILE).read_text())
+    except (OSError, ValueError) as error:
+        raise ConfigurationError(
+            f"{folder.name}: not a finished apply run ({type(error).__name__})"
+        ) from None
+    if not isinstance(summary, dict) or not isinstance(raw, dict):
+        raise ConfigurationError(f"{folder.name}: not a finished apply run")
+    wanted = {
+        "sample": SAMPLE,
+        "snapshot": snapshot,
+        "snapshot_sha256": sha,
+        "model": APPLY_MODEL,
+        "effort": APPLY_EFFORT,
+    }
+    differing = [key for key, value in wanted.items() if summary.get(key) != value]
+    if differing:
+        raise ConfigurationError(f"{folder.name} differs in {', '.join(differing)}")
+    failed, sent = summary.get("failed"), summary.get("cases_sent")
+    if not isinstance(failed, int) or not isinstance(sent, int) or failed * 100 > sent * 2:
+        raise ConfigurationError(
+            f"{folder.name}: {failed} of {sent} apply replies failed, past the registered 2%"
+        )
+    return {str(case_id): frozenset(map(str, ids)) for case_id, ids in raw.items()}
+
+
 def _tools_run_id(args: argparse.Namespace) -> str:
     """The derived run's id, from the source, and the repeat or the snapshot.
 
@@ -685,12 +746,16 @@ def _tools_run_id(args: argparse.Namespace) -> str:
         ConfigurationError: ``--repeat`` missing without ``--snapshot``, or ``--resume`` not the
             id these arguments give.
     """
+    if args.applies is not None and args.lookup is None:
+        raise ConfigurationError("--applies needs --lookup K")
     if args.snapshot is None:
         if args.lookup is not None:
             raise ConfigurationError("the lookup condition needs --snapshot")
         if args.repeat is None:
             raise ConfigurationError("the counts condition needs --repeat a or b")
         run_id = f"{args.source}-counts-{args.repeat}"
+    elif args.applies is not None:
+        run_id = f"{args.source}-causelookup{args.lookup}-{args.snapshot}"
     elif args.lookup is not None:
         run_id = f"{args.source}-lookup{args.lookup}-{args.snapshot}"
     else:
@@ -702,6 +767,55 @@ def _tools_run_id(args: argparse.Namespace) -> str:
     return run_id
 
 
+def _refuse_lookup_args(args: argparse.Namespace) -> None:
+    """Refuse a lookup without its registration, or with K below 1 (decisions 0210, 0211)."""
+    if args.lookup is None:
+        return
+    if args.applies is not None:
+        refuse_cause_lookup_without_registration()
+    else:
+        refuse_lookup_without_registration()
+    if args.lookup < 1:
+        raise ConfigurationError("--lookup must be at least 1")
+
+
+def _condition(
+    memory: Memory | None, k: int | None, applied: Mapping[str, frozenset[str]] | None
+) -> Condition:
+    if memory is None:
+        return "counts"
+    if k is None:
+        return "memory"
+    return "lookup" if applied is None else "cause-lookup"
+
+
+def _picked(
+    memory: Memory,
+    k: int,
+    applied: Mapping[str, frozenset[str]] | None,
+    row: CodingCase,
+    tables: CodeTables,
+) -> tuple[Lesson, ...]:
+    """One case's lessons: by its cause sentence's apply answer, or by its first answer's codes.
+
+    Raises:
+        ConfigurationError: the apply run has no answer for the case.
+    """
+    every = (*memory.lessons, *memory.pushed_out)
+    if applied is not None:
+        if row.case_id not in applied:
+            raise ConfigurationError("the apply run has no answer for a case")
+        return lookup.by_fit(every, applied[row.case_id], k=k)
+    if row.hypothesis is None:  # the caller skips failed sources; nothing to match
+        return ()
+    return lookup.lookup(
+        every,
+        row.hypothesis.occurrence_codes(tables),
+        {guess.category6 for guess in row.hypothesis.findings},
+        k=k,
+    )
+
+
 def tools(args: argparse.Namespace, ctx: Context) -> int:
     """The counts condition, or the memory condition, or the lookup condition.
 
@@ -709,22 +823,23 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
     memory and lookup conditions ignore ``--repeat``: one run per snapshot and source. The lookup
     condition gives each case its own system text: the counts condition's, followed by up to K of
     the snapshot's lessons, kept or pushed out, matched to that case's first answer
-    (``memory.lookup``, decision 0210). A case that matches none reads the counts text.
+    (``memory.lookup``, decision 0210). A case that matches none reads the counts text. With
+    ``--applies RUN_ID`` (the cause-lookup condition, decision 0211) the lessons are instead the
+    best fitting of those the apply run named for the case's cause sentence (``lookup.by_fit``);
+    no code from the first answer chooses them.
     """
     source = args.source
     run_id = _tools_run_id(args)
     memory: Memory | None = None
     snapshot_sha: str | None = None
-    if args.lookup is not None:
-        refuse_lookup_without_registration()
-        if args.lookup < 1:
-            raise ConfigurationError("--lookup must be at least 1")
+    _refuse_lookup_args(args)
     if args.snapshot is not None:
         memory, snapshot_sha = _checked_memory(args.snapshot)
     first = _read_source(ctx.runs_dir / source)
-    condition: Condition = (
-        "counts" if memory is None else ("memory" if args.lookup is None else "lookup")
-    )
+    applied: dict[str, frozenset[str]] | None = None
+    if args.applies is not None and snapshot_sha is not None:
+        applied = read_applies(ctx.runs_dir / args.applies, args.snapshot, snapshot_sha)
+    condition = _condition(memory, args.lookup, applied)
     tables = load_tables()
     config = LoopConfig(
         tables=tables,
@@ -756,12 +871,7 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         else:
             case_system = system
             if args.lookup is not None and memory is not None:
-                picked = lookup.lookup(
-                    (*memory.lessons, *memory.pushed_out),
-                    row.hypothesis.occurrence_codes(tables),
-                    {guess.category6 for guess in row.hypothesis.findings},
-                    k=args.lookup,
-                )
+                picked = _picked(memory, args.lookup, applied, row, tables)
                 looked_up[row.case_id] = [lesson.lesson_id for lesson in picked]
                 case_system = prompts.coding_system(
                     tables, GUIDANCE, memory.model_copy(update={"lessons": picked})
@@ -794,6 +904,8 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
             "lookup_min_applies": lookup.MIN_APPLIES,
             "lookup_lessons": looked_up,
         }
+    if applied is not None:  # only here, so a code lookup's spec is as it was
+        spec |= {"lookup_by": "cause", "apply_run": args.applies}
     plan = Plan(run_id, spec, loops, skipped, order)
     return _run(ctx, plan, resume=args.resume is not None)
 
@@ -847,6 +959,11 @@ def main(
         type=int,
         metavar="K",
         help="the lookup condition: up to K of the snapshot's lessons per case (decision 0210)",
+    )
+    t.add_argument(
+        "--applies",
+        metavar="RUN_ID",
+        help="with --lookup: choose each case's lessons from this apply run (decision 0211)",
     )
     t.add_argument("--resume", metavar="RUN_ID", help="continue this run's folder")
     args = parser.parse_args(argv)
