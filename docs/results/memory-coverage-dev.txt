@@ -1,0 +1,29 @@
+lesson coverage on dev-steer-400, pilot-2010-recount, K=5, floor 10 (decision 0213); counts only
+
+cases scored: 401; left out (no occurrence code): 0
+
+today's cause lookup (apply run 20261017T090550Z-0b949a6-memory-cause-apply-pilot-2010-recount)
+  hit rate: 53.6% n=401
+  precision: 45.6% (400 of 878 lessons)
+  lessons a case: mean 2.19; with none 39
+qwen/qwen3-embedding-8b (embedding run 20261017T180126Z-2e3e730-memory-embed-dev-steer-400-qwen-qwen3-embedding-8b; 0 failed)
+  hit rate: 54.9% n=401
+  precision: 21.9% (440 of 2005 lessons)
+  lessons a case: mean 5.00; with none 0
+  hit rate minus today's: +1.2 points [-2.2, +4.7] n=401
+openai/text-embedding-3-small (embedding run 20261017T180201Z-2e3e730-memory-embed-dev-steer-400-openai-text-embedding-3-small; 0 failed)
+  hit rate: 55.9% n=401
+  precision: 22.7% (456 of 2005 lessons)
+  lessons a case: mean 5.00; with none 0
+  hit rate minus today's: +2.2 points [-1.5, +6.0] n=401
+openai/text-embedding-3-large (embedding run 20261017T180227Z-2e3e730-memory-embed-dev-steer-400-openai-text-embedding-3-large; 0 failed)
+  hit rate: 57.6% n=401
+  precision: 23.6% (474 of 2005 lessons)
+  lessons a case: mean 5.00; with none 0
+  hit rate minus today's: +4.0 points [+0.5, +7.5] n=401
+
+gate (decision 0213)
+  qwen/qwen3-embedding-8b: hit rate +1.2 points [-2.2, +4.7], precision 21.9% against 45.6%: not passed: hit-rate interval not above zero; precision lower than today's
+  openai/text-embedding-3-small: hit rate +2.2 points [-1.5, +6.0], precision 22.7% against 45.6%: not passed: hit-rate interval not above zero; precision lower than today's
+  openai/text-embedding-3-large: hit rate +4.0 points [+0.5, +7.5], precision 23.6% against 45.6%: not passed: precision lower than today's
+winner: none

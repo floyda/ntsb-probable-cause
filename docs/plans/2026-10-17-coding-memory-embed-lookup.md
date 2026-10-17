@@ -633,8 +633,8 @@ mem-cause-pick: ## The picking call over MODEL's 20 closest lessons (0213; paid,
 
 ### Task 9: The steering runs (paid: cents, then about $0.18)
 
-- [ ] `make mem-embed MODEL=<each candidate>`, three times; note each run id.
-- [ ] `make mem-coverage EMBEDS="<three runs>"`; commit `docs/results/memory-coverage-dev.txt`.
+- [x] `make mem-embed MODEL=<each candidate>`, three times; note each run id.
+- [x] `make mem-coverage EMBEDS="<three runs>"`; commit `docs/results/memory-coverage-dev.txt`.
 - [ ] If `winner: none`: Task 8, then `make mem-cause-pick EMBEDS=<highest hit rate's run>` and
   `make mem-coverage EMBEDS="<three runs>" PICKS=<pick run>`; commit. If `winner: none` again,
   stop: Task 11 records it.
