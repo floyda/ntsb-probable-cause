@@ -48,7 +48,7 @@ Luna batch over OpenRouter for the coding test.
 
 ### Task 3: The runs (paid, about $0.57 and $1.56 of credit)
 
-- [ ] Andy signs; the registration is committed.
+- [x] Andy signs; the registration is committed.
 - [ ] `make mem-coding-answer REPEAT=a SAMPLE=dev-400`.
 - [ ] `make mem-coding-tools SOURCE=<tables> REPEAT=a`, then `REPEAT=b`.
 - [ ] `make mem-cause-apply SNAPSHOT=pilot-2010-recount SAMPLE=dev-400`; commit its counts file.
