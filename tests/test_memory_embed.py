@@ -199,3 +199,30 @@ def test_probe_reports_a_malformed_reply_and_returns_one(
     text = capsys.readouterr().out
     assert "status=400" in text
     assert "check every reply holds one vector per text, of one length: FAILED" in text
+
+
+def test_probe_writes_the_result_before_the_fixtures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The fixtures sit in the repo, so written first they make the tree dirty and the result file
+    # under docs/results/ is refused; they are still saved when that write fails.
+    _committed(monkeypatch, registered=True)
+    settings = _settings(tmp_path)
+    _save_list(settings.data_dir, PRICES)
+    fixtures = tmp_path / "fx"
+    seen: list[bool] = []
+
+    def refusing(prog: str, out: Path, text: str) -> None:
+        seen.append(any(fixtures.glob("*.json")))
+        raise SystemExit(1)
+
+    monkeypatch.setattr(memory_embed, "write_result", refusing)
+    with pytest.raises(SystemExit):
+        memory_embed.main(
+            ["probe", "--fixtures", str(fixtures), "--out", str(tmp_path / "probe.txt")],
+            settings=settings,
+            transport=httpx.MockTransport(_vectors_reply),
+            now=lambda: NOW,
+        )
+    assert seen == [False]
+    assert len(list(fixtures.glob("*.json"))) == len(memory_embed.CANDIDATES)

@@ -249,7 +249,12 @@ def probe(  # noqa: PLR0913 -- the parsed arguments and the injectable seams
     now: Clock,
     prices: Mapping[str, float],
 ) -> int:
-    """One request per candidate; save each reply; report its shape. 0 if every shape is right."""
+    """One request per candidate; report each reply's shape, then save it. 0 if every one is right.
+
+    The replies are saved after the result is written: the fixtures sit in the repo, so on disk
+    first they would make the tree dirty and a result under ``docs/results/`` would be refused.
+    They are saved even when a request or that write fails.
+    """
     started = now()
     job_id = f"{started:%Y%m%dT%H%M%SZ}-{commit[0]}-memory-embed-probe"
     budget.reserve_within_budget(
@@ -257,52 +262,57 @@ def probe(  # noqa: PLR0913 -- the parsed arguments and the injectable seams
     )
     lines = [f"embeddings shape probe at commit {commit[0]}, {started:%Y-%m-%d} (decision 0213)"]
     total, oks = 0.0, []
-    fixtures: Path = args.fixtures
-    fixtures.mkdir(parents=True, exist_ok=True)
+    replies: dict[str, bytes] = {}
     headers = {"Authorization": f"Bearer {settings.require_openrouter_key()}"}
     try:
-        with _client(settings, transport) as http:
-            for model in CANDIDATES:
-                payload = {"model": model, "input": list(PROBE_TEXTS)}
-                response = http.post(EMBEDDINGS_PATH, json=payload, headers=headers)
-                (fixtures / f"{slug(model)}.json").write_bytes(response.content)
-                try:
-                    body: object = response.json()
-                except ValueError:
-                    body = None
-                cost = (
-                    _reply_cost(body, prices[model], PROBE_TEXTS)
-                    if response.status_code == httpx.codes.OK
-                    else 0.0
-                )
-                total += cost
-                line, ok = _describe(model, response.status_code, body, cost)
-                lines.append(line)
-                oks.append(ok)
-    finally:
-        budget.write_spend(
-            settings.runs_dir,
-            budget.SpendRecord(
-                job_id=job_id,
-                kind="probe",
-                model=",".join(CANDIDATES),
-                started=started,
-                calls=len(oks),
-                cost_usd=total,
-                commit_sha=commit[0],
-                dirty=commit[1],
-            ),
+        try:
+            with _client(settings, transport) as http:
+                for model in CANDIDATES:
+                    payload = {"model": model, "input": list(PROBE_TEXTS)}
+                    response = http.post(EMBEDDINGS_PATH, json=payload, headers=headers)
+                    replies[model] = response.content
+                    try:
+                        body: object = response.json()
+                    except ValueError:
+                        body = None
+                    cost = (
+                        _reply_cost(body, prices[model], PROBE_TEXTS)
+                        if response.status_code == httpx.codes.OK
+                        else 0.0
+                    )
+                    total += cost
+                    line, ok = _describe(model, response.status_code, body, cost)
+                    lines.append(line)
+                    oks.append(ok)
+        finally:
+            budget.write_spend(
+                settings.runs_dir,
+                budget.SpendRecord(
+                    job_id=job_id,
+                    kind="probe",
+                    model=",".join(CANDIDATES),
+                    started=started,
+                    calls=len(oks),
+                    cost_usd=total,
+                    commit_sha=commit[0],
+                    dirty=commit[1],
+                ),
+            )
+            budget.settle(settings.runs_dir, job_id)
+        passed = len(oks) == len(CANDIDATES) and all(oks)
+        lines.append(
+            "check every reply holds one vector per text, of one length: "
+            f"{'ok' if passed else 'FAILED'}"
         )
-        budget.settle(settings.runs_dir, job_id)
-    passed = len(oks) == len(CANDIDATES) and all(oks)
-    lines.append(
-        "check every reply holds one vector per text, of one length: "
-        f"{'ok' if passed else 'FAILED'}"
-    )
-    text = "\n".join(lines)
-    print(text)
-    if args.out is not None:
-        write_result(PROG, args.out, text)
+        text = "\n".join(lines)
+        print(text)
+        if args.out is not None:
+            write_result(PROG, args.out, text)
+    finally:
+        fixtures: Path = args.fixtures
+        fixtures.mkdir(parents=True, exist_ok=True)
+        for model, content in replies.items():
+            (fixtures / f"{slug(model)}.json").write_bytes(content)
     return 0 if passed else 1
 
 

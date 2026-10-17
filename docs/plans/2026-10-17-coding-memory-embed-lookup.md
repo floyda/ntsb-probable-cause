@@ -666,3 +666,10 @@ mem-cause-pick: ## The picking call over MODEL's 20 closest lessons (0213; paid,
 - [ ] `make check` passes; commit.
 
 ## Deviations
+
+- 2026-10-17, Task 2 step 6: the first probe run (commit 7be1885) succeeded on all three models,
+  but its result file was refused: the probe saved its fixtures in the repo before writing
+  `docs/results/memory-embed-probe.txt`, so the tree was dirty. The probe now writes the result
+  first and the fixtures after, and saves them even when a request or that write fails
+  (`test_probe_writes_the_result_before_the_fixtures`). The probe is run once more; both runs'
+  spend rows stand (under a thousandth of a cent each). The first run's replies are not committed.
