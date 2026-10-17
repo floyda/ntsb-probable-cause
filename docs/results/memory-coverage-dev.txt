@@ -21,9 +21,15 @@ openai/text-embedding-3-large (embedding run 20261017T180227Z-2e3e730-memory-emb
   precision: 23.6% (474 of 2005 lessons)
   lessons a case: mean 5.00; with none 0
   hit rate minus today's: +4.0 points [+0.5, +7.5] n=401
+pick:openai/text-embedding-3-large, the picking call over openai/text-embedding-3-large's 20 nearest (picking run 20261017T181956Z-8627513-memory-cause-pick-dev-steer-400-openai-text-embedding-3-large; 0 of 401 replies failed)
+  hit rate: 59.1% n=401
+  precision: 36.3% (552 of 1519 lessons)
+  lessons a case: mean 3.79; with none 14
+  hit rate minus today's: +5.5 points [+2.7, +8.2] n=401
 
 gate (decision 0213)
   qwen/qwen3-embedding-8b: hit rate +1.2 points [-2.2, +4.7], precision 21.9% against 45.6%: not passed: hit-rate interval not above zero; precision lower than today's
   openai/text-embedding-3-small: hit rate +2.2 points [-1.5, +6.0], precision 22.7% against 45.6%: not passed: hit-rate interval not above zero; precision lower than today's
   openai/text-embedding-3-large: hit rate +4.0 points [+0.5, +7.5], precision 23.6% against 45.6%: not passed: precision lower than today's
+  pick:openai/text-embedding-3-large: hit rate +5.5 points [+2.7, +8.2], precision 36.3% against 45.6%: not passed: precision lower than today's
 winner: none
