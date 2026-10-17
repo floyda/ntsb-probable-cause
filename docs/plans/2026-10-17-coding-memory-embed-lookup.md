@@ -554,7 +554,7 @@ def embed_rule(looked: Diff3, noise: Diff3) -> tuple[bool, list[str]]:
     return stop_rule(looked, noise)
 ```
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
 
 ```python
 def test_rule_reads_embed_minus_cause_lookup(tmp_path) -> None: ...   # a pass and a fail
@@ -567,8 +567,8 @@ def test_rule_docstring_matches_the_registration() -> None: ...
 def test_report_last_line() -> None:   # "rule on dev-steer-400: PASS" / "FAIL"
 ```
 
-- [ ] **Step 2:** the tests fail.
-- [ ] **Step 3: Implement.** Arguments `--tables-a --counts-a --counts-b --cause-lookup
+- [x] **Step 2:** the tests fail.
+- [x] **Step 3: Implement.** Arguments `--tables-a --counts-a --counts-b --cause-lookup
   --embed-lookup [--sample S] [--out PATH]`. Per run: the three measures with intervals and failed
   cases. Paired: `counts(b) - counts(a), the noise`; `embed lookup - cause lookup, read by the rule`;
   and, for description, `embed lookup - counts(a)` and `cause lookup - counts(a)`. Lessons per case
@@ -580,8 +580,8 @@ mem-embed-result: ## The embed lookup's reading and rule, steering or SAMPLE=dev
 	uv run python -m scripts.memory_embed_result --tables-a $(TA) --counts-a $(CA) --counts-b $(CB) --cause-lookup $(CAUSE) --embed-lookup $(EMBED) $(if $(SAMPLE),--sample $(SAMPLE))
 ```
 
-- [ ] **Step 4:** tests pass; `make check` passes.
-- [ ] **Step 5:** commit.
+- [x] **Step 4:** tests pass; `make check` passes.
+- [x] **Step 5:** commit.
 
 ### Task 8: The picking call (only if Task 9's gate prints `winner: none`)
 
