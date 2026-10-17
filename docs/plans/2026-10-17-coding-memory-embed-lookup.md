@@ -189,7 +189,7 @@ class VectorCache:
 The sketch below assumes the documented reply `{"data": [{"index": i, "embedding": [...]}],
 "usage": {"prompt_tokens": n, "cost": x}}`. The fixtures decide; follow them where they differ.
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
 
 ```python
 def test_embed_parses_the_saved_reply(fixture_reply) -> None:
@@ -228,13 +228,13 @@ def test_cache_refuses_a_vector_of_another_length(tmp_path) -> None:
         cache.put("b", [1.0])
 ```
 
-- [ ] **Step 2:** the tests fail.
-- [ ] **Step 3: Implement.** httpx client with bearer header and the house user agent; one retry on
+- [x] **Step 2:** the tests fail.
+- [x] **Step 3: Implement.** httpx client with bearer header and the house user agent; one retry on
   429, 500, 502, 503, 504 or a transport error, after `sleep(2.0)`; a reply is refused with
   `ModelError` unless it has exactly one vector per input, each `index` once, all of one length.
   The API key never appears in an error message.
-- [ ] **Step 4:** tests pass; `make check` passes.
-- [ ] **Step 5:** commit.
+- [x] **Step 4:** tests pass; `make check` passes.
+- [x] **Step 5:** commit.
 
 ### Task 4: The embedding step, the lookup, and `dev-seal-400` in the memory scripts
 
