@@ -26,6 +26,7 @@ Usage
 import argparse
 import json
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
@@ -36,6 +37,7 @@ from ntsb_probable_cause import gitinfo
 from ntsb_probable_cause.errors import BudgetError, ConfigurationError
 from ntsb_probable_cause.scoring import budget
 from ntsb_probable_cause.settings import Settings
+from scripts._live_fence import refuse_live
 from scripts._s3_runs import write_result
 
 PROG: Final = "memory_embed"
@@ -53,6 +55,7 @@ PROBE_TEXTS: Final = (
     "a single-engine aeroplane lost power after takeoff",
     "the pilot did not maintain airspeed in the turn",
 )
+VECTORS_FILE: Final = "vectors.json"
 PROBE_PROJECTED_USD: Final = 0.01
 CHARS_PER_TOKEN: Final = 4
 TIMEOUT_SECONDS: Final = 60.0
@@ -87,6 +90,62 @@ def require_clean(dirty: bool) -> None:
     """
     if dirty:
         raise ConfigurationError("the tree has uncommitted changes: commit first")
+
+
+@dataclass(frozen=True)
+class EmbedRun:
+    """A finished embedding run's ``vectors.json``: one model's vectors for a snapshot and sample.
+
+    Attributes:
+        run_id: the run folder's name.
+        model: the embedding model.
+        lessons: lesson id to vector, for every lesson of the snapshot that embedded.
+        cases: case id to its cause sentence's vector; a case that failed is absent.
+        failed_cases: the cases whose cause sentence did not embed.
+    """
+
+    run_id: str
+    model: str
+    lessons: dict[str, tuple[float, ...]]
+    cases: dict[str, tuple[float, ...]]
+    failed_cases: tuple[str, ...]
+
+
+def _vectors(raw: object) -> dict[str, tuple[float, ...]]:
+    if not isinstance(raw, dict):
+        raise TypeError("not a mapping of vectors")
+    return {str(key): tuple(float(x) for x in value) for key, value in raw.items()}
+
+
+def read_vectors(folder: Path, *, snapshot: str, sha: str, sample: str) -> EmbedRun:
+    """An embedding run, refused unless it embedded this snapshot (and file) and sample.
+
+    Raises:
+        SystemExit: the folder is, or may be, a live run (``refuse_live``).
+        ConfigurationError: no readable ``vectors.json``; a run of another sample, snapshot or
+            snapshot file; or a model that is not a candidate.
+    """
+    refuse_live(PROG, folder)
+    try:
+        body = json.loads((folder / VECTORS_FILE).read_text())
+        run = EmbedRun(
+            run_id=folder.name,
+            model=str(body["model"]),
+            lessons=_vectors(body["lessons"]),
+            cases=_vectors(body["cases"]),
+            failed_cases=tuple(map(str, body["failed_cases"])),
+        )
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ConfigurationError(
+            f"{folder.name}: not a finished embedding run ({type(error).__name__})"
+        ) from None
+    wanted = {"sample": sample, "snapshot": snapshot, "snapshot_sha256": sha}
+    differing = [key for key, value in wanted.items() if body.get(key) != value]
+    if differing:
+        raise ConfigurationError(f"{folder.name} differs in {', '.join(differing)}")
+    if run.model not in CANDIDATES:
+        raise ConfigurationError(f"{folder.name}: {run.model} is not a registered candidate")
+    return run
 
 
 def load_prices(data_dir: Path) -> dict[str, float]:

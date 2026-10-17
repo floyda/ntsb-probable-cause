@@ -1,0 +1,278 @@
+"""Lesson coverage, the gate, and the choices file for the embedding lookup (decision 0213).
+
+Status
+    Live reading, free: reads finished apply and embedding run folders and the NTSB's verdict
+    codes, and makes no model call. Development only: the steering slice, or ``dev-seal-400`` once
+    ``docs/rounds/memory-embed-lookup.md`` is committed (``memory_coding_test.refuse_sample``);
+    never a live run (decision 0024). Counts only: no case number, cause or lesson text is printed.
+
+What it reads
+    Today's cause lookup: an apply run (``scripts/memory_cause_apply.py``), each case's five by
+    ``lookup.by_fit``. Each embedding run (``scripts/memory_embed.py embed``): each case's five by
+    ``lookup.by_similarity``. Both over every lesson of the snapshot, kept or pushed out. The
+    sample's verdict codes, through ``fields``, for scoring only (``memory.coverage``).
+
+What it prints and writes
+    Per lookup: hit rate, precision, lessons handed out, cases with none, and, for each embedding
+    run, its hit rate minus today's with the paired 95% interval. On the steering slice, the gate
+    (``gate_rule``, the registered text) and the last line ``winner: <model>`` or ``winner:
+    none``; the winner's choices are written. On ``dev-seal-400`` no gate: the choices of
+    ``--model`` are written, and the last line says the reading is a description only. Output:
+    ``docs/results/memory-coverage-dev.txt`` or ``-devseal.txt``. The choices folder,
+    ``<runs>/<stamp>-<commit>-memory-choices-<sample>-<model>/``, holds ``choices.json`` (each
+    case's lesson ids, in order) and ``choice.json`` (what made them); the coding test's
+    ``tools --choices`` reads it.
+
+Usage
+    uv run python -m scripts.memory_coverage --applies RUN --embeds RUN [RUN ...]
+        [--sample S] [--model M] [--snapshot NAME] [--out PATH]
+"""
+
+import argparse
+import json
+import statistics
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Final
+
+from ntsb_probable_cause import gitinfo
+from ntsb_probable_cause.errors import ConfigurationError
+from ntsb_probable_cause.memory import coverage, lookup, snapshots
+from ntsb_probable_cause.memory.coverage import Coverage
+from ntsb_probable_cause.memory.lessons import Lesson
+from ntsb_probable_cause.memory.pool import LearningCase
+from ntsb_probable_cause.scoring import metrics, samples
+from ntsb_probable_cause.settings import Settings
+from scripts import memory_coding_test, memory_embed
+from scripts._s3_runs import write_result
+
+PROG: Final = "memory_coverage"
+SNAPSHOT: Final = "pilot-2010-recount"
+STEERING: Final = memory_coding_test.SAMPLE
+SEAL: Final = memory_coding_test.SEAL_SAMPLE
+OUTS: Final = {
+    STEERING: Path("docs/results/memory-coverage-dev.txt"),
+    SEAL: Path("docs/results/memory-coverage-devseal.txt"),
+}
+CHOICES_FILE: Final = "choices.json"
+CHOICE_SUMMARY_FILE: Final = "choice.json"
+NONE: Final = "none"
+
+Clock = Callable[[], datetime]
+Chosen = dict[str, tuple[Lesson, ...]]
+
+
+def gate_rule(
+    today: Coverage, candidates: Mapping[str, Coverage], prices: Mapping[str, float]
+) -> tuple[str | None, list[str]]:
+    """Decision 0213, as registered in docs/rounds/memory-embed-lookup.md.
+
+    A candidate passes only if its hit rate minus today's cause lookup's, paired on the same
+    cases, is positive with its whole 95% interval above zero, and its precision is no lower
+    than today's. Of those that pass, the highest hit rate goes forward; an exact tie goes to the
+    lower list price. None passing gives none.
+    """
+    passed: list[tuple[float, float, str]] = []
+    lines: list[str] = []
+    for model, cov in candidates.items():
+        ids = sorted(today.hits.keys() & cov.hits.keys())
+        mean, low, high = metrics.paired_difference(
+            [cov.hits[i] for i in ids], [today.hits[i] for i in ids]
+        )
+        reasons = []
+        if not low > 0:
+            reasons.append("hit-rate interval not above zero")
+        if cov.precision < today.precision:
+            reasons.append("precision lower than today's")
+        head = (
+            f"{model}: hit rate {mean * 100:+.1f} points [{low * 100:+.1f}, {high * 100:+.1f}], "
+            f"precision {cov.precision * 100:.1f}% against {today.precision * 100:.1f}%"
+        )
+        lines.append(f"{head}: {'not passed: ' + '; '.join(reasons) if reasons else 'passed'}")
+        if not reasons:
+            passed.append((-cov.hit_rate, prices[model], model))
+    return (min(passed)[2] if passed else None), lines
+
+
+def verdict_cases_for(processed: Path, sample: str) -> tuple[dict[str, LearningCase], int]:
+    """The sample's cases to score and how many were left out (``coverage.verdict_cases``).
+
+    Raises:
+        ConfigurationError: a case of the sample is not in the processed file.
+    """
+    ids = samples.sample_ids(sample)
+    try:
+        raws = samples.load_cases(processed, ids)
+    except ValueError:
+        raise ConfigurationError(
+            f"some of the {len(ids)} cases are not in {processed / 'cases.parquet'}"
+        ) from None
+    return coverage.verdict_cases(ids, raws)
+
+
+def _block(label: str, cov: Coverage, chosen: Chosen) -> list[str]:
+    sizes = [len(chosen.get(case_id, ())) for case_id in cov.hits]
+    mean = statistics.mean(sizes) if sizes else 0.0
+    return [
+        label,
+        f"  hit rate: {cov.hit_rate * 100:.1f}% n={len(cov.hits)}",
+        f"  precision: {cov.precision * 100:.1f}% ({cov.agreeing} of {cov.handed_out} lessons)",
+        f"  lessons a case: mean {mean:.2f}; with none {sum(n == 0 for n in sizes)}",
+    ]
+
+
+def _paired_line(cov: Coverage, today: Coverage) -> str:
+    ids = sorted(today.hits.keys() & cov.hits.keys())
+    mean, low, high = metrics.paired_difference(
+        [cov.hits[i] for i in ids], [today.hits[i] for i in ids]
+    )
+    return (
+        f"  hit rate minus today's: {mean * 100:+.1f} points "
+        f"[{low * 100:+.1f}, {high * 100:+.1f}] n={len(ids)}"
+    )
+
+
+def _write_choices(  # noqa: PLR0913 -- the choices and every fact that made them
+    runs_dir: Path,
+    chosen: Chosen,
+    *,
+    sample: str,
+    snapshot: str,
+    sha: str,
+    model: str,
+    source_run: str,
+    commit: str,
+    now: datetime,
+) -> str:
+    run_id = f"{now:%Y%m%dT%H%M%SZ}-{commit}-memory-choices-{sample}-{memory_embed.slug(model)}"
+    folder = runs_dir / run_id
+    folder.mkdir(parents=True)
+    ids = {case_id: [lesson.lesson_id for lesson in lessons] for case_id, lessons in chosen.items()}
+    (folder / CHOICES_FILE).write_text(json.dumps(ids, indent=1) + "\n")
+    summary = {
+        "sample": sample,
+        "snapshot": snapshot,
+        "snapshot_sha256": sha,
+        "k": lookup.K,
+        "min_applies": lookup.MIN_APPLIES,
+        "method": "embedding",
+        "model": model,
+        "source_run": source_run,
+        "commit": commit,
+    }
+    (folder / CHOICE_SUMMARY_FILE).write_text(json.dumps(summary, indent=1) + "\n")
+    return run_id
+
+
+def reading(args: argparse.Namespace, settings: Settings, now: datetime) -> str:
+    """The whole text; writes the choices folder of the winner (steering) or of ``--model``.
+
+    Raises:
+        ConfigurationError: a refused sample, run or argument (see the module docstring).
+    """
+    sample: str = args.sample
+    if sample not in OUTS:
+        raise ConfigurationError(f"lesson coverage reads {STEERING} or {SEAL}, not {sample}")
+    memory_coding_test.refuse_sample(sample)
+    if sample == SEAL and args.model is None:
+        raise ConfigurationError(f"on {SEAL}, --model names the method the steering slice chose")
+    memory = snapshots.load_checked(args.snapshot, snapshots.SNAPSHOT_DIR)
+    sha = snapshots.sha256_of(snapshots.snapshot_path(args.snapshot, snapshots.SNAPSHOT_DIR))
+    every = (*memory.lessons, *memory.pushed_out)
+    applied = memory_coding_test.read_applies(
+        settings.runs_dir / args.applies, args.snapshot, sha, sample
+    )
+    runs = [
+        memory_embed.read_vectors(
+            settings.runs_dir / name, snapshot=args.snapshot, sha=sha, sample=sample
+        )
+        for name in args.embeds
+    ]
+    by_model = {run.model: run for run in runs}
+    if len(by_model) != len(runs):
+        raise ConfigurationError("two embedding runs of one model: name one run per model")
+    if args.model is not None and args.model not in by_model:
+        raise ConfigurationError(f"--model {args.model} names no embedding run given")
+    cases, left_out = verdict_cases_for(settings.data_dir / "processed", sample)
+
+    today_chosen: Chosen = {
+        case_id: lookup.by_fit(every, applied.get(case_id, frozenset())) for case_id in cases
+    }
+    chosen: dict[str, Chosen] = {
+        model: {
+            case_id: lookup.by_similarity(every, run.lessons, run.cases[case_id])
+            for case_id in cases
+            if case_id in run.cases
+        }
+        for model, run in by_model.items()
+    }
+    today = coverage.coverage(today_chosen, cases)
+    scored = {model: coverage.coverage(c, cases) for model, c in chosen.items()}
+
+    out = [
+        f"lesson coverage on {sample}, {args.snapshot}, K={lookup.K}, floor {lookup.MIN_APPLIES} "
+        "(decision 0213); counts only",
+        "",
+        f"cases scored: {len(cases)}; left out (no occurrence code): {left_out}",
+        "",
+        *_block(f"today's cause lookup (apply run {args.applies})", today, today_chosen),
+    ]
+    for model, cov in scored.items():
+        run = by_model[model]
+        label = f"{model} (embedding run {run.run_id}; {len(run.failed_cases)} failed)"
+        out += [*_block(label, cov, chosen[model]), _paired_line(cov, today)]
+    commit = gitinfo.commit_state()[0]
+    if sample == STEERING:
+        prices = memory_embed.load_prices(settings.data_dir)
+        winner, lines = gate_rule(today, scored, prices)
+        out += ["", "gate (decision 0213)", *[f"  {line}" for line in lines]]
+        last = f"winner: {winner or NONE}"
+    else:
+        winner, last = args.model, "description only (decision 0213)"
+    if winner is not None:
+        choices_run = _write_choices(
+            settings.runs_dir,
+            chosen[winner],
+            sample=sample,
+            snapshot=args.snapshot,
+            sha=sha,
+            model=winner,
+            source_run=by_model[winner].run_id,
+            commit=commit,
+            now=now,
+        )
+        out.append(f"choices run: {choices_run}")
+    out.append(last)
+    return "\n".join(out)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def main(
+    argv: Sequence[str] | None = None, *, settings: Settings | None = None, now: Clock = _utc_now
+) -> int:
+    """Read the runs, apply the gate on the steering slice, write the choices. 0, or 1 refused."""
+    parser = argparse.ArgumentParser(prog=PROG)
+    parser.add_argument("--applies", required=True, help="today's apply run on the sample")
+    parser.add_argument("--embeds", nargs="+", required=True, help="one embedding run per model")
+    parser.add_argument("--sample", default=STEERING, choices=tuple(OUTS))
+    parser.add_argument("--model", help=f"on {SEAL}: the model whose choices to write")
+    parser.add_argument("--snapshot", default=SNAPSHOT)
+    parser.add_argument("--out", type=Path)
+    args = parser.parse_args(argv)
+    settings = settings or Settings()
+    try:
+        text = reading(args, settings, now())
+        print(text)
+        write_result(PROG, args.out or OUTS[args.sample], text)
+    except ConfigurationError as exc:
+        print(f"refused: {exc}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

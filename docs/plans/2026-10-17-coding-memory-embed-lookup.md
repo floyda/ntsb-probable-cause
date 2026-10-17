@@ -427,7 +427,7 @@ def gate_rule(today, candidates, prices):
   in ids])`, `ids` the cases scored in both; pass when its low end is above zero and
   `c.precision >= today.precision`.
 
-- [ ] **Step 1: Failing tests.**
+- [x] **Step 1: Failing tests.**
 
 ```python
 def test_coverage_counts_hits_and_precision() -> None:
@@ -456,8 +456,8 @@ def test_dev_seal_reading_names_no_winner_and_writes_the_named_models_choices(tm
 def test_picks_are_scored_and_gated_the_same_way(tmp_path) -> None: ...
 ```
 
-- [ ] **Step 2:** the tests fail.
-- [ ] **Step 3: Implement** `memory/coverage.py`, then `scripts/memory_coverage.py`:
+- [x] **Step 2:** the tests fail.
+- [x] **Step 3: Implement** `memory/coverage.py`, then `scripts/memory_coverage.py`:
   - Arguments: `--applies RUN` (today's apply run), `--embeds RUN [RUN ...]` (one embedding run
     per model), `[--picks RUN]`, `[--sample S]` (default the steering slice), `[--model M]` (on
     `dev-seal-400`: which embedding run's or pick's choices to write), `--out PATH`.
@@ -481,8 +481,8 @@ mem-coverage: ## Lesson coverage and the gate on the steering slice, or SAMPLE=d
 	uv run python -m scripts.memory_coverage --applies $(or $(APPLIES),20261017T090550Z-0b949a6-memory-cause-apply-pilot-2010-recount) --embeds $(EMBEDS) $(if $(PICKS),--picks $(PICKS)) $(if $(SAMPLE),--sample $(SAMPLE)) $(if $(MODEL),--model $(MODEL))
 ```
 
-- [ ] **Step 4:** tests pass; `make check` passes.
-- [ ] **Step 5:** commit.
+- [x] **Step 4:** tests pass; `make check` passes.
+- [x] **Step 5:** commit.
 
 ### Task 6: The `embed-lookup` condition in the coding test
 
