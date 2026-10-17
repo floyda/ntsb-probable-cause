@@ -331,3 +331,61 @@ def test_a_dev_400_reading_names_decision_0212(
     h = Harness(tmp_path, _by_cause)
     assert h.run("--sample", "dev-400") == 0
     assert "(decisions 0211 and 0212)" in h.out.read_text().splitlines()[0]
+
+
+# --- dev-seal-400, for the embedding lookup's confirmation (decision 0213) --------------------
+
+
+def test_dev_seal_400_is_refused_until_the_embedding_lookup_is_registered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    registered = {ca.REGISTRATION, memory_coding_test.CONFIRM_REGISTRATION}
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path in registered)
+    h = Harness(tmp_path, _by_cause)
+    assert h.run("--sample", "dev-seal-400") == 1
+    assert h.messages.batch_keys == []
+
+
+def test_dev_seal_400_runs_once_registered_names_its_sample_and_decision_0213(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    registered = {ca.REGISTRATION, memory_coding_test.EMBED_REGISTRATION}
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: path in registered)
+    seen: list[str | None] = []
+
+    def causes(processed: Path, sample: str | None = None) -> dict[str, str | None]:
+        del processed
+        seen.append(sample)
+        return dict(CAUSES)
+
+    monkeypatch.setattr(memory_coding_test, "causes", causes)
+    monkeypatch.setattr(ca, "allowed_ids", lambda sample=None: frozenset(CAUSES))
+    h = Harness(tmp_path, _by_cause)
+    assert h.run("--sample", "dev-seal-400") == 0
+    assert seen == ["dev-seal-400"]
+    assert "-memory-cause-apply-dev-seal-400-t" in h.folder().name
+    assert "(decisions 0211 and 0213)" in h.out.read_text().splitlines()[0]
+
+
+def test_each_sample_has_its_own_counts_file() -> None:
+    assert ca.default_out("dev-steer-400") == Path("docs/results/memory-cause-apply-dev.txt")
+    assert ca.default_out("dev-400") == Path("docs/results/memory-cause-apply-dev400.txt")
+    assert ca.default_out("dev-seal-400") == Path("docs/results/memory-cause-apply-devseal.txt")
+
+
+@pytest.mark.parametrize(
+    ("resume", "sample"),
+    [
+        ("20261017T000000Z-abc1234-memory-cause-apply-dev-seal-400-t", "dev-400"),
+        ("20261017T000000Z-abc1234-memory-cause-apply-dev-seal-400-t", None),
+        ("20261017T000000Z-abc1234-memory-cause-apply-dev-400-t", "dev-seal-400"),
+    ],
+)
+def test_a_dev_seal_resume_on_another_sample_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, resume: str, sample: str | None
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    h = Harness(tmp_path, _by_cause)
+    argv = ["--resume", resume, *(["--sample", sample] if sample else [])]
+    assert h.run(*argv) == 1
+    assert h.messages.batch_keys == []

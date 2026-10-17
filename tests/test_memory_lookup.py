@@ -114,3 +114,53 @@ def test_by_fit_reads_no_code_and_keeps_k_above_the_floor() -> None:
     assert _ids(found) == ["L7", "L6", "L5", "L4", "L3"]
     assert lk.by_fit([thin], {"L9"}) == ()
     assert lk.by_fit(lessons, set()) == ()
+
+
+# Decision 0213: the embedding lookup. -------------------------------------------------------
+
+
+def test_by_similarity_keeps_the_floor_and_orders_by_cosine() -> None:
+    lessons = [
+        _lesson("L1", applies=20, agrees=10),
+        _lesson("L2", applies=9, agrees=9),
+        _lesson("L3", applies=30, agrees=3),
+    ]
+    vectors = {"L1": [1.0, 0.0], "L2": [1.0, 0.0], "L3": [0.6, 0.8]}
+    assert _ids(lk.by_similarity(lessons, vectors, [1.0, 0.0])) == ["L1", "L3"]
+
+
+def test_by_similarity_breaks_ties_by_fit_then_applies_then_id() -> None:
+    lessons = [
+        _lesson("L2", applies=10, agrees=5),
+        _lesson("L1", applies=10, agrees=5),
+        _lesson("L4", applies=20, agrees=10),
+        _lesson("L3", applies=10, agrees=9),
+    ]
+    vectors = {lesson.lesson_id: [2.0, 0.0] for lesson in lessons}
+    assert _ids(lk.by_similarity(lessons, vectors, [1.0, 0.0])) == ["L3", "L4", "L1", "L2"]
+
+
+def test_by_similarity_skips_lessons_without_a_vector_and_caps_at_k() -> None:
+    lessons = [_lesson(f"L{i}") for i in range(1, 8)]
+    vectors = {f"L{i}": [1.0, float(i)] for i in range(1, 7)}
+    found = lk.by_similarity(lessons, vectors, [0.0, 1.0])
+    assert _ids(found) == ["L6", "L5", "L4", "L3", "L2"]
+    assert _ids(lk.by_similarity(lessons, vectors, [0.0, 1.0], k=2)) == ["L6", "L5"]
+
+
+def test_by_similarity_reads_no_code() -> None:
+    by_code = _lesson("L1", first=(LANDING_LOC,))
+    other = _lesson("L2", first=(OTHER,))
+    vectors = {"L1": [0.0, 1.0], "L2": [1.0, 0.0]}
+    assert _ids(lk.by_similarity([by_code, other], vectors, [1.0, 0.1])) == ["L2", "L1"]
+
+
+def test_cosine_is_direction_only_and_zero_for_a_zero_vector() -> None:
+    assert lk.cosine([2.0, 0.0], [5.0, 0.0]) == 1.0
+    assert lk.cosine([1.0, 0.0], [0.0, 3.0]) == 0.0
+    assert lk.cosine([0.0, 0.0], [1.0, 0.0]) == 0.0
+
+
+def test_lesson_text_is_statement_and_scope() -> None:
+    lesson = _lesson("L1")
+    assert lk.lesson_text(lesson) == "the NTSB codes it so (scope: a scope)"

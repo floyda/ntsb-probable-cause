@@ -6,7 +6,8 @@ Status
     dirty tree and runs only once ``docs/rounds/memory-cause-lookup.md`` is committed. It checks
     the month's learner line (``NTSB_LEARNING_MONTHLY_BUDGET_USD``) before sending. Its sample is
     ``dev-steer-400``, or ``dev-400`` for decision 0212's confirmation once
-    ``docs/rounds/memory-confirm-dev400.md`` is committed (``memory_coding_test.refuse_sample``).
+    ``docs/rounds/memory-confirm-dev400.md`` is committed, or ``dev-seal-400`` for decision 0213's
+    once ``docs/rounds/memory-embed-lookup.md`` is committed (``memory_coding_test.refuse_sample``).
 
 What it sends
     For each of the sample's cases with a probable-cause sentence, one apply request: the
@@ -21,9 +22,9 @@ What it writes
     ``<runs>/<run id>/``: the client's ``calls.jsonl`` and ``batches.jsonl`` (so a resumed run
     never pays again for a usable reply), ``applies.json`` (each case's lesson ids) and
     ``apply.json`` (the snapshot, its hash, the applier, and counts). Then, counts only,
-    ``docs/results/memory-cause-apply-dev.txt`` (``-dev400.txt`` for ``dev-400``): what the apply
-    step named, and what the cause
-    lookup (``lookup.by_fit``) would give each case. No score is read.
+    ``docs/results/memory-cause-apply-dev.txt`` (``-dev400.txt`` for ``dev-400``,
+    ``-devseal.txt`` for ``dev-seal-400``): what the apply step named, and what the cause lookup
+    (``lookup.by_fit``) would give each case. No score is read.
 
 Resume
     ``--resume RUN_ID`` continues a run that died before ``apply.json`` was written: calls with a
@@ -66,6 +67,8 @@ APPLIES_FILE: Final = "applies.json"
 SUMMARY_FILE: Final = "apply.json"
 DEFAULT_OUT: Final = Path("docs/results/memory-cause-apply-dev.txt")
 CONFIRM_OUT: Final = Path("docs/results/memory-cause-apply-dev400.txt")
+SEAL_OUT: Final = Path("docs/results/memory-cause-apply-devseal.txt")
+SAMPLES: Final = (SAMPLE, memory_coding_test.CONFIRM_SAMPLE, memory_coding_test.SEAL_SAMPLE)
 _ID: Final = re.compile(r"L(\d+)")
 
 
@@ -156,8 +159,21 @@ def send(
     return applied, failed
 
 
+def default_out(sample: str) -> Path:
+    """Each sample's own counts file (decisions 0211, 0212, 0213)."""
+    return {
+        SAMPLE: DEFAULT_OUT,
+        memory_coding_test.CONFIRM_SAMPLE: CONFIRM_OUT,
+        memory_coding_test.SEAL_SAMPLE: SEAL_OUT,
+    }[sample]
+
+
 def _decision(sample: str) -> str:
-    return "decision 0211" if sample == SAMPLE else "decisions 0211 and 0212"
+    return {
+        SAMPLE: "decision 0211",
+        memory_coding_test.CONFIRM_SAMPLE: "decisions 0211 and 0212",
+        memory_coding_test.SEAL_SAMPLE: "decisions 0211 and 0213",
+    }[sample]
 
 
 def report(memory: Memory, applied: Mapping[str, Sequence[str]], summary: ApplySummary) -> str:
@@ -194,9 +210,8 @@ def _run_id(args: argparse.Namespace, commit: str) -> str:
             which would send that sample's cases into the other run's folder.
     """
     if args.resume is not None:
-        confirm = memory_coding_test.CONFIRM_SAMPLE
-        names_confirm = f"-memory-cause-apply-{confirm}-" in args.resume
-        if names_confirm != (args.sample == confirm):
+        named = [s for s in SAMPLES[1:] if f"-memory-cause-apply-{s}-" in args.resume]
+        if named != ([] if args.sample == SAMPLE else [args.sample]):
             raise ConfigurationError(
                 f"--resume {args.resume} was not made on {args.sample}: resume it with the "
                 "sample it was started with"
@@ -220,13 +235,13 @@ def main(
     parser.add_argument("--resume", metavar="RUN_ID", help="reuse a run folder")
     parser.add_argument(
         "--sample",
-        choices=(SAMPLE, memory_coding_test.CONFIRM_SAMPLE),
+        choices=SAMPLES,
         default=SAMPLE,
-        help=f"{memory_coding_test.CONFIRM_SAMPLE} only for decision 0212's confirmation",
+        help="dev-400 for decision 0212's confirmation, dev-seal-400 for 0213's",
     )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
-    out = args.out or (DEFAULT_OUT if args.sample == SAMPLE else CONFIRM_OUT)
+    out = args.out or default_out(args.sample)
     settings = settings or Settings()
     try:
         commit, dirty = gitinfo.commit_state()

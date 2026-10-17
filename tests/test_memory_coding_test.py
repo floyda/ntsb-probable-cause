@@ -776,7 +776,7 @@ def test_dev_400_is_accepted_only_once_the_confirmation_is_registered(
         ct.refuse_sample("dev-400")
     monkeypatch.setattr(ct.gitinfo, "is_committed", lambda path: True)
     ct.refuse_sample("dev-400")
-    for other in ("dev-seal-400", "dev-seal-s3-400", "heldout-400", "live"):
+    for other in ("dev-seal-s3-400", "heldout-400", "live"):
         with pytest.raises(ConfigurationError):
             ct.refuse_sample(other)
 
@@ -859,3 +859,44 @@ def test_cause_lookup_on_dev_400_needs_an_apply_run_on_dev_400(
     spec = json.loads((settings.runs_dir / f"{SOURCE}-causelookup5-t" / "spec.json").read_text())
     assert spec["sample"] == "dev-400"
     assert spec["lookup_lessons"] == {FIRST: ["L002"]}
+
+
+# --- dev-seal-400, the embedding lookup's confirmation (decision 0213) ------------------------
+
+
+def test_dev_seal_400_is_accepted_only_once_the_embedding_lookup_is_registered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ct.gitinfo, "is_committed", lambda path: path != ct.EMBED_REGISTRATION)
+    with pytest.raises(ConfigurationError, match="0213"):
+        ct.refuse_sample("dev-seal-400")
+    monkeypatch.setattr(ct.gitinfo, "is_committed", lambda path: path == ct.EMBED_REGISTRATION)
+    ct.refuse_sample("dev-seal-400")
+    with pytest.raises(ConfigurationError):
+        ct.refuse_sample("dev-400")
+
+
+def test_dev_seal_400_allows_the_four_registered_conditions_only() -> None:
+    for allowed in ("tables", "counts", "cause-lookup", "embed-lookup"):
+        ct.refuse_condition("dev-seal-400", allowed)
+    for refused in ("memory", "lookup"):
+        with pytest.raises(ConfigurationError, match="0213"):
+            ct.refuse_condition("dev-seal-400", refused)
+
+
+def test_dev_400_still_refuses_the_embed_lookup() -> None:
+    with pytest.raises(ConfigurationError, match="0212"):
+        ct.refuse_condition("dev-400", "embed-lookup")
+
+
+def test_answer_on_dev_seal_400_reads_that_sample_and_names_it(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    read: list[str | None] = []
+    monkeypatch.setattr(ct, "causes", _recording_causes(read))
+    fake = FakeBatch(_tables_answer)
+    assert _run(settings, fake, ["answer", "--repeat", "a", "--sample", "dev-seal-400"]) == 0
+    assert read == ["dev-seal-400"]
+    folder = _folder(settings, "-dev-seal-400-mem-tables-a")
+    assert json.loads((folder / "spec.json").read_text())["sample"] == "dev-seal-400"

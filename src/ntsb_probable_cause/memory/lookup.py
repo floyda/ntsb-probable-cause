@@ -1,12 +1,14 @@
-"""The lessons for one case, by its first answer's codes (0210) or its cause sentence (0211).
+"""The lessons for one case: by its first answer's codes (0210), or its cause sentence (0211, 0213).
 
 A script, not a model. ``lookup`` matches a lesson when a code it predicts is among the model's
 first answer's codes; its query is the answer's occurrence codes and finding categories only.
 ``by_fit`` reads no code: it ranks the lessons the apply step named for the case's cause sentence.
-No case text is read here.
+``by_similarity`` reads no code either: it ranks lessons by how close their embedding is to the
+cause sentence's (decision 0213). No case text is read here.
 """
 
-from collections.abc import Collection, Sequence
+import math
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -106,5 +108,47 @@ def by_fit(
         if lesson.lesson_id in applied
         and lesson.support is not None
         and lesson.support.applies >= min_applies
+    ]
+    return tuple(sorted(eligible, key=rank)[:k])
+
+
+def lesson_text(lesson: Lesson) -> str:
+    """The text a lesson is embedded as: its statement and scope, never a code (decision 0213)."""
+    return f"{lesson.statement} (scope: {lesson.scope})"
+
+
+def cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    """Cosine similarity of two vectors of one length; 0.0 when either is all zeros."""
+    norms = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return sum(x * y for x, y in zip(a, b, strict=True)) / norms if norms else 0.0
+
+
+def by_similarity(
+    lessons: Sequence[Lesson],
+    vectors: Mapping[str, Sequence[float]],
+    query: Sequence[float],
+    *,
+    k: int = K,
+    min_applies: int = MIN_APPLIES,
+) -> tuple[Lesson, ...]:
+    """Up to ``k`` eligible lessons closest to ``query`` (decision 0213).
+
+    ``vectors`` maps a lesson id to its embedding; ``query`` is the case's cause sentence's.
+    Eligible: at least ``min_applies`` learning cases and a vector. Order: highest cosine, then
+    highest fit, then most cases applied to, then lesson id, so the same input always gets the
+    same lessons.
+    """
+
+    def rank(lesson: Lesson) -> tuple[float, float, int, str]:
+        applies = lesson.support.applies if lesson.support is not None else 0
+        closeness = cosine(vectors[lesson.lesson_id], query)
+        return (-closeness, -fit(lesson), -applies, lesson.lesson_id)
+
+    eligible = [
+        lesson
+        for lesson in lessons
+        if lesson.support is not None
+        and lesson.support.applies >= min_applies
+        and lesson.lesson_id in vectors
     ]
     return tuple(sorted(eligible, key=rank)[:k])

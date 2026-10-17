@@ -269,7 +269,7 @@ mem-recount: ## Recount a learner run's lessons by the corrected rule, no call (
 mem-recount-report: ## What the corrected count changed, pilot-2010 against its recount (0209); free
 	uv run python -m scripts.memory_recount_report --old pilot-2010 --new pilot-2010-recount --out docs/results/memory-recount-dev.txt
 
-mem-coding-answer: ## The coding test's tables condition on dev-steer-400, or SAMPLE=dev-400 (0204, 0212; paid, OpenRouter)
+mem-coding-answer: ## The coding test's tables condition on dev-steer-400, or SAMPLE=dev-400 or dev-seal-400 (0204, 0212, 0213; paid, OpenRouter)
 	uv run python -m scripts.stage_spend --stage mem --estimate 4.01 && scripts/with_pass_keys.sh uv run python -m scripts.memory_coding_test answer --repeat $(REPEAT) $(if $(SAMPLE),--sample $(SAMPLE)) $(if $(RESUME),--resume $(RESUME))
 
 mem-coding-tools: ## The counts condition, or the memory condition with SNAPSHOT (0204; paid, OpenRouter)
@@ -287,7 +287,7 @@ mem-pilot-result: ## The pilot's reading and stop rule (0204); free
 mem-lookup-result: ## The lookup test's reading and its rule (0210); free
 	uv run python -m scripts.memory_lookup_result --tables-a $(TA) --counts-a $(CA) --counts-b $(CB) --note $(NOTE) --lookup $(LOOKUP) --pilot-memory $(PILOT) --out docs/results/memory-lookup-dev.txt
 
-mem-cause-apply: ## The apply step on dev-steer-400's cause sentences, or SAMPLE=dev-400 (0211, 0212; paid, plan credit)
+mem-cause-apply: ## The apply step on dev-steer-400's cause sentences, or SAMPLE=dev-400 or dev-seal-400 (0211, 0212, 0213; paid, plan credit)
 	scripts/with_pass_keys.sh uv run python -m scripts.memory_cause_apply --snapshot $(SNAPSHOT) $(if $(SAMPLE),--sample $(SAMPLE)) $(if $(RESUME),--resume $(RESUME))
 
 mem-coding-cause-lookup: ## The cause-lookup condition: K lessons per case from APPLIES (0211; paid, OpenRouter)

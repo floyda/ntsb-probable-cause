@@ -4,7 +4,9 @@ Status
     Live tool for the coding memory's pilot (decision 0204), paid on OpenRouter: GPT-6 Luna
     batch, about a cent or less a case. Development only: ``dev-steer-400``, and ``dev-400`` for
     the confirmation of decision 0212 (tables, counts and cause lookup only, once
-    ``docs/rounds/memory-confirm-dev400.md`` is committed). It refuses a dirty tree before
+    ``docs/rounds/memory-confirm-dev400.md`` is committed), and ``dev-seal-400`` for decision
+    0213's (those and the embed lookup, once ``docs/rounds/memory-embed-lookup.md`` is committed).
+    It refuses a dirty tree before
     anything is read, so every run names a clean commit. Its spend rows are kind
     ``coding-test``: the $40 monthly guard counts them, and so does the side track's $10 line
     (``make mem-spend``, decision 0207).
@@ -126,6 +128,9 @@ CONFIRM_SAMPLE: Final = "dev-400"  # decision 0212's confirmation
 CONFIRM_REGISTRATION: Final = Path("docs/rounds/memory-confirm-dev400.md")
 # The conditions the confirmation registered; the others stay on the steering slice.
 CONFIRM_CONDITIONS: Final = frozenset({"tables", "counts", "cause-lookup"})
+SEAL_SAMPLE: Final = "dev-seal-400"  # decision 0213's confirmation of the embedding lookup
+EMBED_REGISTRATION: Final = Path("docs/rounds/memory-embed-lookup.md")
+SEAL_CONDITIONS: Final = frozenset({"tables", "counts", "cause-lookup", "embed-lookup"})
 GUIDANCE: Final = ("r3-loc-stall", "r6-aircraft-control")
 REGISTRATION: Final = Path("docs/rounds/memory-pilot.md")
 LOOKUP_REGISTRATION: Final = Path("docs/rounds/memory-lookup.md")
@@ -149,7 +154,7 @@ SPEC_FILE: Final = "spec.json"
 CASES_FILE: Final = "cases.jsonl"
 _PROG: Final = "memory_coding_test"
 
-Condition = Literal["tables", "counts", "memory", "lookup", "cause-lookup"]
+Condition = Literal["tables", "counts", "memory", "lookup", "cause-lookup", "embed-lookup"]
 BatchFactory = Callable[[Settings], BatchRunner]
 Clock = Callable[[], datetime]
 
@@ -177,37 +182,48 @@ class CodingCase(BaseModel):
 
 
 def refuse_sample(sample: str) -> None:
-    """Refuse every sample but the steering slice and a registered ``dev-400``.
+    """Refuse every sample but the steering slice, a registered ``dev-400`` or ``dev-seal-400``.
 
     Raises:
-        ConfigurationError: ``sample`` is neither ``dev-steer-400`` (decisions 0203, 0204) nor
+        ConfigurationError: ``sample`` is not ``dev-steer-400`` (decisions 0203, 0204), nor
             ``dev-400`` with ``docs/rounds/memory-confirm-dev400.md`` committed (decision 0212),
-            or the ``mem`` statistics' pool holds it (``coding_stats.refuse_pool_holding``).
+            nor ``dev-seal-400`` with ``docs/rounds/memory-embed-lookup.md`` committed (decision
+            0213); or the ``mem`` statistics' pool holds it (``coding_stats.refuse_pool_holding``).
     """
-    if sample == CONFIRM_SAMPLE:
-        if not gitinfo.is_committed(CONFIRM_REGISTRATION):
+    gates = {
+        CONFIRM_SAMPLE: (CONFIRM_REGISTRATION, "the confirmation's registration (decision 0212)"),
+        SEAL_SAMPLE: (EMBED_REGISTRATION, "the embedding lookup's registration (decision 0213)"),
+    }
+    if sample in gates:
+        registration, waits_for = gates[sample]
+        if not gitinfo.is_committed(registration):
             raise ConfigurationError(
-                f"{CONFIRM_REGISTRATION} is not committed: {CONFIRM_SAMPLE} waits for the "
-                "confirmation's registration (decision 0212)"
+                f"{registration} is not committed: {sample} waits for {waits_for}"
             )
     elif sample != SAMPLE:
         raise ConfigurationError(
-            f"the coding test runs on {SAMPLE} only, and {CONFIRM_SAMPLE} for decision 0212's "
-            f"confirmation (decisions 0203, 0204), not {sample}"
+            f"the coding test runs on {SAMPLE}, and on {CONFIRM_SAMPLE} and {SEAL_SAMPLE} once "
+            f"registered (decisions 0203, 0204, 0212, 0213), not on {sample}"
         )
     coding_stats.refuse_pool_holding(STATS, sample)
 
 
 def refuse_condition(sample: str, condition: Condition) -> None:
-    """Refuse on ``dev-400`` a condition the confirmation did not register (decision 0212).
+    """Refuse a condition its confirmation did not register (decisions 0212, 0213).
 
     Raises:
         ConfigurationError: ``sample`` is ``dev-400`` and ``condition`` is not tables, counts or
-            cause lookup.
+            cause lookup; or it is ``dev-seal-400`` and ``condition`` is not one of those or the
+            embed lookup.
     """
-    if sample == CONFIRM_SAMPLE and condition not in CONFIRM_CONDITIONS:
+    allowed = {
+        CONFIRM_SAMPLE: (CONFIRM_CONDITIONS, "0212"),
+        SEAL_SAMPLE: (SEAL_CONDITIONS, "0213"),
+    }
+    if sample in allowed and condition not in allowed[sample][0]:
         raise ConfigurationError(
-            f"the {condition} condition is not registered on {CONFIRM_SAMPLE} (decision 0212)"
+            f"the {condition} condition is not registered on {sample} "
+            f"(decision {allowed[sample][1]})"
         )
 
 
@@ -982,9 +998,9 @@ def main(
     a.add_argument("--repeat", choices=("a", "b"), required=True)
     a.add_argument(
         "--sample",
-        choices=(SAMPLE, CONFIRM_SAMPLE),
+        choices=(SAMPLE, CONFIRM_SAMPLE, SEAL_SAMPLE),
         default=SAMPLE,
-        help=f"{CONFIRM_SAMPLE} only for decision 0212's confirmation",
+        help=f"{CONFIRM_SAMPLE} for decision 0212's confirmation, {SEAL_SAMPLE} for 0213's",
     )
     a.add_argument("--resume", metavar="RUN_ID", help="continue this run's folder")
     t = sub.add_parser("tools", help="the counts condition, or memory with --snapshot")
