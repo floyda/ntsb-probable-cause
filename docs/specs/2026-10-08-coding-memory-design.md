@@ -496,6 +496,19 @@ confirmation on a fresh development sample, with its own counts runs, before any
 $1.5604 of plan credit for the apply step (397 calls: four cause sentences repeat another word for
 word), $0.1814 on OpenRouter for the coding run.
 
+**Added 2026-10-17: the cause lookup is confirmed on `dev-400`.** Andy chose the existing sample
+`dev-400`, outside the learning pool and unread by any memory test, for the confirmation (decision
+[0212](../decisions/0212-the-cause-lookup-is-confirmed-once-on-dev-400.md), registration
+`docs/rounds/memory-confirm-dev400.md`). The method ran unchanged, with `dev-400`'s own tables and
+counts runs; 0 of 401 apply replies failed (`docs/results/memory-cause-apply-dev400.txt`). **Cause
+lookup minus counts (a) on `dev-400`** (`docs/results/memory-confirm-dev400.txt`): finding
+recall@10 +2.6 points [+0.8, +4.5] (399 cases), against a noise of 0.6; top-1 +2.0 [−0.7, +4.7];
+top-3 +4.5 [+2.0, +7.2]. The rule passed and the finding gain's interval is above zero, so as
+registered (§9) the cause lookup is reported as confirmed on development cases. Next, as Andy
+asked, a better lookup is tried on the steering slice and confirmed once on `dev-seal-400`, under
+its own decision; connecting the memory to the agent is a separate decision after that. Cost:
+$0.5529 on OpenRouter for the four runs, $1.4307 of plan credit for the apply step.
+
 ## Glossary
 
 - **Coding memory**: a short file of written lessons about how the NTSB codes accidents,

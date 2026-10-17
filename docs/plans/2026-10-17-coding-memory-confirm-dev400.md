@@ -49,11 +49,11 @@ Luna batch over OpenRouter for the coding test.
 ### Task 3: The runs (paid, about $0.57 and $1.56 of credit)
 
 - [x] Andy signs; the registration is committed.
-- [ ] `make mem-coding-answer REPEAT=a SAMPLE=dev-400`.
-- [ ] `make mem-coding-tools SOURCE=<tables> REPEAT=a`, then `REPEAT=b`.
+- [x] `make mem-coding-answer REPEAT=a SAMPLE=dev-400`.
+- [x] `make mem-coding-tools SOURCE=<tables> REPEAT=a`, then `REPEAT=b`.
 - [x] `make mem-cause-apply SNAPSHOT=pilot-2010-recount SAMPLE=dev-400`; commit its counts file.
-- [ ] `make mem-coding-cause-lookup SOURCE=<tables> SNAPSHOT=pilot-2010-recount K=5 APPLIES=<apply>`.
-- [ ] `make mem-confirm-result ...`; commit the result, the spec note and the CLAUDE.md line.
+- [x] `make mem-coding-cause-lookup SOURCE=<tables> SNAPSHOT=pilot-2010-recount K=5 APPLIES=<apply>`.
+- [x] `make mem-confirm-result ...`; commit the result, the spec note and the CLAUDE.md line.
 
 ## Deviations
 
@@ -64,3 +64,7 @@ Luna batch over OpenRouter for the coding test.
   §10 now name the script behind each figure, or say a count was unscripted. Not fixed: (2) the
   reading trusts the cause-lookup spec's `apply_run` without opening it; the coding run already
   refuses an apply run on another sample (`read_applies`), so only a hand-edited spec gets past.
+- 2026-10-17, Task 3: the apply step ran in parallel with the tables run, and the two counts runs
+  and the cause lookup in parallel over tables(a); none reads another's output, and the reading
+  does not compare commits. Costs: tables $0.1453, counts $0.1161 and $0.1136, cause lookup
+  $0.1779 ($0.5529 against about $0.57); the apply step $1.4307 of credit against about $1.56.

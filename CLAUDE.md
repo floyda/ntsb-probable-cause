@@ -621,8 +621,10 @@ finding recall@10 +0.0 points over counts, top-3 +4.5. Andy overrode that stop (
 `docs/rounds/memory-cause-lookup.md`): up to five lessons per case chosen by the learner's apply step
 from the cause sentence alone, with no code, **passed** (`docs/results/memory-cause-lookup-dev.txt`):
 finding recall@10 +2.9 points [+0.6, +5.3] over counts, against a noise of 0.3; top-1 +2.5, top-3
-+4.0. As registered, a confirmation on a fresh development sample comes before any relearning; it is
-Andy's call. Learner spend rows are kind `learning`, on their own monthly line
++4.0. **It was confirmed once on `dev-400`** (0212, `docs/rounds/memory-confirm-dev400.md`,
+`docs/results/memory-confirm-dev400.txt`), unchanged, with that sample's own counts runs: finding
+recall@10 +2.6 points [+0.8, +4.5] over counts, against a noise of 0.6; top-1 +2.0, top-3 +4.5.
+`dev-seal-400` is kept for confirming a better lookup tuned on the steering slice. Learner spend rows are kind `learning`, on their own monthly line
 `NTSB_LEARNING_MONTHLY_BUDGET_USD` (default $90, never counted by the $40 guard; raised for one
 command by 0208); coding-test rows are kind `coding-test`, on the $40 guard and the side track's
 $10 line. The learner reads `ANTHROPIC_API_KEY`, which `scripts/with_pass_keys.sh` takes from `pass`
