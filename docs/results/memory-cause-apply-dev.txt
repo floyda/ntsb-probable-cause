@@ -1,0 +1,7 @@
+apply step on dev-steer-400's cause sentences, pilot-2010-recount, claude-sonnet-5-5 at high (decision 0211); counts only
+
+lessons shown: 198; the lookup may choose: 106 (floor 10)
+cases sent: 401; without a cause sentence: 0; failed replies: 0
+lessons named a case: mean 2.34, median 2, none 19
+cause lookup, K=5: with 5 lessons 19; with 1 to 4 343; with none 39
+distinct lessons the lookup uses: 95
