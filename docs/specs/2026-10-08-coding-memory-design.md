@@ -583,7 +583,7 @@ Each candidate is compared with today's lookup on the same 401 steering cases. A
 passes only if both hold:
 
 - its hit rate is higher, with the paired 95% interval of the difference above zero (the paired
-  interval the coding readings use, `scripts/memory_pilot_result.py:paired`);
+  bootstrap the coding readings use, `scoring/metrics.py:paired_difference`);
 - its precision is no lower (point estimates).
 
 If more than one passes, the highest hit rate goes forward; an exact tie goes to the lower list
@@ -639,9 +639,12 @@ decides nothing. Every memory script refuses `dev-seal-400` until the registrati
 
 ### 13.7 What is built
 
-1. **`model/embeddings.py`:** the OpenRouter embeddings client. It sends a list of texts and
+1. **`memory/embeddings.py`:** the OpenRouter embeddings client. It sends a list of texts and
    returns one vector per text and the call's cost. It is written only after a **shape probe**:
-   one small request per candidate model, the real replies saved as test fixtures (rule 2).
+   one small request per candidate model, the real replies saved as test fixtures (rule 2). It
+   lives in the memory package, not in `model/`, so the declared experiment stays out of the
+   library (0200, 0201) and the product's model package never carries verdict text. It writes no
+   spend row; the script that calls it does, so no new import contract exemption is needed.
 2. **A vector cache** under `NTSB_RUNS_DIR`, never committed, keyed by model id and a fingerprint
    of the text. A rerun reads the cache and spends nothing.
 3. **`memory/lookup.py:by_similarity`:** the lookup of §13.2, a pure function beside `by_fit`. No
