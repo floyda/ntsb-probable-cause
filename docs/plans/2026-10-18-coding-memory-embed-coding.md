@@ -68,7 +68,7 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
 
 ### Task 5: The steering runs (paid, about $0.73)
 
-- [ ] `make mem-embed-choices ...`; commit `docs/results/memory-embed-choices-dev.txt`.
+- [x] `make mem-embed-choices ...`; commit `docs/results/memory-embed-choices-dev.txt`.
 - [ ] Four `make mem-coding-embed-lookup` runs, one per choices run.
 - [ ] `make mem-embed-coding-result ...`; commit `docs/results/memory-embed-coding-dev.txt`.
 

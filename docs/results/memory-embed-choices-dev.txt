@@ -1,0 +1,57 @@
+embedding lookups for the coding test, dev-steer-400, pilot-2010-recount, K=5, floor 10 (decision 0214); counts only
+
+cases scored: 401; left out (no occurrence code): 0
+
+today's cause lookup (apply run 20261017T090550Z-0b949a6-memory-cause-apply-pilot-2010-recount)
+  hit rate: 53.6% n=401
+  precision: 45.6% (400 of 878 lessons)
+  lessons a case: mean 2.19; with none 39
+  first-code part: case hit 51.1%, precision 45.2% (379 of 839)
+  finding part: case hit 87.3%, precision 94.3% (828 of 878)
+
+openai/text-embedding-3-large (from 20261017T180227Z-2e3e730-memory-embed-dev-steer-400-openai-text-embedding-3-large)
+  hit rate: 57.6% n=401
+  precision: 23.6% (474 of 2005 lessons)
+  lessons a case: mean 5.00; with none 0
+  hit rate minus today's: +4.0 points [+0.5, +7.5] n=401
+  first-code part: case hit 56.6%, precision 25.1% (495 of 1972)
+    first-code part case hit minus today's: +5.5 points [+2.0, +9.2] n=401
+  finding part: case hit 96.3%, precision 80.9% (1622 of 2005)
+    finding part case hit minus today's: +9.0 points [+6.2, +12.0] n=401
+choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-openai-text-embedding-3-large
+
+pick:openai/text-embedding-3-large (from 20261017T181956Z-8627513-memory-cause-pick-dev-steer-400-openai-text-embedding-3-large)
+  hit rate: 59.1% n=401
+  precision: 36.3% (552 of 1519 lessons)
+  lessons a case: mean 3.79; with none 14
+  hit rate minus today's: +5.5 points [+2.7, +8.2] n=401
+  first-code part: case hit 57.9%, precision 37.3% (552 of 1479)
+    first-code part case hit minus today's: +6.7 points [+4.0, +9.5] n=401
+  finding part: case hit 93.5%, precision 90.8% (1379 of 1519)
+    finding part case hit minus today's: +6.2 points [+3.7, +9.0] n=401
+choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-pick-openai-text-embedding-3-large
+
+fit:openai/text-embedding-3-large (from 20261017T180227Z-2e3e730-memory-embed-dev-steer-400-openai-text-embedding-3-large)
+  hit rate: 68.3% n=401
+  precision: 24.2% (486 of 2005 lessons)
+  lessons a case: mean 5.00; with none 0
+  hit rate minus today's: +14.7 points [+9.7, +19.7] n=401
+  first-code part: case hit 34.9%, precision 21.0% (271 of 1291)
+    first-code part case hit minus today's: -16.2 points [-20.7, -11.2] n=401
+  finding part: case hit 90.0%, precision 62.6% (1256 of 2005)
+    finding part case hit minus today's: +2.7 points [-1.0, +6.5] n=401
+choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-fit-openai-text-embedding-3-large
+
+fill:openai/text-embedding-3-large (from 20261017T180227Z-2e3e730-memory-embed-dev-steer-400-openai-text-embedding-3-large)
+  hit rate: 54.4% n=401
+  precision: 43.9% (403 of 917 lessons)
+  lessons a case: mean 2.29; with none 0
+  hit rate minus today's: +0.7 points [+0.0, +1.7] n=401
+  first-code part: case hit 51.9%, precision 43.6% (382 of 877)
+    first-code part case hit minus today's: +0.7 points [+0.0, +1.7] n=401
+  finding part: case hit 93.5%, precision 93.0% (853 of 917)
+    finding part case hit minus today's: +6.2 points [+3.7, +8.7] n=401
+choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-fill-openai-text-embedding-3-large
+
+today's lessons a case: 2.19
+description only (decision 0214): the coding test decides
