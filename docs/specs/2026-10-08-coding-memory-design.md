@@ -1,6 +1,6 @@
 # A coding memory learned from closed cases: design note
 
-Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). A better lookup designed 2026-10-17 (§13); it stopped at its gate the same day (§13.12). Drafted 2026-10-08; refreshed 2026-10-14. A declared
+Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). A better lookup designed 2026-10-17 (§13); it stopped at its gate the same day (§13.12); every lookup went to the coding test, 2026-10-18 (§13.13). Drafted 2026-10-08; refreshed 2026-10-14. A declared
 experiment on development cases: Andy chose on 2026-10-14 to run its pilot now, as a side track
 beside S4 (§11, question 1), answered the other questions in §11 the same day, and the decisions
 in §10 are recorded. The implementation plan is in `docs/plans/`. The memory reaches the agent
@@ -727,6 +727,35 @@ As registered, the method stops here and the result is published: no coding run 
 the readings show is a trade: every new way of choosing found more cases with an agreeing lesson,
 and each did it by handing out more lessons that do not agree. The gate asked for both, and
 neither was offered.
+
+### 13.13 Added 2026-10-18: every embedding lookup goes to the coding test (decision 0214)
+
+Status: Andy approved every run the confirmation needs, 2026-10-18, after an independent review
+of §13.12; registration `docs/rounds/memory-embed-coding.md`, plan
+`docs/plans/2026-10-18-coding-memory-embed-coding.md`.
+
+**What the review found.** No bug: it rebuilt `docs/results/memory-coverage-dev.txt` exactly from
+the run folders. But the gate's precision (§13.3) mostly measured the first code, while the
+memory's benefit is on findings. Every figure here is from `docs/results/memory-proxy-check-dev.txt`:
+
+- On the first-code part, today's lookup is right 45.2% of the time, the large embedding model
+  25.1%, the picking call 37.3%. On the finding part 94.3%, 80.9% and 90.8%; there the new lookups
+  reach an agreeing lesson in more cases than today's, +9.0 points [+6.2, +12.0] and +6.2 [+3.7,
+  +9.0].
+- Today's lookup hands out a mean of 2.19 lessons a case, and precision falls with rank for every
+  lookup, so a five-a-case lookup could not match its precision (the risk §13.4 named).
+- Agreement only partly predicts the coding benefit. In today's cause-lookup coding run, the
+  cases whose lessons all disagreed still gained finding recall@10 (+5.3 points, noise +3.6); the
+  cases with an agreeing lesson gained more over their noise, mostly on top-3 (+7.0, noise +0.9).
+- The picking call cost $2.8987 of plan credit, 1.86 times the apply step, which §13.12 did not
+  record.
+
+**The method.** Four lookups over the large model's embeddings each get one steering coding run
+(about $0.18 each): its five nearest; the picking call's choices; the five with the highest
+cosine × fit; and today's lookup with the nearest lesson added for a case it leaves empty. Each is
+read by §13.6's rule against today's cause lookup. The largest passing finding gain goes forward,
+and runs once on `dev-seal-400` as §13.6 says. Lesson coverage is printed as a description only,
+each part apart. Whatever `dev-seal-400` shows closes the lookup question for `pilot-2010-recount`.
 
 ## Glossary
 
