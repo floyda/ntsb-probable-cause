@@ -1,10 +1,12 @@
-"""The lessons for one case: by its first answer's codes (0210), or its cause sentence (0211, 0213).
+"""The lessons for one case: by its first answer's codes (0210), or its cause sentence (0211-0214).
 
 A script, not a model. ``lookup`` matches a lesson when a code it predicts is among the model's
 first answer's codes; its query is the answer's occurrence codes and finding categories only.
 ``by_fit`` reads no code: it ranks the lessons the apply step named for the case's cause sentence.
 ``by_similarity`` reads no code either: it ranks lessons by how close their embedding is to the
-cause sentence's (decision 0213). No case text is read here.
+cause sentence's (decision 0213); ``by_similarity_fit`` weighs that by fit, and
+``by_fit_or_nearest`` fills a case ``by_fit`` leaves empty with the nearest lesson (decision 0214).
+No case text is read here.
 """
 
 import math
@@ -152,3 +154,52 @@ def by_similarity(
         and lesson.lesson_id in vectors
     ]
     return tuple(sorted(eligible, key=rank)[:k])
+
+
+def by_similarity_fit(
+    lessons: Sequence[Lesson],
+    vectors: Mapping[str, Sequence[float]],
+    query: Sequence[float],
+    *,
+    k: int = K,
+    min_applies: int = MIN_APPLIES,
+) -> tuple[Lesson, ...]:
+    """Up to ``k`` eligible lessons with the highest cosine x fit (decision 0214).
+
+    As ``by_similarity``, but a lesson close in wording that is rarely right ranks lower. Order:
+    highest cosine x fit, then highest fit, then most cases applied to, then lesson id.
+    """
+
+    def rank(lesson: Lesson) -> tuple[float, float, int, str]:
+        applies = lesson.support.applies if lesson.support is not None else 0
+        score = cosine(vectors[lesson.lesson_id], query) * fit(lesson)
+        return (-score, -fit(lesson), -applies, lesson.lesson_id)
+
+    eligible = [
+        lesson
+        for lesson in lessons
+        if lesson.support is not None
+        and lesson.support.applies >= min_applies
+        and lesson.lesson_id in vectors
+    ]
+    return tuple(sorted(eligible, key=rank)[:k])
+
+
+def by_fit_or_nearest(  # noqa: PLR0913 -- the case's two queries and the lookup's two settings
+    lessons: Sequence[Lesson],
+    applied: Collection[str],
+    vectors: Mapping[str, Sequence[float]],
+    query: Sequence[float] | None,
+    *,
+    k: int = K,
+    min_applies: int = MIN_APPLIES,
+) -> tuple[Lesson, ...]:
+    """Today's cause lookup (``by_fit``); for a case it gives none, the one nearest lesson (0214).
+
+    ``query`` is the case's cause-sentence vector, or None when it has none: then the case keeps
+    no lesson.
+    """
+    today = by_fit(lessons, applied, k=k, min_applies=min_applies)
+    if today or query is None:
+        return today
+    return by_similarity(lessons, vectors, query, k=1, min_applies=min_applies)

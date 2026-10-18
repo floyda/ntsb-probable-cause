@@ -164,3 +164,52 @@ def test_cosine_is_direction_only_and_zero_for_a_zero_vector() -> None:
 def test_lesson_text_is_statement_and_scope() -> None:
     lesson = _lesson("L1")
     assert lk.lesson_text(lesson) == "the NTSB codes it so (scope: a scope)"
+
+
+# Decision 0214: cosine x fit, and today's lookup filled by the nearest lesson. --------------
+
+
+def test_by_similarity_fit_ranks_by_cosine_times_fit() -> None:
+    lessons = [
+        _lesson("L1", applies=20, agrees=4),  # fit 0.2, cosine 1.0: score 0.2
+        _lesson("L2", applies=20, agrees=16),  # fit 0.8, cosine 0.6: score 0.48
+        _lesson("L3", applies=9, agrees=9),  # below the floor
+    ]
+    vectors = {"L1": [1.0, 0.0], "L2": [0.6, 0.8], "L3": [1.0, 0.0]}
+    assert _ids(lk.by_similarity_fit(lessons, vectors, [1.0, 0.0])) == ["L2", "L1"]
+
+
+def test_by_similarity_fit_breaks_ties_by_fit_then_applies_then_id() -> None:
+    lessons = [
+        _lesson("L2", applies=10, agrees=5),
+        _lesson("L1", applies=10, agrees=5),
+        _lesson("L3", applies=20, agrees=10),
+        _lesson("L4", applies=40, agrees=40),  # fit 1.0 at cosine 0.5: score 0.5, as the rest
+    ]
+    vectors = {"L1": [1.0, 0.0], "L2": [1.0, 0.0], "L3": [1.0, 0.0], "L4": [0.5, 0.75**0.5]}
+    assert _ids(lk.by_similarity_fit(lessons, vectors, [1.0, 0.0])) == ["L4", "L3", "L1", "L2"]
+
+
+def test_by_similarity_fit_skips_lessons_without_a_vector_and_caps_at_k() -> None:
+    lessons = [_lesson(f"L{i}") for i in range(1, 8)]
+    vectors = {f"L{i}": [1.0, float(i)] for i in range(1, 7)}
+    assert _ids(lk.by_similarity_fit(lessons, vectors, [0.0, 1.0], k=2)) == ["L6", "L5"]
+
+
+def test_by_fit_or_nearest_keeps_todays_lessons_when_there_are_any() -> None:
+    lessons = [_lesson("L1", applies=20, agrees=10), _lesson("L2", applies=20, agrees=15)]
+    vectors = {"L1": [1.0, 0.0], "L2": [0.0, 1.0]}
+    found = lk.by_fit_or_nearest(lessons, frozenset({"L1", "L2"}), vectors, [1.0, 0.0])
+    assert _ids(found) == ["L2", "L1"]
+
+
+def test_by_fit_or_nearest_gives_an_empty_case_its_one_nearest_eligible_lesson() -> None:
+    lessons = [_lesson("L1"), _lesson("L2"), _lesson("L3", applies=9, agrees=9)]
+    vectors = {"L1": [0.0, 1.0], "L2": [0.6, 0.8], "L3": [1.0, 0.0]}
+    named_below_floor = frozenset({"L3"})
+    assert _ids(lk.by_fit_or_nearest(lessons, named_below_floor, vectors, [1.0, 0.0])) == ["L2"]
+
+
+def test_by_fit_or_nearest_gives_nothing_without_a_lesson_or_a_vector() -> None:
+    lessons = [_lesson("L1")]
+    assert lk.by_fit_or_nearest(lessons, frozenset(), {"L1": [1.0, 0.0]}, None) == ()

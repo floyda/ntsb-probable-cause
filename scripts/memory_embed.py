@@ -74,10 +74,17 @@ PROBE_TEXTS: Final = (
 )
 VECTORS_FILE: Final = "vectors.json"
 # The steering gate's committed reading; its last line names the model dev-seal-400 confirms.
-STEERING_COVERAGE: Final = Path("docs/results/memory-coverage-dev.txt")
+# The steering reading that names the lookup dev-seal-400 confirms (decision 0214; 0213's gate
+# reading, docs/results/memory-coverage-dev.txt, named none).
+STEERING_READING: Final = Path("docs/results/memory-embed-coding-dev.txt")
 WINNER_PREFIX: Final = "winner: "
-# The gate's name for the picking call over a model's shortlist (decision 0213's fallback).
+# A candidate's name is its method's prefix and its embedding model: the picking call over the
+# model's shortlist (0213's fallback), cosine x fit, and today's lookup filled by the nearest
+# lesson (0214).
 PICK_PREFIX: Final = "pick:"
+FIT_PREFIX: Final = "fit:"
+FILL_PREFIX: Final = "fill:"
+METHOD_PREFIXES: Final = {"pick": PICK_PREFIX, "fit": FIT_PREFIX, "fill": FILL_PREFIX}
 CACHE_DIR: Final = "memory-embed-cache"
 SNAPSHOT: Final = "pilot-2010-recount"
 EMBED_SAMPLES: Final = (memory_coding_test.SAMPLE, memory_coding_test.SEAL_SAMPLE)
@@ -143,26 +150,41 @@ def refuse_embed_arguments(model: str, sample: str) -> None:
     refuse_other_than_winner(model, sample)
 
 
-def steering_winner() -> str:
-    """What the steering gate chose: the last line of its committed reading.
+def split_candidate(name: str) -> tuple[str, str]:
+    """A candidate's method (``embedding``, ``pick``, ``fit`` or ``fill``) and embedding model."""
+    for method, prefix in METHOD_PREFIXES.items():
+        if name.startswith(prefix):
+            return method, name.removeprefix(prefix)
+    return "embedding", name
 
-    A model, or ``pick:<model>`` for the picking call over that model's shortlist.
+
+def candidate_name(method: str, model: str) -> str:
+    """The candidate's name for ``method`` over ``model``: ``split_candidate``'s inverse."""
+    return f"{METHOD_PREFIXES.get(method, '')}{model}"
+
+
+def steering_winner() -> str:
+    """What the steering slice chose: the last line of its committed coding reading (0214).
+
+    A model, or ``<method>:<model>`` for the picking call, cosine x fit, or today's lookup filled
+    by the nearest lesson.
 
     Raises:
-        ConfigurationError: ``docs/results/memory-coverage-dev.txt`` is not committed, or its last
-            line names no candidate (``winner: none``: the method stopped).
+        ConfigurationError: ``docs/results/memory-embed-coding-dev.txt`` is not committed, or its
+            last line names no candidate (``winner: none``: the method stopped).
     """
-    if not gitinfo.is_committed(STEERING_COVERAGE):
+    if not gitinfo.is_committed(STEERING_READING):
         raise ConfigurationError(
-            f"{STEERING_COVERAGE} is not committed: dev-seal-400 confirms the steering slice's "
-            "winner only (decision 0213)"
+            f"{STEERING_READING} is not committed: dev-seal-400 confirms the steering slice's "
+            "winner only (decision 0214)"
         )
-    lines = STEERING_COVERAGE.read_text().strip().splitlines()
+    lines = STEERING_READING.read_text().strip().splitlines()
     last = lines[-1] if lines else ""
     winner = last.removeprefix(WINNER_PREFIX)
-    if not last.startswith(WINNER_PREFIX) or winner.removeprefix(PICK_PREFIX) not in CANDIDATES:
+    _method, model = split_candidate(winner)
+    if not last.startswith(WINNER_PREFIX) or model not in CANDIDATES:
         raise ConfigurationError(
-            f"{STEERING_COVERAGE} names no embedding winner on its last line (decision 0213)"
+            f"{STEERING_READING} names no embedding winner on its last line (decision 0214)"
         )
     return winner
 
@@ -172,22 +194,26 @@ def refuse_other_than_winner(model: str, sample: str, *, method: str | None = No
 
     Raises:
         ConfigurationError: ``sample`` is ``dev-seal-400`` and ``model`` is not the winner's
-            embedding model, or ``method`` (``embedding`` or ``pick``, when given) is not the
-            winner's (decision 0213: nothing is chosen on ``dev-seal-400``).
+            embedding model, or ``method`` (``embedding``, ``pick``, ``fit`` or ``fill``, when
+            given) is not the winner's (decisions 0213, 0214: nothing is chosen on
+            ``dev-seal-400``).
     """
     if sample != memory_coding_test.SEAL_SAMPLE:
         return
-    winner = steering_winner()
-    expected = "pick" if winner.startswith(PICK_PREFIX) else "embedding"
-    wanted = winner.removeprefix(PICK_PREFIX)
+    expected, wanted = split_candidate(steering_winner())
     if model != wanted:
         raise ConfigurationError(
-            f"on {sample} only the steering winner {wanted} runs (decision 0213), not {model}"
+            f"on {sample} only the steering winner {wanted} runs (decision 0214), not {model}"
         )
     if method is not None and method != expected:
-        names = {"pick": "the picking call", "embedding": "the embedding lookup alone"}
+        names = {
+            "pick": "the picking call",
+            "embedding": "the embedding lookup alone",
+            "fit": "the lookup by cosine x fit",
+            "fill": "today's lookup filled by the nearest lesson",
+        }
         raise ConfigurationError(
-            f"on {sample} the steering winner is {names[expected]} (decision 0213), not "
+            f"on {sample} the steering winner is {names[expected]} (decision 0214), not "
             f"{names.get(method, method)}"
         )
 

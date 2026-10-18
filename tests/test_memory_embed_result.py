@@ -152,7 +152,7 @@ def test_main_writes_a_counts_only_reading_that_ends_with_the_rule(
 def _steering_winner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str) -> None:
     path = tmp_path / "memory-coverage-dev.txt"
     path.write_text(f"lesson coverage ...\nwinner: {model}\n")
-    monkeypatch.setattr(memory_embed, "STEERING_COVERAGE", path)
+    monkeypatch.setattr(memory_embed, "STEERING_READING", path)
 
 
 def test_dev_seal_reading_refuses_a_model_other_than_the_steering_winner(

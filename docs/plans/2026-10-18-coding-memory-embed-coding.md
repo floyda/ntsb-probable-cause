@@ -52,14 +52,14 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
 
 ### Task 3: The code
 
-- [ ] `lookup.by_similarity_fit` and `lookup.by_fit_or_nearest`, with tests.
-- [ ] `memory_embed`: candidate names `fit:` and `fill:`, a method for each prefix, the steering
+- [x] `lookup.by_similarity_fit` and `lookup.by_fit_or_nearest`, with tests.
+- [x] `memory_embed`: candidate names `fit:` and `fill:`, a method for each prefix, the steering
   winner read from `docs/results/memory-embed-coding-dev.txt`, with tests.
-- [ ] `memory_coding_test.CHOICE_METHODS` gains `fit` and `fill`; `memory_coverage` refuses
+- [x] `memory_coding_test.CHOICE_METHODS` gains `fit` and `fill`; `memory_coverage` refuses
   `dev-seal-400` (0214's choices script writes it); tests.
-- [ ] `scripts/memory_embed_choices.py` and `scripts/memory_embed_coding_result.py`, Makefile
+- [x] `scripts/memory_embed_choices.py` and `scripts/memory_embed_coding_result.py`, Makefile
   targets `mem-embed-choices` and `mem-embed-coding-result`, with tests.
-- [ ] `make check` passes; commit.
+- [x] `make check` passes; commit.
 
 ### Task 4: Review
 
@@ -88,3 +88,16 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
   review's per-case reading needs the noise beside it: in the same groups, counts(b) − counts(a)
   is +3.6 points where today's lessons do not agree and −1.9 where one agrees, so the cases with an
   agreeing lesson gained more over their own noise, mostly on top-3. Decision 0214 says so.
+- 2026-10-18, Task 2: the registration is drafted in `docs/rounds/` but left uncommitted until Andy
+  signs it (committing it unlocks the paid steps); Task 3's commits stage explicit paths around it,
+  and `test_selection_rule_docstring_matches_the_registration` reads the draft.
+- 2026-10-18, Task 3: `memory_coding_test`'s embed-lookup run id now ends with the choices run's
+  candidate (`<source>-embedlookup5-<snapshot>-<candidate>`), so the four steering runs over one
+  tables run do not share a folder. No embed-lookup run had been made, so no run is renamed.
+- 2026-10-18, Task 3: `memory_coverage` now refuses `dev-seal-400` and lost `--model`; its seal
+  path (0213 §4 step 8.6) is `memory_embed_choices` (registration §4 step 4.6). Its seal tests
+  were replaced by one refusal test.
+- 2026-10-18, Task 3: `scripts/memory_embed_coding_result.py` was written before its tests (the
+  tests then ran green on first run, apart from the registration-text test, which waited for the
+  draft). The exploratory proxy check keeps its own part-split lines rather than importing
+  `memory_embed_choices.part_lines`, so its committed output stays reproducible.

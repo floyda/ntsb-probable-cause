@@ -228,7 +228,7 @@ def test_dev_seal_400_needs_the_picking_call_to_have_won_on_steering(
 ) -> None:
     h = Harness(tmp_path, _answer(["L001"]))
     reading = tmp_path / "memory-coverage-dev.txt"
-    monkeypatch.setattr(memory_embed, "STEERING_COVERAGE", reading)
+    monkeypatch.setattr(memory_embed, "STEERING_READING", reading)
     seal = _embed_run(h.settings, h.sha, sample="dev-seal-400")
     reading.write_text(f"...\nwinner: {LARGE}\n")
     assert h.run("--sample", "dev-seal-400", embeds=seal) == 1

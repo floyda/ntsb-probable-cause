@@ -1,5 +1,6 @@
 """The coding test (decisions 0204, 0205). A fake batch runner; offline; made-up cases."""
 
+import argparse
 import json
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -948,7 +949,7 @@ def test_embed_lookup_gives_each_case_exactly_its_choices_in_order(embed_ready: 
     assert system.index("[L003]") < system.index("[L002]")
     assert "[L001]" not in system
     assert "[L004]" not in system
-    folder = embed_ready.runs_dir / f"{SOURCE}-embedlookup5-t"
+    folder = embed_ready.runs_dir / f"{SOURCE}-embedlookup5-t-openai-text-embedding-3-small"
     spec = json.loads((folder / "spec.json").read_text())
     assert spec["condition"] == "embed-lookup"
     assert spec["lookup_by"] == "embedding"
@@ -990,6 +991,33 @@ def test_embed_lookup_refuses_a_choices_file_that_does_not_belong(
     fake = FakeBatch(_tools_answer)
     assert _run(embed_ready, fake, EMBED_ARGV) == 1
     assert not fake.submitted
+
+
+@pytest.mark.parametrize("method", ["pick", "fit", "fill"])
+def test_embed_lookup_reads_every_method_decision_0214_registers(
+    embed_ready: Settings, method: str
+) -> None:
+    _choices_run(embed_ready, {FIRST: ["L002"]}, method=method)
+    fake = FakeBatch(_tools_answer)
+    assert _run(embed_ready, fake, EMBED_ARGV) == 0
+    (spec,) = embed_ready.runs_dir.glob("*-embedlookup5-*/spec.json")
+    assert json.loads(spec.read_text())["lookup_by"] == method
+
+
+def test_each_choices_run_makes_its_own_embed_lookup_run() -> None:
+    args = argparse.Namespace(
+        source="src",
+        snapshot="t",
+        lookup=5,
+        applies=None,
+        repeat=None,
+        resume=None,
+        choices=(
+            "20261018T100000Z-abc1234-memory-choices-dev-steer-400-"
+            "fit-openai-text-embedding-3-large"
+        ),
+    )
+    assert ct._tools_run_id(args) == ("src-embedlookup5-t-fit-openai-text-embedding-3-large")
 
 
 def test_embed_lookup_refuses_a_missing_choices_folder(embed_ready: Settings) -> None:

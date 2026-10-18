@@ -143,7 +143,7 @@ APPLY_SUMMARY_FILE: Final = "apply.json"  # scripts.memory_cause_apply's files (
 APPLIES_FILE: Final = "applies.json"
 CHOICES_FILE: Final = "choices.json"  # scripts.memory_coverage's files (decision 0213)
 CHOICE_SUMMARY_FILE: Final = "choice.json"
-CHOICE_METHODS: Final = frozenset({"embedding", "pick"})
+CHOICE_METHODS: Final = frozenset({"embedding", "pick", "fit", "fill"})  # 0213, 0214
 APPLY_MODEL: Final = SONNET  # the registered applier (decision 0211, its registration's §4)
 APPLY_EFFORT: Final = "high"
 CAP_USD: Final = 0.05
@@ -871,7 +871,11 @@ def _tools_run_id(args: argparse.Namespace) -> str:
             raise ConfigurationError("the counts condition needs --repeat a or b")
         run_id = f"{args.source}-counts-{args.repeat}"
     elif args.choices is not None:
-        run_id = f"{args.source}-embedlookup{args.lookup}-{args.snapshot}"
+        # One run per choices run: its candidate is the tail of its name (decision 0214).
+        candidate = str(args.choices).rsplit("-memory-choices-", 1)[-1]
+        for sample in (SAMPLE, SEAL_SAMPLE):
+            candidate = candidate.removeprefix(f"{sample}-")
+        run_id = f"{args.source}-embedlookup{args.lookup}-{args.snapshot}-{candidate}"
     elif args.applies is not None:
         run_id = f"{args.source}-causelookup{args.lookup}-{args.snapshot}"
     elif args.lookup is not None:

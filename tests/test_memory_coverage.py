@@ -329,52 +329,7 @@ def test_two_runs_of_one_model_are_refused(
 def _steering_winner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str) -> None:
     path = tmp_path / "memory-coverage-dev.txt"
     path.write_text(f"lesson coverage ...\nwinner: {model}\n")
-    monkeypatch.setattr(memory_embed, "STEERING_COVERAGE", path)
-
-
-def test_dev_seal_reading_names_no_winner_and_writes_the_named_models_choices(
-    setup: tuple[Settings, str],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    settings, sha = setup
-    _steering_winner(tmp_path, monkeypatch, SMALL)
-    monkeypatch.setattr(mc, "verdict_cases_for", lambda processed, sample: (dict(CASES), 0))
-    _apply_run(settings, sha, {"A": ["L1"], "B": []}, sample="dev-seal-400")
-    run = _embed_run(
-        settings, SMALL, sha, {"A": [1.0, 0.1], "B": [0.1, 1.0]}, sample="dev-seal-400"
-    )
-    argv = ["--sample", "dev-seal-400", "--applies", APPLY_RUN, "--embeds", run, "--model", SMALL]
-    assert _main(settings, *argv) == 0
-    text = capsys.readouterr().out
-    assert text.splitlines()[-1] == "description only (decision 0213)"
-    assert "gate" not in text
-    choices_run = re.search(r"choices run: (\S+)", text)
-    assert choices_run is not None
-    assert "-memory-choices-dev-seal-400-" in choices_run.group(1)
-
-
-def test_dev_seal_reading_needs_the_model(
-    setup: tuple[Settings, str], capsys: pytest.CaptureFixture[str]
-) -> None:
-    settings, sha = setup
-    _apply_run(settings, sha, {"A": [], "B": []}, sample="dev-seal-400")
-    run = _embed_run(settings, SMALL, sha, {"A": [1.0, 0.0]}, sample="dev-seal-400")
-    assert _main(settings, "--sample", "dev-seal-400", "--applies", APPLY_RUN, "--embeds", run) == 1
-    assert "--model" in capsys.readouterr().out
-
-
-def test_dev_seal_reading_is_refused_before_registration(
-    setup: tuple[Settings, str], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    settings, sha = setup
-    monkeypatch.setattr(gitinfo, "is_committed", lambda path, repo=Path(): False)
-    _apply_run(settings, sha, {"A": [], "B": []}, sample="dev-seal-400")
-    run = _embed_run(settings, SMALL, sha, {"A": [1.0, 0.0]}, sample="dev-seal-400")
-    argv = ["--sample", "dev-seal-400", "--applies", APPLY_RUN, "--embeds", run, "--model", SMALL]
-    assert _main(settings, *argv) == 1
-    assert "0213" in capsys.readouterr().out
+    monkeypatch.setattr(memory_embed, "STEERING_READING", path)
 
 
 def test_steering_gate_needs_all_three_candidates(
@@ -410,26 +365,6 @@ def test_choices_record_a_clean_tree(setup: tuple[Settings, str]) -> None:
     assert _main(settings, "--applies", APPLY_RUN, "--embeds", *runs) == 0
     (summary,) = settings.runs_dir.glob(f"*-memory-choices-*/{mc.CHOICE_SUMMARY_FILE}")
     assert json.loads(summary.read_text())["dirty"] is False
-
-
-def test_dev_seal_reading_takes_one_run_of_the_steering_winner(
-    setup: tuple[Settings, str],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    settings, sha = setup
-    _steering_winner(tmp_path, monkeypatch, SMALL)
-    _apply_run(settings, sha, {"A": [], "B": []}, sample="dev-seal-400")
-    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
-    small = _embed_run(settings, SMALL, sha, near, sample="dev-seal-400")
-    large = _embed_run(settings, LARGE, sha, near, sample="dev-seal-400")
-    base = ["--sample", "dev-seal-400", "--applies", APPLY_RUN]
-    assert _main(settings, *base, "--embeds", small, large, "--model", SMALL) == 1
-    assert "one embedding run" in capsys.readouterr().out
-    assert _main(settings, *base, "--embeds", large, "--model", LARGE) == 1
-    assert f"only the steering winner {SMALL}" in capsys.readouterr().out
-    assert not list(settings.runs_dir.glob("*-memory-choices-*"))
 
 
 # --- the picking call's run (decision 0213's fallback) -----------------------------------------
@@ -549,24 +484,12 @@ def test_pick_ids_must_be_lessons_and_at_most_five(
     assert "refused" in capsys.readouterr().out
 
 
-def test_dev_seal_reading_takes_the_picks_when_the_picking_call_won(
-    setup: tuple[Settings, str],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+def test_dev_seal_400_is_refused_its_choices_come_from_0214s_script(
+    setup: tuple[Settings, str], capsys: pytest.CaptureFixture[str]
 ) -> None:
     settings, sha = setup
-    _apply_run(settings, sha, {"A": [], "B": []}, sample="dev-seal-400")
-    near = {"A": [1.0, 0.1], "B": [0.1, 1.0]}
-    run = _embed_run(settings, LARGE, sha, near, sample="dev-seal-400")
-    pick = _pick_run(settings, sha, run, {"A": ["L1"], "B": ["L2"]}, sample="dev-seal-400")
-    base = ["--sample", "dev-seal-400", "--applies", APPLY_RUN, "--embeds", run, "--model", LARGE]
-    _steering_winner(tmp_path, monkeypatch, f"pick:{LARGE}")
-    assert _main(settings, *base) == 1
-    assert "the picking call" in capsys.readouterr().out
-    assert _main(settings, *base, "--picks", pick) == 0
-    text = capsys.readouterr().out
-    assert "-memory-choices-dev-seal-400-pick-" in text
-    _steering_winner(tmp_path, monkeypatch, LARGE)
-    assert _main(settings, *base, "--picks", pick) == 1
-    assert "the embedding lookup alone" in capsys.readouterr().out
+    _apply_run(settings, sha, {"A": ["L1"], "B": []}, sample="dev-seal-400")
+    run = _embed_run(settings, LARGE, sha, {"A": [1.0, 0.1]}, sample="dev-seal-400")
+    assert _main(settings, "--sample", "dev-seal-400", "--applies", APPLY_RUN, "--embeds", run) == 1
+    assert "scripts.memory_embed_choices" in capsys.readouterr().out
+    assert not list(settings.runs_dir.glob("*-memory-choices-*"))

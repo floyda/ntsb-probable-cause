@@ -20,19 +20,18 @@ What it prints and writes
     Per lookup: hit rate, precision, lessons handed out, cases with none, and, for each embedding
     run, its hit rate minus today's with the paired 95% interval. On the steering slice, the gate
     (``gate_rule``, the registered text) over all three candidates' runs, and the last line
-    ``winner: <model>`` or ``winner: none``; the winner's choices are written. On ``dev-seal-400``
-    no gate: one run, of the steering winner (``memory_embed.steering_winner``, read from the
-    committed steering reading), named by ``--model``; its choices are written, and the last line
-    says the reading is a description only. A dirty tree is refused before anything is written,
-    and ``choice.json`` records the clean tree the coding test requires. Output:
-    ``docs/results/memory-coverage-dev.txt`` or ``-devseal.txt``. The choices folder,
+    ``winner: <model>`` or ``winner: none``; the winner's choices are written. Decision 0214
+    retired the gate after it named none: ``dev-seal-400`` is refused here, and its choices, like
+    every candidate's on the steering slice, are written by ``scripts/memory_embed_choices.py``. A
+    dirty tree is refused before anything is written, and ``choice.json`` records the clean tree
+    the coding test requires. Output: ``docs/results/memory-coverage-dev.txt``. The choices folder,
     ``<runs>/<stamp>-<commit>-memory-choices-<sample>-<model>/``, holds ``choices.json`` (each
     case's lesson ids, in order) and ``choice.json`` (what made them); the coding test's
     ``tools --choices`` reads it.
 
 Usage
     uv run python -m scripts.memory_coverage --applies RUN --embeds RUN [RUN ...]
-        [--picks RUN] [--sample S] [--model M] [--snapshot NAME] [--out PATH]
+        [--picks RUN] [--snapshot NAME] [--out PATH]
 """
 
 import argparse
@@ -206,6 +205,7 @@ def _write_choices(  # noqa: PLR0913 -- the choices and every fact that made the
     source_run: str,
     commit: str,
     now: datetime,
+    extra: Mapping[str, object] | None = None,
 ) -> str:
     slug = memory_embed.slug(candidate)
     run_id = f"{now:%Y%m%dT%H%M%SZ}-{commit}-memory-choices-{sample}-{slug}"
@@ -219,29 +219,15 @@ def _write_choices(  # noqa: PLR0913 -- the choices and every fact that made the
         "snapshot_sha256": sha,
         "k": lookup.K,
         "min_applies": lookup.MIN_APPLIES,
-        "method": "pick" if candidate.startswith(memory_embed.PICK_PREFIX) else "embedding",
-        "model": candidate.removeprefix(memory_embed.PICK_PREFIX),
+        "method": memory_embed.split_candidate(candidate)[0],
+        "model": memory_embed.split_candidate(candidate)[1],
         "source_run": source_run,
         "commit": commit,
         "dirty": False,
+        **(extra or {}),
     }
     (folder / CHOICE_SUMMARY_FILE).write_text(json.dumps(summary, indent=1) + "\n")
     return run_id
-
-
-def _refuse_seal_arguments(args: argparse.Namespace) -> None:
-    """On ``dev-seal-400``: one embedding run, of the steering winner, and its method.
-
-    Raises:
-        ConfigurationError: no ``--model``; not exactly one ``--embeds`` run; or a model or
-            method (``--picks`` or not) other than the steering winner's.
-    """
-    if args.model is None:
-        raise ConfigurationError(f"on {SEAL}, --model names the method the steering slice chose")
-    if len(args.embeds) != 1:
-        raise ConfigurationError(f"on {SEAL}, name one embedding run: the steering winner's")
-    method = "pick" if args.picks is not None else "embedding"
-    memory_embed.refuse_other_than_winner(args.model, SEAL, method=method)
 
 
 def _embedding_runs(
@@ -251,7 +237,7 @@ def _embedding_runs(
 
     Raises:
         ConfigurationError: a run that does not belong (``read_vectors``); two runs of one model;
-            ``--model`` naming none of them; or, on the steering slice, not all three candidates.
+            or not all three candidates.
     """
     runs = [
         memory_embed.read_vectors(
@@ -262,9 +248,7 @@ def _embedding_runs(
     by_model = {run.model: run for run in runs}
     if len(by_model) != len(runs):
         raise ConfigurationError("two embedding runs of one model: name one run per model")
-    if args.model is not None and args.model not in by_model:
-        raise ConfigurationError(f"--model {args.model} names no embedding run given")
-    if args.sample == STEERING and set(by_model) != set(memory_embed.CANDIDATES):
+    if set(by_model) != set(memory_embed.CANDIDATES):
         raise ConfigurationError(
             "the gate reads all three candidates' embedding runs (decision 0213): "
             f"{len(by_model)} given"
@@ -273,7 +257,7 @@ def _embedding_runs(
 
 
 def reading(args: argparse.Namespace, settings: Settings, now: datetime) -> str:
-    """The whole text; writes the choices folder of the winner (steering) or of ``--model``.
+    """The whole text; writes the choices folder of the gate's winner, if any.
 
     Raises:
         ConfigurationError: a refused sample, run or argument (see the module docstring).
@@ -281,12 +265,14 @@ def reading(args: argparse.Namespace, settings: Settings, now: datetime) -> str:
     sample: str = args.sample
     if sample not in OUTS:
         raise ConfigurationError(f"lesson coverage reads {STEERING} or {SEAL}, not {sample}")
+    if sample == SEAL:
+        raise ConfigurationError(
+            f"{SEAL}'s choices are written by scripts.memory_embed_choices (decision 0214)"
+        )
     memory_coding_test.refuse_sample(sample)
     # Before anything is written: a choices folder from uncommitted code would feed a paid run.
     commit, dirty = gitinfo.commit_state()
     memory_embed.require_clean(dirty)
-    if sample == SEAL:
-        _refuse_seal_arguments(args)
     memory = snapshots.load_checked(args.snapshot, snapshots.SNAPSHOT_DIR)
     sha = snapshots.sha256_of(snapshots.snapshot_path(args.snapshot, snapshots.SNAPSHOT_DIR))
     every = (*memory.lessons, *memory.pushed_out)
@@ -343,16 +329,12 @@ def reading(args: argparse.Namespace, settings: Settings, now: datetime) -> str:
     ]
     for name, cov in scored.items():
         out += [*_block(labels[name], cov, chosen[name]), _paired_line(cov, today)]
-    if sample == STEERING:
-        prices = memory_embed.load_prices(settings.data_dir)
-        # The picking call is priced as the model whose shortlist it read, for a tie only.
-        prices |= {name: prices[name.removeprefix(memory_embed.PICK_PREFIX)] for name in scored}
-        winner, lines = gate_rule(today, scored, prices)
-        out += ["", "gate (decision 0213)", *[f"  {line}" for line in lines]]
-        last = f"winner: {winner or NONE}"
-    else:
-        prefix = memory_embed.PICK_PREFIX if pick is not None else ""
-        winner, last = f"{prefix}{args.model}", "description only (decision 0213)"
+    prices = memory_embed.load_prices(settings.data_dir)
+    # The picking call is priced as the model whose shortlist it read, for a tie only.
+    prices |= {name: prices[name.removeprefix(memory_embed.PICK_PREFIX)] for name in scored}
+    winner, lines = gate_rule(today, scored, prices)
+    out += ["", "gate (decision 0213)", *[f"  {line}" for line in lines]]
+    last = f"winner: {winner or NONE}"
     if winner is not None:
         choices_run = _write_choices(
             settings.runs_dir,
@@ -382,7 +364,6 @@ def main(
     parser.add_argument("--applies", required=True, help="today's apply run on the sample")
     parser.add_argument("--embeds", nargs="+", required=True, help="one embedding run per model")
     parser.add_argument("--sample", default=STEERING, choices=tuple(OUTS))
-    parser.add_argument("--model", help=f"on {SEAL}: the model whose choices to write")
     parser.add_argument("--picks", help="the picking call's run, over one of the --embeds runs")
     parser.add_argument("--snapshot", default=SNAPSHOT)
     parser.add_argument("--out", type=Path)

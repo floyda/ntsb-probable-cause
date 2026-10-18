@@ -477,7 +477,7 @@ def test_embed_refuses_dev_seal_400_before_registration(
 def _steering_winner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, last: str) -> None:
     path = tmp_path / "memory-coverage-dev.txt"
     path.write_text(f"lesson coverage ...\n{last}\n")
-    monkeypatch.setattr(memory_embed, "STEERING_COVERAGE", path)
+    monkeypatch.setattr(memory_embed, "STEERING_READING", path)
 
 
 def test_embed_runs_on_dev_seal_400_once_registered(
@@ -555,3 +555,50 @@ def test_steering_winner_reads_the_last_line(
     _committed(monkeypatch, registered=True)
     _steering_winner(tmp_path, monkeypatch, "winner: openai/text-embedding-3-large")
     assert memory_embed.steering_winner() == "openai/text-embedding-3-large"
+
+
+# Decision 0214: four candidates, and the winner read from the coding readings. --------------
+
+
+def test_the_steering_winner_comes_from_0214s_coding_reading() -> None:
+    assert Path("docs/results/memory-embed-coding-dev.txt") == memory_embed.STEERING_READING
+
+
+@pytest.mark.parametrize(
+    ("name", "split"),
+    [
+        ("openai/text-embedding-3-large", ("embedding", "openai/text-embedding-3-large")),
+        ("pick:openai/text-embedding-3-large", ("pick", "openai/text-embedding-3-large")),
+        ("fit:openai/text-embedding-3-large", ("fit", "openai/text-embedding-3-large")),
+        ("fill:openai/text-embedding-3-large", ("fill", "openai/text-embedding-3-large")),
+    ],
+)
+def test_split_candidate_names_its_method_and_model(name: str, split: tuple[str, str]) -> None:
+    assert memory_embed.split_candidate(name) == split
+    assert memory_embed.candidate_name(*split) == name
+
+
+@pytest.mark.parametrize(
+    "last", ["winner: fit:another/model", "winner: best:qwen/qwen3-embedding-8b"]
+)
+def test_steering_winner_refuses_an_unknown_method_or_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, last: str
+) -> None:
+    _committed(monkeypatch, registered=True)
+    _steering_winner(tmp_path, monkeypatch, last)
+    with pytest.raises(ConfigurationError, match="names no embedding winner"):
+        memory_embed.steering_winner()
+
+
+@pytest.mark.parametrize("method", ["fit", "fill"])
+def test_on_dev_seal_400_only_the_winners_method_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    _committed(monkeypatch, registered=True)
+    large = "openai/text-embedding-3-large"
+    _steering_winner(tmp_path, monkeypatch, f"winner: {method}:{large}")
+    memory_embed.refuse_other_than_winner(large, "dev-seal-400", method=method)
+    memory_embed.refuse_other_than_winner(large, "dev-seal-400")
+    for other in {"embedding", "pick", "fit", "fill"} - {method}:
+        with pytest.raises(ConfigurationError, match="the steering winner is"):
+            memory_embed.refuse_other_than_winner(large, "dev-seal-400", method=other)
