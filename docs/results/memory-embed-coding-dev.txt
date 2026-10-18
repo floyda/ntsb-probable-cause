@@ -1,0 +1,94 @@
+coding memory embedding lookups, dev-steer-400 (decision 0214); counts only
+
+tables-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a)
+  occurrence top-1: 23.2% [19.3%, 27.6%] n=401
+  occurrence top-3: 29.7% [25.4%, 34.3%] n=401
+  finding recall@10: 33.4% [30.1%, 36.5%] n=401
+  failed cases: 0
+
+counts-a (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-a)
+  occurrence top-1: 25.7% [21.7%, 30.2%] n=401
+  occurrence top-3: 30.2% [25.9%, 34.8%] n=401
+  finding recall@10: 41.7% [38.5%, 45.1%] n=401
+  failed cases: 0
+
+counts-b (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-counts-b)
+  occurrence top-1: 25.9% [21.9%, 30.4%] n=401
+  occurrence top-3: 30.9% [26.6%, 35.6%] n=401
+  finding recall@10: 41.4% [38.1%, 44.6%] n=401
+  failed cases: 0
+
+cause-lookup (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-causelookup5-pilot-2010-recount)
+  occurrence top-1: 28.2% [24.0%, 32.8%] n=401
+  occurrence top-3: 34.2% [29.7%, 38.9%] n=401
+  finding recall@10: 44.6% [41.2%, 48.0%] n=401
+  failed cases: 0
+
+openai/text-embedding-3-large (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-embedlookup5-pilot-2010-recount-openai-text-embedding-3-large)
+  occurrence top-1: 27.4% [23.3%, 32.0%] n=401
+  occurrence top-3: 36.2% [31.6%, 41.0%] n=401
+  finding recall@10: 43.6% [40.3%, 46.9%] n=401
+  failed cases: 0
+
+pick:openai/text-embedding-3-large (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-embedlookup5-pilot-2010-recount-pick-openai-text-embedding-3-large)
+  occurrence top-1: 26.7% [22.6%, 31.2%] n=401
+  occurrence top-3: 33.7% [29.2%, 38.4%] n=401
+  finding recall@10: 44.6% [41.1%, 47.9%] n=401
+  failed cases: 0
+
+fit:openai/text-embedding-3-large (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-embedlookup5-pilot-2010-recount-fit-openai-text-embedding-3-large)
+  occurrence top-1: 26.4% [22.4%, 31.0%] n=401
+  occurrence top-3: 34.7% [30.2%, 39.4%] n=401
+  finding recall@10: 42.8% [39.4%, 46.0%] n=401
+  failed cases: 0
+
+fill:openai/text-embedding-3-large (20261015T212036Z-754b6ee-dev-steer-400-mem-tables-a-embedlookup5-pilot-2010-recount-fill-openai-text-embedding-3-large)
+  occurrence top-1: 28.2% [24.0%, 32.8%] n=401
+  occurrence top-3: 35.2% [30.6%, 40.0%] n=401
+  finding recall@10: 43.9% [40.6%, 47.1%] n=401
+  failed cases: 0
+
+paired differences (first minus second, cases in both)
+counts(b) - counts(a), the noise
+  occurrence top-1: +0.2 points [-1.2, +2.0] n=401
+  occurrence top-3: +0.7 points [-1.2, +3.0] n=401
+  finding recall@10: -0.3 points [-2.3, +1.6] n=401
+
+cause lookup: 401 cases sent; mean 2.19 lessons a case; 39 with none; 95 distinct lessons used
+
+openai/text-embedding-3-large - cause lookup, read by 0213's rule
+  occurrence top-1: -0.7 points [-3.0, +1.5] n=401
+  occurrence top-3: +2.0 points [-1.0, +5.0] n=401
+  finding recall@10: -1.1 points [-2.7, +0.6] n=401
+  lessons: 401 cases sent; mean 5.00 lessons a case; 0 with none; 103 distinct lessons used; choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-openai-text-embedding-3-large
+  not passed: finding recall@10 -0.011 is not beyond the noise 0.003
+  not passed: top-1 -0.007 falls beyond the noise 0.002
+  openai/text-embedding-3-large: FAIL
+
+pick:openai/text-embedding-3-large - cause lookup, read by 0213's rule
+  occurrence top-1: -1.5 points [-3.2, +0.2] n=401
+  occurrence top-3: -0.5 points [-2.7, +1.7] n=401
+  finding recall@10: -0.0 points [-1.9, +1.8] n=401
+  lessons: 401 cases sent; mean 3.79 lessons a case; 14 with none; 102 distinct lessons used; choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-pick-openai-text-embedding-3-large
+  not passed: finding recall@10 -0.000 is not beyond the noise 0.003
+  not passed: top-1 -0.015 falls beyond the noise 0.002
+  pick:openai/text-embedding-3-large: FAIL
+
+fit:openai/text-embedding-3-large - cause lookup, read by 0213's rule
+  occurrence top-1: -1.7 points [-3.7, +0.2] n=401
+  occurrence top-3: +0.5 points [-2.0, +3.2] n=401
+  finding recall@10: -1.9 points [-3.8, +0.1] n=401
+  lessons: 401 cases sent; mean 5.00 lessons a case; 0 with none; 35 distinct lessons used; choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-fit-openai-text-embedding-3-large
+  not passed: finding recall@10 -0.019 is not beyond the noise 0.003
+  not passed: top-1 -0.017 falls beyond the noise 0.002
+  fit:openai/text-embedding-3-large: FAIL
+
+fill:openai/text-embedding-3-large - cause lookup, read by 0213's rule
+  occurrence top-1: +0.0 points [-1.7, +2.0] n=401
+  occurrence top-3: +1.0 points [-1.5, +3.7] n=401
+  finding recall@10: -0.8 points [-2.6, +1.1] n=401
+  lessons: 401 cases sent; mean 2.29 lessons a case; 0 with none; 99 distinct lessons used; choices run: 20261018T193143Z-2540ca8-memory-choices-dev-steer-400-fill-openai-text-embedding-3-large
+  not passed: finding recall@10 -0.008 is not beyond the noise 0.003
+  fill:openai/text-embedding-3-large: FAIL
+
+winner: none

@@ -69,12 +69,12 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
 ### Task 5: The steering runs (paid, about $0.73)
 
 - [x] `make mem-embed-choices ...`; commit `docs/results/memory-embed-choices-dev.txt`.
-- [ ] Four `make mem-coding-embed-lookup` runs, one per choices run.
-- [ ] `make mem-embed-coding-result ...`; commit `docs/results/memory-embed-coding-dev.txt`.
+- [x] Four `make mem-coding-embed-lookup` runs, one per choices run.
+- [x] `make mem-embed-coding-result ...`; commit `docs/results/memory-embed-coding-dev.txt`.
 
 ### Task 6: `dev-seal-400` (only if Task 5 names a winner)
 
-- [ ] As the registration's §4 step 4.
+- [x] Not reached: Task 5 named no winner (`winner: none`), so the round stopped at the registration's §4 step 3 and `dev-seal-400` stays unread.
 
 ### Task 7: Close the records
 
@@ -111,3 +111,6 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
   docstrings. Deferred minors: the `dev-seal-400` tables, counts and apply steps are not gated in
   code on a steering winner (as under 0213); `_tools_run_id` accepts a choices name without its
   marker; a crash mid-loop could leave some choices folders written.
+- 2026-10-18, Task 5: the four steering runs cost $0.90 on the side track's line ($1.88 before,
+  $2.78 after, `make mem-spend EST=0`) against the registration's estimate of about $0.73; every
+  case was answered in each run. The line has $7.22 left.
