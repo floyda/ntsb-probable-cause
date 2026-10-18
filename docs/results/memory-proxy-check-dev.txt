@@ -1,0 +1,76 @@
+what decision 0213's lesson-coverage gate measured, dev-steer-400, pilot-2010-recount, K=5, floor 10; exploratory (decision 0059), decides nothing; counts only
+
+cases scored: 401; left out (no occurrence code): 0
+eligible lessons predicting a first code: 103; finding categories: 106; of 106
+
+today's cause lookup
+  as the gate read it: hit rate 53.6%, precision 45.6% (400 of 878)
+  first-code part: case hit 51.1%, precision 45.2% (379 of 839)
+  finding part: case hit 87.3%, precision 94.3% (828 of 878)
+  cases by lessons handed (0 to 5): 39, 90, 113, 93, 47, 19
+  precision at rank 1 to 5: 51.9% (188 of 362); 42.6% (116 of 272); 42.1% (67 of 159); 34.8% (23 of 66); 31.6% (6 of 19)
+
+qwen/qwen3-embedding-8b
+  as the gate read it: hit rate 54.9%, precision 21.9% (440 of 2005)
+  first-code part: case hit 55.9%, precision 23.5% (469 of 1993)
+  finding part: case hit 95.5%, precision 78.7% (1577 of 2005)
+  finding-part case hit minus today's: +8.2 points [+5.2, +11.5] n=401
+  cases by lessons handed (0 to 5): 0, 0, 0, 0, 0, 401
+  precision at rank 1 to 5: 29.9% (120 of 401); 27.9% (112 of 401); 21.7% (87 of 401); 17.5% (70 of 401); 12.7% (51 of 401)
+
+openai/text-embedding-3-small
+  as the gate read it: hit rate 55.9%, precision 22.7% (456 of 2005)
+  first-code part: case hit 56.9%, precision 24.7% (490 of 1982)
+  finding part: case hit 95.3%, precision 78.6% (1576 of 2005)
+  finding-part case hit minus today's: +8.0 points [+5.0, +11.2] n=401
+  cases by lessons handed (0 to 5): 0, 0, 0, 0, 0, 401
+  precision at rank 1 to 5: 31.4% (126 of 401); 25.7% (103 of 401); 22.2% (89 of 401); 20.0% (80 of 401); 14.5% (58 of 401)
+
+openai/text-embedding-3-large
+  as the gate read it: hit rate 57.6%, precision 23.6% (474 of 2005)
+  first-code part: case hit 56.6%, precision 25.1% (495 of 1972)
+  finding part: case hit 96.3%, precision 80.9% (1622 of 2005)
+  finding-part case hit minus today's: +9.0 points [+6.2, +12.0] n=401
+  cases by lessons handed (0 to 5): 0, 0, 0, 0, 0, 401
+  precision at rank 1 to 5: 29.9% (120 of 401); 27.7% (111 of 401); 23.9% (96 of 401); 19.5% (78 of 401); 17.2% (69 of 401)
+
+pick:openai/text-embedding-3-large
+  as the gate read it: hit rate 59.1%, precision 36.3% (552 of 1519)
+  first-code part: case hit 57.9%, precision 37.3% (552 of 1479)
+  finding part: case hit 93.5%, precision 90.8% (1379 of 1519)
+  finding-part case hit minus today's: +6.2 points [+3.7, +9.0] n=401
+  cases by lessons handed (0 to 5): 14, 33, 39, 52, 63, 200
+  precision at rank 1 to 5: 43.9% (170 of 387); 39.0% (138 of 354); 34.9% (110 of 315); 31.2% (82 of 263); 26.0% (52 of 200)
+
+does agreement predict the coding benefit? today's cause-lookup coding run, by its lessons
+(first minus second, cases in both; failed cases as wrong)
+no lesson (39 cases)
+ cause lookup - counts(a):
+  occurrence top-1: +0.0 points [+0.0, +0.0] n=39
+  occurrence top-3: +5.1 points [+0.0, +12.8] n=39
+  finding recall@10: -5.1 points [-15.4, +2.6] n=39
+ noise, counts(b) - counts(a):
+  occurrence top-1: +0.0 points [+0.0, +0.0] n=39
+  occurrence top-3: +2.6 points [+0.0, +7.7] n=39
+  finding recall@10: -6.2 points [-15.4, +1.7] n=39
+lessons, none agreeing (147 cases)
+ cause lookup - counts(a):
+  occurrence top-1: +2.0 points [+0.0, +4.8] n=147
+  occurrence top-3: -0.7 points [-3.4, +2.0] n=147
+  finding recall@10: +5.3 points [+1.6, +9.0] n=147
+ noise, counts(b) - counts(a):
+  occurrence top-1: +0.7 points [+0.0, +2.0] n=147
+  occurrence top-3: +0.0 points [-3.4, +3.4] n=147
+  finding recall@10: +3.6 points [+0.9, +6.4] n=147
+at least one agreeing (215 cases)
+ cause lookup - counts(a):
+  occurrence top-1: +3.3 points [+0.0, +7.0] n=215
+  occurrence top-3: +7.0 points [+2.8, +11.6] n=215
+  finding recall@10: +2.8 points [-0.4, +6.1] n=215
+ noise, counts(b) - counts(a):
+  occurrence top-1: +0.0 points [-2.8, +2.8] n=215
+  occurrence top-3: +0.9 points [-2.3, +4.2] n=215
+  finding recall@10: -1.9 points [-4.7, +0.7] n=215
+
+the picking run's spend: $2.8987 in 1 row(s), kind learning
+lessons a case: today's 2.19
