@@ -11,6 +11,7 @@ from tests.test_memory_coverage import (
     APPLY_RUN,
     LARGE,
     NOW,
+    PICK_RUN,
     SMALL,
     _apply_run,
     _embed_run,
@@ -23,8 +24,15 @@ from ntsb_probable_cause.settings import Settings
 
 
 @pytest.fixture
-def ready(setup: tuple[Settings, str]) -> tuple[Settings, str]:  # noqa: F811 -- the import
-    """``test_memory_coverage``'s settings and snapshot."""
+def ready(
+    setup: tuple[Settings, str],  # noqa: F811 -- the imported fixture
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Settings, str]:
+    """``test_memory_coverage``'s settings and snapshot; its runs stand for the registered ones."""
+    large = f"20261017T120000Z-abc1234-memory-embed-dev-steer-400-{memory_embed.slug(LARGE)}"
+    monkeypatch.setattr(
+        ec, "STEERING_RUNS", {"applies": APPLY_RUN, "embeds": large, "picks": PICK_RUN}
+    )
     return setup
 
 
@@ -121,7 +129,7 @@ def test_the_steering_slice_needs_the_large_models_run_and_its_picks(
     _apply_run(settings, sha, {"A": [], "B": []})
     small = _embed_run(settings, SMALL, sha, NEAR)
     assert _main(settings, "--applies", APPLY_RUN, "--embeds", small, "--picks", "a-pick-run") == 1
-    assert f"not {SMALL}" in capsys.readouterr().out
+    assert "--embeds, --picks must name the registered run" in capsys.readouterr().out
     large = _embed_run(settings, LARGE, sha, NEAR)
     assert _main(settings, "--applies", APPLY_RUN, "--embeds", large) == 1
     assert "--picks" in capsys.readouterr().out
@@ -191,3 +199,26 @@ def test_the_outputs_are_the_registered_files() -> None:
         "dev-steer-400": Path("docs/results/memory-embed-choices-dev.txt"),
         "dev-seal-400": Path("docs/results/memory-embed-choices-devseal.txt"),
     } == ec.OUTS
+
+
+def test_the_registered_steering_runs_are_0213s() -> None:
+    assert ec.STEERING_RUNS == {
+        "applies": "20261017T090550Z-0b949a6-memory-cause-apply-pilot-2010-recount",
+        "embeds": "20261017T180227Z-2e3e730-memory-embed-dev-steer-400-"
+        "openai-text-embedding-3-large",
+        "picks": "20261017T181956Z-8627513-memory-cause-pick-dev-steer-400-"
+        "openai-text-embedding-3-large",
+    }
+
+
+@pytest.mark.parametrize("flag", ["--applies", "--embeds", "--picks"])
+def test_the_steering_slice_refuses_any_run_but_the_registered_ones(
+    ready: tuple[Settings, str], capsys: pytest.CaptureFixture[str], flag: str
+) -> None:
+    settings, sha = ready
+    run, pick = _steering(settings, sha)
+    argv = {"--applies": APPLY_RUN, "--embeds": run, "--picks": pick}
+    argv[flag] = "20261018T000000Z-abc1234-another-run"
+    assert _main(settings, *(x for pair in argv.items() for x in pair)) == 1
+    assert "registered" in capsys.readouterr().out
+    assert not _summaries(settings)

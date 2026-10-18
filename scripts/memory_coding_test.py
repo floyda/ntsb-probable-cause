@@ -851,6 +851,20 @@ def read_choices(
     return choices, summary
 
 
+def _refuse_seal_choice(sample: str, choice: Mapping[str, object]) -> None:
+    """On ``dev-seal-400``, the paid run itself refuses choices but the steering winner's (0214).
+
+    Raises:
+        ConfigurationError: the choices' model or method is not the steering winner's.
+    """
+    if sample == SEAL_SAMPLE:
+        from scripts import memory_embed  # noqa: PLC0415 -- memory_embed imports this module
+
+        memory_embed.refuse_other_than_winner(
+            str(choice.get("model")), sample, method=str(choice.get("method"))
+        )
+
+
 def _tools_run_id(args: argparse.Namespace) -> str:
     """The derived run's id, from the source, and the repeat or the snapshot.
 
@@ -986,6 +1000,7 @@ def tools(args: argparse.Namespace, ctx: Context) -> int:
         chosen, choice = read_choices(
             ctx.runs_dir / args.choices, args.snapshot, snapshot_sha, sample, every_id
         )
+        _refuse_seal_choice(sample, choice)
     condition = _condition(memory, args.lookup, applied, chosen)
     refuse_condition(sample, condition)
     tables = load_tables()

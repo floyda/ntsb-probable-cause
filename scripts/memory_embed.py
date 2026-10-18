@@ -73,7 +73,6 @@ PROBE_TEXTS: Final = (
     "the pilot did not maintain airspeed in the turn",
 )
 VECTORS_FILE: Final = "vectors.json"
-# The steering gate's committed reading; its last line names the model dev-seal-400 confirms.
 # The steering reading that names the lookup dev-seal-400 confirms (decision 0214; 0213's gate
 # reading, docs/results/memory-coverage-dev.txt, named none).
 STEERING_READING: Final = Path("docs/results/memory-embed-coding-dev.txt")

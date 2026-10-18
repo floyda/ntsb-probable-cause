@@ -2,9 +2,9 @@
 
 Status
     Live reading, free: reads finished apply and embedding run folders and the NTSB's verdict
-    codes, and makes no model call. Development only: the steering slice, or ``dev-seal-400`` once
-    ``docs/rounds/memory-embed-lookup.md`` is committed (``memory_coding_test.refuse_sample``);
-    never a live run (decision 0024). Counts only: no case number, cause or lesson text is printed.
+    codes, and makes no model call. Development only: the steering slice (``dev-seal-400`` is
+    refused since decision 0214); never a live run (decision 0024). Counts only: no case number,
+    cause or lesson text is printed.
 
 What it reads
     Today's cause lookup: an apply run (``scripts/memory_cause_apply.py``), each case's five by

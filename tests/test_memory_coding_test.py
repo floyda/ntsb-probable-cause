@@ -1055,8 +1055,13 @@ def test_choices_needs_lookup_and_snapshot(embed_ready: Settings) -> None:
 
 
 def test_embed_lookup_runs_on_a_dev_seal_400_source(
-    embed_ready: Settings, monkeypatch: pytest.MonkeyPatch
+    embed_ready: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from scripts import memory_embed  # noqa: PLC0415 -- memory_embed imports this module
+
+    reading = tmp_path / "memory-embed-coding-dev.txt"
+    reading.write_text("embedding lookups ...\nwinner: openai/text-embedding-3-small\n")
+    monkeypatch.setattr(memory_embed, "STEERING_READING", reading)
     read: list[str | None] = []
     monkeypatch.setattr(ct, "causes", _recording_causes(read))
     spec_path = embed_ready.runs_dir / SOURCE / "spec.json"
@@ -1067,3 +1072,40 @@ def test_embed_lookup_runs_on_a_dev_seal_400_source(
     fake = FakeBatch(_tools_answer)
     assert _run(embed_ready, fake, EMBED_ARGV) == 0
     assert read == ["dev-seal-400"]
+
+
+# --- decision 0214: the paid embed-lookup run on dev-seal-400 checks the winner itself ------
+
+
+def _seal_choices(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, winner: str
+) -> None:
+    from scripts import memory_embed  # noqa: PLC0415 -- memory_embed imports this module
+
+    _source(settings, sample="dev-seal-400")
+    monkeypatch.setattr(snapshots, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    _lookup_snapshot(tmp_path / "snapshots")
+    monkeypatch.setattr(gitinfo, "is_committed", lambda path: True)
+    reading = tmp_path / "memory-embed-coding-dev.txt"
+    reading.write_text(f"embedding lookups ...\nwinner: {winner}\n")
+    monkeypatch.setattr(memory_embed, "STEERING_READING", reading)
+    large = "openai/text-embedding-3-large"
+    _choices_run(settings, {FIRST: ["L002"]}, sample="dev-seal-400", method="fit", model=large)
+
+
+def test_embed_lookup_on_dev_seal_400_refuses_choices_other_than_the_winners(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seal_choices(settings, tmp_path, monkeypatch, "fill:openai/text-embedding-3-large")
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, EMBED_ARGV) == 1
+    assert not fake.submitted
+
+
+def test_embed_lookup_on_dev_seal_400_runs_the_winners_choices(
+    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seal_choices(settings, tmp_path, monkeypatch, "fit:openai/text-embedding-3-large")
+    fake = FakeBatch(_tools_answer)
+    assert _run(settings, fake, EMBED_ARGV) == 0
+    assert fake.submitted

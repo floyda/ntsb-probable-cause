@@ -63,7 +63,7 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
 
 ### Task 4: Review
 
-- [ ] One independent review of the branch since 0213's close (78458c1), most capable model;
+- [x] One independent review of the branch since 0213's close (78458c1), most capable model;
   Critical and Important fixed with tests.
 
 ### Task 5: The steering runs (paid, about $0.73)
@@ -101,3 +101,13 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
   tests then ran green on first run, apart from the registration-text test, which waited for the
   draft). The exploratory proxy check keeps its own part-split lines rather than importing
   `memory_embed_choices.part_lines`, so its committed output stays reproducible.
+- 2026-10-18, Task 4: the review (Fable 5.1) found no Critical and two Important findings, both
+  fixed with tests that failed first: the steering reading now opens each choices run and refuses
+  one not made from the registered runs (`refuse_unregistered_choices`), and
+  `memory_embed_choices` refuses any steering run but `STEERING_RUNS`; the paid embed-lookup run
+  on `dev-seal-400` now checks the steering winner itself (`_refuse_seal_choice`). Three wording
+  minors were fixed because the registration is not yet signed: §7 (the picking call gives a case
+  with no vector nothing), §8 (the learning line's figure names its function), and stale
+  docstrings. Deferred minors: the `dev-seal-400` tables, counts and apply steps are not gated in
+  code on a steering winner (as under 0213); `_tools_run_id` accepts a choices name without its
+  marker; a crash mid-loop could leave some choices folders written.

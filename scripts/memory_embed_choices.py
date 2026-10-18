@@ -65,6 +65,15 @@ OUTS: Final = {
 CHOICES_FILE: Final = memory_coverage.CHOICES_FILE
 CHOICE_SUMMARY_FILE: Final = memory_coverage.CHOICE_SUMMARY_FILE
 LAST_LINE: Final = "description only (decision 0214): the coding test decides"
+# The steering slice's registered runs (docs/rounds/memory-embed-coding.md §3): today's apply
+# run, 0213's embedding run of the large model, and 0213's picking run over it.
+STEERING_RUNS: Final = {
+    "applies": "20261017T090550Z-0b949a6-memory-cause-apply-pilot-2010-recount",
+    "embeds": "20261017T180227Z-2e3e730-memory-embed-dev-steer-400-openai-text-embedding-3-large",
+    "picks": (
+        "20261017T181956Z-8627513-memory-cause-pick-dev-steer-400-openai-text-embedding-3-large"
+    ),
+}
 
 Clock = Callable[[], datetime]
 Chosen = dict[str, tuple[Lesson, ...]]
@@ -140,11 +149,18 @@ def _methods(args: argparse.Namespace) -> tuple[str, ...]:
     """The methods to write, refused unless the arguments fit the sample.
 
     Raises:
-        ConfigurationError: on the steering slice, ``--candidate`` or no ``--picks``; on
+        ConfigurationError: on the steering slice, a run other than ``STEERING_RUNS``'s,
+            ``--candidate``, or no ``--picks``; on
             ``dev-seal-400``, no ``--candidate``, one other than the steering winner, or
             ``--picks`` given exactly when the winner is not the picking call.
     """
     if args.sample == STEERING:
+        given = {"applies": args.applies, "embeds": args.embeds, "picks": args.picks}
+        other = [f"--{key}" for key, run in given.items() if run not in (None, STEERING_RUNS[key])]
+        if other:
+            raise ConfigurationError(
+                f"on {STEERING}, {', '.join(other)} must name the registered run (decision 0214)"
+            )
         if args.candidate is not None:
             raise ConfigurationError(
                 f"--candidate is for {SEAL}: the steering slice writes all four"

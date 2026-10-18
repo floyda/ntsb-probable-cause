@@ -27,6 +27,7 @@ Usage
 """
 
 import argparse
+import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final
@@ -99,6 +100,47 @@ def refuse_other_candidates(embeds: Sequence[RunRead]) -> dict[str, RunRead]:
     return {name: by_name[name] for name in ORDER}
 
 
+def refuse_unregistered_choices(
+    runs_dir: Path, embeds: Mapping[str, RunRead], cause: RunRead
+) -> None:
+    """Refuse an embed lookup whose choices run was not made from the registered runs.
+
+    Each choices run (``choice.json``) must be on the steering slice, name its embed lookup's
+    method and model, and come from ``memory_embed_choices.STEERING_RUNS``: the picking run for
+    the picking call, the embedding run for the rest, and, for the fill, today's apply run, which
+    must also be the cause lookup's.
+
+    Raises:
+        ConfigurationError: a choices run that is missing, unreadable or differs.
+    """
+    registered = memory_embed_choices.STEERING_RUNS
+    for name, run in embeds.items():
+        folder = runs_dir / str(run.spec.get("choices_run"))
+        try:
+            choice = json.loads((folder / memory_embed_choices.CHOICE_SUMMARY_FILE).read_text())
+        except (OSError, ValueError) as error:
+            raise ConfigurationError(
+                f"{folder.name}: not a readable choices run ({type(error).__name__})"
+            ) from None
+        method, model = memory_embed.split_candidate(name)
+        wanted: dict[str, object] = {
+            "sample": SAMPLE,
+            "method": method,
+            "model": model,
+            "source_run": registered["picks" if method == "pick" else "embeds"],
+        }
+        if method == "fill":
+            wanted["applies_run"] = registered["applies"]
+        differing = [key for key, value in wanted.items() if choice.get(key) != value]
+        if method == "fill" and cause.spec.get("apply_run") != registered["applies"]:
+            differing.append("the cause lookup's apply_run")
+        if differing:
+            raise ConfigurationError(
+                f"{name}'s choices run {folder.name} differs from the registered runs in "
+                f"{', '.join(differing)} (decision 0214)"
+            )
+
+
 def report(
     base: Mapping[str, RunRead],
     embeds: Mapping[str, RunRead],
@@ -162,6 +204,7 @@ def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None)
             group = {**base, EMBED: run}
             refuse_unequal_cases(group)
             embed_result.refuse_unrelated(group, snapshots.SNAPSHOT_DIR)
+        refuse_unregistered_choices(settings.runs_dir, embeds, base["cause-lookup"])
         everything = {**base, **embeds}
         processed = settings.data_dir / "processed"
         ids = sorted({row.case_id for run in everything.values() for row in run.rows})

@@ -14,8 +14,9 @@ What it reads
     --applies RUN``) and the embed lookup (``--lookup 5 --choices RUN``), all on
     ``pilot-2010-recount``. The runs must belong together: the cause-lookup reading's refusal
     (``memory_cause_lookup_result.refuse_unrelated``) for the first four, and the same checks for
-    the embed lookup, which must name a choices run; on ``dev-seal-400`` its embedding model must
-    be the steering winner (``memory_embed.steering_winner``). Each case is scored as in the
+    the embed lookup, which must name a choices run; on ``dev-seal-400`` its embedding model and
+    method must be the steering winner's (``memory_embed.steering_winner``, from decision 0214's
+    steering reading). Each case is scored as in the
     pilot's reading, failed cases as wrong (decision 0136).
 
 What it prints

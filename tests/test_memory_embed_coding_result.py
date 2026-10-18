@@ -7,7 +7,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from scripts import memory_embed
+from scripts import memory_embed, memory_embed_choices
 from scripts import memory_embed_coding_result as cr
 from scripts import memory_pilot_result as pr
 from tests.test_memory_embed_result import IDS, EmbedRuns
@@ -59,6 +59,8 @@ class FourRuns(EmbedRuns):
 
     def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         super().__init__(tmp_path, monkeypatch)
+        runs = {"applies": "apply-run", "embeds": "embed-run", "picks": "pick-run"}
+        monkeypatch.setattr(memory_embed_choices, "STEERING_RUNS", runs)
         self.embeds = []
         for method in ("embedding", "pick", "fit", "fill"):
             name = f"el-{method}"
@@ -70,6 +72,21 @@ class FourRuns(EmbedRuns):
                 choices_run=f"choices-{method}",
             )
             self.embeds.append(name)
+            choice: dict[str, object] = {
+                "sample": "dev-steer-400",
+                "method": method,
+                "model": LARGE,
+                "source_run": runs["picks"] if method == "pick" else runs["embeds"],
+            }
+            if method == "fill":
+                choice["applies_run"] = runs["applies"]
+            folder = self.settings.runs_dir / f"choices-{method}"
+            folder.mkdir()
+            (folder / "choice.json").write_text(json.dumps(choice))
+
+    def edit_choice(self, which: str, **changes: object) -> None:
+        path = self.settings.runs_dir / f"choices-{which}" / "choice.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), **changes}))
 
     def four(self, embeds: list[str] | None = None) -> list[str]:
         base = [x for label in cr.BASE for x in (f"--{label}", f"{self.folders[label]}")]
@@ -145,3 +162,39 @@ def test_spec_files_of_the_copies_differ_only_in_the_candidate(
         for name in test.embeds
     ]
     assert {s["lookup_by"] for s in specs} == {"embedding", "pick", "fit", "fill"}
+
+
+@pytest.mark.parametrize(
+    ("method", "changes", "says"),
+    [
+        ("pick", {"source_run": "a-second-picking-run"}, "source_run"),
+        ("embedding", {"source_run": "another-embedding-run"}, "source_run"),
+        ("fill", {"applies_run": "another-apply-run"}, "applies_run"),
+        ("fit", {"method": "embedding"}, "method"),
+        ("fit", {"sample": "dev-seal-400"}, "sample"),
+    ],
+)
+def test_a_choices_run_not_made_from_the_registered_runs_is_refused(  # noqa: PLR0913, PLR0917
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    method: str,
+    changes: dict[str, object],
+    says: str,
+) -> None:
+    test = FourRuns(tmp_path, monkeypatch)
+    test.edit_choice(method, **changes)
+    assert cr.main(test.four(), settings=test.settings) == 1
+    out = capsys.readouterr().out
+    assert says in out
+    assert "registered" in out
+    assert not test.out.exists()
+
+
+def test_a_missing_choices_run_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    test = FourRuns(tmp_path, monkeypatch)
+    shutil.rmtree(test.settings.runs_dir / "choices-fit")
+    assert cr.main(test.four(), settings=test.settings) == 1
+    assert "choices-fit" in capsys.readouterr().out
