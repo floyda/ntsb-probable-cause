@@ -91,6 +91,17 @@ def test_a_case_missing_from_the_choices_has_no_lesson_and_misses() -> None:
     assert (cov.hit_rate, cov.precision, cov.handed_out) == (0.0, 0.0, 0)
 
 
+def test_part_coverage_scores_each_predicted_part_on_its_own() -> None:
+    cases = {"A": _case("A", (LOC,), ("0101010101",)), "B": _case("B", (OTHER,))}
+    both_wrong_first = _predicts("L1", first=(STALL,), cats=("010101",))
+    first_only = _predicts("L2", first=(LOC,))
+    category_only = _predicts("L3", cats=("020202",))
+    chosen = {"A": [both_wrong_first, first_only, category_only], "B": [first_only]}
+    first, finding = coverage.part_coverage(chosen, cases)
+    assert (first.handed_out, first.agreeing, first.hits) == (3, 1, {"A": True, "B": False})
+    assert (finding.handed_out, finding.agreeing, finding.hits) == (2, 1, {"A": True, "B": False})
+
+
 def test_verdict_cases_leaves_out_a_case_without_occurrence_codes() -> None:
     cases, left_out = coverage.verdict_cases(
         ["A", "B"], [_raw([LOC], ["0101010101", "0202020202"]), _raw([])]

@@ -53,6 +53,32 @@ def coverage(chosen: Mapping[str, Sequence[Lesson]], cases: Mapping[str, Learnin
     return Coverage(hits, handed, agreeing)
 
 
+def part_coverage(
+    chosen: Mapping[str, Sequence[Lesson]], cases: Mapping[str, LearningCase]
+) -> tuple[Coverage, Coverage]:
+    """``chosen`` scored on each part apart: the first-code part, then the finding part.
+
+    A lesson counts on a part only if it predicts that part (``curate.first_agrees``,
+    ``curate.finding_agrees``); ``coverage`` needs every predicted part at once (decision 0214).
+    """
+    parts = (
+        (curate.first_agrees, "first_occurrence"),
+        (curate.finding_agrees, "finding_categories"),
+    )
+    out: list[Coverage] = []
+    for agrees, field in parts:
+        hits: dict[str, bool] = {}
+        handed = agreeing = 0
+        for case_id, case in cases.items():
+            lessons = [x for x in chosen.get(case_id, ()) if getattr(x.predicts, field)]
+            agree = [agrees(lesson, case) for lesson in lessons]
+            hits[case_id] = any(agree)
+            handed += len(lessons)
+            agreeing += sum(agree)
+        out.append(Coverage(hits, handed, agreeing))
+    return out[0], out[1]
+
+
 def verdict_cases(
     ids: Sequence[str], raws: Sequence[Mapping[str, object]]
 ) -> tuple[dict[str, LearningCase], int]:
