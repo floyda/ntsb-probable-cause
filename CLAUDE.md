@@ -629,7 +629,12 @@ recall@10 +2.6 points [+0.8, +4.5] over counts, against a noise of 0.6; top-1 +2
 (three OpenRouter models) and a picking call over its shortlist each raised the lesson hit rate
 (at best +5.5 points [+2.7, +8.2]) but at lower precision than today's cause lookup (36.3% against
 45.6% at best), so no coding run was made and `dev-seal-400` stays unread; embedding rows are kind
-`embedding`. Learner spend rows are kind `learning`, on their own monthly line
+`embedding`. **Every embedding lookup then went to the coding test, and none passed** (0214,
+`docs/rounds/memory-embed-coding.md`, `docs/results/memory-embed-coding-dev.txt`): four lookups over
+the large model (its five nearest, the picking call, cosine × fit, today's filled by the nearest)
+each failed 0213's rule against today's cause lookup on the steering slice, finding recall@10 −1.9
+to −0.0 points; `winner: none`, so `dev-seal-400` stays unread, today's cause lookup stays, and the
+lookup question for `pilot-2010-recount` is closed. Learner spend rows are kind `learning`, on their own monthly line
 `NTSB_LEARNING_MONTHLY_BUDGET_USD` (default $90, never counted by the $40 guard; raised for one
 command by 0208); coding-test rows are kind `coding-test`, on the $40 guard and the side track's
 $10 line. The learner reads `ANTHROPIC_API_KEY`, which `scripts/with_pass_keys.sh` takes from `pass`
@@ -649,9 +654,12 @@ make mem-coding-tools SOURCE=<id> REPEAT=a|b | SNAPSHOT=<name>  # counts, or mem
 make mem-pilot-result TA= TB= CA= CB= MEM="<a> <b>" LEARN="<a> <b>"  # the reading; free
 make mem-embed-models / mem-embed-probe  # OpenRouter's embedding list (free); the shape probe, ONCE
 make mem-embed MODEL=<id> [SAMPLE=]       # embed the lessons and a sample's causes (paid, cents)
-make mem-coverage EMBEDS="<3 runs>" [PICKS=] [SAMPLE= MODEL=]  # lesson coverage and the gate; free
+make mem-coverage EMBEDS="<3 runs>" [PICKS=]  # lesson coverage and the gate, steering only; free
 make mem-cause-pick EMBEDS=<run>          # the picking call over 20 nearest (paid, plan credit)
 make mem-coding-embed-lookup SOURCE= CHOICES= / mem-embed-result ...  # coding run and reading (0213)
+make mem-proxy-check                     # what 0213's coverage gate measured, exploratory; free
+make mem-embed-choices [SAMPLE= CANDIDATE=]  # 0214's four candidates' choices; free
+make mem-embed-coding-result EMBEDS="<4 runs>"  # 0214's steering reading and winner; free
 ```
 
 The targets from `s3-miss-kinds` on run exploratory scripts (decision 0059, `scripts/exploratory/`):

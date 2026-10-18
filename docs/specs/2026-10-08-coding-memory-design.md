@@ -1,6 +1,6 @@
 # A coding memory learned from closed cases: design note
 
-Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). A better lookup designed 2026-10-17 (§13); it stopped at its gate the same day (§13.12); every lookup went to the coding test, 2026-10-18 (§13.13). Drafted 2026-10-08; refreshed 2026-10-14. A declared
+Status: Approved (Andy, 2026-10-14). Pilot passed its stop rule, 2026-10-16 (§12). A better lookup designed 2026-10-17 (§13); it stopped at its gate the same day (§13.12); every lookup went to the coding test, 2026-10-18 (§13.13), and none passed the same day (§13.14). Drafted 2026-10-08; refreshed 2026-10-14. A declared
 experiment on development cases: Andy chose on 2026-10-14 to run its pilot now, as a side track
 beside S4 (§11, question 1), answered the other questions in §11 the same day, and the decisions
 in §10 are recorded. The implementation plan is in `docs/plans/`. The memory reaches the agent
@@ -756,6 +756,33 @@ cosine × fit; and today's lookup with the nearest lesson added for a case it le
 read by §13.6's rule against today's cause lookup. The largest passing finding gain goes forward,
 and runs once on `dev-seal-400` as §13.6 says. Lesson coverage is printed as a description only,
 each part apart. Whatever `dev-seal-400` shows closes the lookup question for `pilot-2010-recount`.
+
+### 13.14 Added 2026-10-18: no embedding lookup passed the coding test
+
+Every figure is from `docs/results/memory-embed-coding-dev.txt` (four coding runs on
+`dev-steer-400`, 401 cases each, none failed) and `docs/results/memory-embed-choices-dev.txt`.
+Today's cause lookup scores occurrence top-1 28.2%, top-3 34.2%, finding recall@10 44.6%; the
+noise, counts(b) minus counts(a), is top-1 +0.2, top-3 +0.7, finding recall@10 −0.3 points.
+Each lookup minus today's cause lookup, paired:
+
+- **The five nearest:** top-1 −0.7 points [−3.0, +1.5], top-3 +2.0 [−1.0, +5.0], finding
+  recall@10 −1.1 [−2.7, +0.6]. Fails on findings and on top-1.
+- **The picking call:** top-1 −1.5 [−3.2, +0.2], top-3 −0.5 [−2.7, +1.7], finding recall@10
+  −0.0 [−1.9, +1.8]. Fails on findings and on top-1.
+- **Cosine × fit:** top-1 −1.7 [−3.7, +0.2], top-3 +0.5 [−2.0, +3.2], finding recall@10 −1.9
+  [−3.8, +0.1]; it used only 35 distinct lessons. Fails on findings and on top-1.
+- **Today's, filled by the nearest:** top-1 +0.0 [−1.7, +2.0], top-3 +1.0 [−1.5, +3.7], finding
+  recall@10 −0.8 [−2.6, +1.1]. Fails on findings.
+
+`winner: none`. As registered, the round stops: `dev-seal-400` stays unread, today's cause lookup
+(0211, 0212) stays the memory's lookup, and no further lookup round is run on
+`pilot-2010-recount` (0214 item 6). The four runs cost $0.90 on the side track's line, against an
+estimate of about $0.73.
+
+What this shows: §13.13's finding-part coverage gains (+6.2 to +9.0 points of cases reaching an
+agreeing lesson) did not become coding gains. More agreeing finding lessons in front of the model
+did not raise its finding recall, and no lookup's finding difference has an interval above zero.
+The coding test agrees with §13.12's gate: no embedding lookup is better than today's.
 
 ## Glossary
 

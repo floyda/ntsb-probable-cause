@@ -78,7 +78,7 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
 
 ### Task 7: Close the records
 
-- [ ] Spec §13 Status and an "Added" note; CLAUDE.md; `make s33-continuity`, then
+- [x] Spec §13 Status and an "Added" note; CLAUDE.md; `make s33-continuity`, then
   `git checkout -- docs/results/s33-fingerprint-continuity.txt`; `make check`; commit.
 
 ## Deviations
