@@ -47,7 +47,7 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
 ### Task 2: The records
 
 - [x] Decision 0214, its README row, spec §13.13 (with the picking call's spend), this plan.
-- [ ] The registration `docs/rounds/memory-embed-coding.md`, drafted outside the repo until Andy
+- [x] The registration `docs/rounds/memory-embed-coding.md`, drafted outside the repo until Andy
   signs it; then committed alone.
 
 ### Task 3: The code
@@ -114,3 +114,5 @@ coding test, plan credit (Sonnet 5.5) for the apply step and a picking call on `
 - 2026-10-18, Task 5: the four steering runs cost $0.90 on the side track's line ($1.88 before,
   $2.78 after, `make mem-spend EST=0`) against the registration's estimate of about $0.73; every
   case was answered in each run. The line has $7.22 left.
+- 2026-10-18, Task 2: the registration was committed alone on Andy's signature (2540ca8), as
+  planned; its plan box was ticked afterwards, in Task 7's follow-up, not in that commit.
