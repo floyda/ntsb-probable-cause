@@ -85,7 +85,7 @@ main:focus {
 /* A heading reached by a link stays below the phone's sticky strip. scripts/rail.ts measures
    the strip; this is its height before the script runs, or without it. */
 :root {
-    --strip-h: 3.25rem;
+    --strip-h: 4rem;
 }
 @media (min-width: 1000px) {
     :root {

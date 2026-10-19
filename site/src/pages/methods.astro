@@ -87,10 +87,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         was. The sections follow the order in which a reader meets the numbers.
     </p>
 
-    <section aria-labelledby="reading">
+    <section id="reading" aria-labelledby="reading-heading">
         <Sign>Part 1</Sign>
 
-        <h2 id="reading">How to read the numbers</h2>
+        <h2 id="reading-heading">How to read the numbers</h2>
         <h3>First code matches (top-1)</h3>
         <p>
             The NTSB codes what happened in an accident as an ordered list of occurrence codes. The
@@ -136,10 +136,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         </p>
     </section>
 
-    <section aria-labelledby="board">
+    <section id="board" aria-labelledby="board-heading">
         <Sign>Part 2</Sign>
 
-        <h2 id="board">The board</h2>
+        <h2 id="board-heading">The board</h2>
         <p>
             The board lists the cases the NTSB has closed most recently. When the NTSB closes a case
             it publishes its cause and codes, though the codes can come later. The agent codes the
@@ -186,10 +186,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         </ul>
     </section>
 
-    <section aria-labelledby="ladder">
+    <section id="ladder" aria-labelledby="ladder-heading">
         <Sign>Part 3</Sign>
 
-        <h2 id="ladder">The ladder</h2>
+        <h2 id="ladder-heading">The ladder</h2>
         <p>
             Four ways of coding an accident, each with more machinery than the one before. The model
             steps are S3.2's held-out runs on the same {String(ladderCases)} cases, under one rule
@@ -202,10 +202,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         <MethodsGroup id="ladder" />
     </section>
 
-    <section aria-labelledby="questions">
+    <section id="questions" aria-labelledby="questions-heading">
         <Sign>Part 4</Sign>
 
-        <h2 id="questions">The Path questions</h2>
+        <h2 id="questions-heading">The Path questions</h2>
         <p>Each question on the Path page, with the numbers it shows and where they came from.</p>
 
         <h3 id="answer-key">1. Is there an answer key nobody had to write?</h3>
@@ -237,10 +237,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         </p>
     </section>
 
-    <section aria-labelledby="predictions">
+    <section id="predictions" aria-labelledby="predictions-heading">
         <Sign>Part 5</Sign>
 
-        <h2 id="predictions">S3.2's registered predictions</h2>
+        <h2 id="predictions-heading">S3.2's registered predictions</h2>
         <p>
             Before any held-out run, S3.2 wrote down nine predictions in its registration and
             committed it on {closedLong(text("s32.registered_on"))} (
@@ -276,10 +276,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         <p>{text("s32.not_predicted")}</p>
     </section>
 
-    <section aria-labelledby="history">
+    <section id="history" aria-labelledby="history-heading">
         <Sign>Part 6</Sign>
 
-        <h2 id="history">History</h2>
+        <h2 id="history-heading">History</h2>
         <p>
             Before S3.2, the ladder's middle steps were S1's one-shot ceiling and S2.4's fixed
             pipeline. S3.2's runs replaced them. S1 ran on an earlier model. S2.4's pipeline had no
@@ -300,10 +300,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         )}
     </section>
 
-    <section aria-labelledby="limits">
+    <section id="limits" aria-labelledby="limits-heading">
         <Sign>Part 7</Sign>
 
-        <h2 id="limits">Limits</h2>
+        <h2 id="limits-heading">Limits</h2>
         <p>
             <strong>The run-twice band.</strong> Run twice, identically, on the same development
             cases, the two runs' first-code match differed by {pointsOn("q7.noise_band")} (
@@ -325,10 +325,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         <MethodsGroup id="limits" />
     </section>
 
-    <section aria-labelledby="withheld">
+    <section id="withheld" aria-labelledby="withheld-heading">
         <Sign>Part 8</Sign>
 
-        <h2 id="withheld">How the verdict is withheld</h2>
+        <h2 id="withheld-heading">How the verdict is withheld</h2>
         <p>
             The agent never sees the NTSB's answer, or the investigators' write-ups that lead to it.
             This is enforced in code, by one function and a guard, not by care.
@@ -336,10 +336,10 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         <SplitDiagram />
     </section>
 
-    <section aria-labelledby="glossary">
+    <section id="glossary" aria-labelledby="glossary-heading">
         <Sign>Part 9</Sign>
 
-        <h2 id="glossary">Glossary</h2>
+        <h2 id="glossary-heading">Glossary</h2>
         <dl class="glossary panel">
             {GLOSSARY.map((t) => (
                 <div>

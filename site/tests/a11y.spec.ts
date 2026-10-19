@@ -144,22 +144,40 @@ test("the rail marks the place being read", async ({ page }) => {
     await expect(page.locator('nav.rail a[aria-current="location"]')).toHaveCount(1);
 });
 
-test("a link to a place leaves its heading below the phone's strip", async ({ page }, info) => {
-    test.skip(info.project.name !== "phone", "the strip is the phone's; wide screens use a column");
-    await page.goto("/path/#choosing");
-    await page.waitForTimeout(300);
-    const { strip, heading } = await page.evaluate(() => ({
-        strip: document.querySelector("nav.rail")?.getBoundingClientRect().bottom ?? 0,
-        heading: document.querySelector("#choosing h2")?.getBoundingClientRect().top ?? -1,
-    }));
-    expect(heading).toBeGreaterThanOrEqual(strip);
-});
+// Every place a rail names, reached by a link, shows its sign below the phone's strip, or on
+// screen on a wide one (S5 step 6a, Task 3; plan Review Focus 1; review, 2026-10-19: one padded
+// question could pass with no scroll margin at all, so every place is checked).
+for (const address of ["/path/", "/methods/"]) {
+    test(`every place on ${address} lands clear of the rail`, async ({ page }) => {
+        await page.goto(address);
+        const ids = await page
+            .locator("nav.rail a[data-place]")
+            .evaluateAll((links) => links.map((a) => a.getAttribute("data-place") ?? ""));
+        expect(ids.length).toBeGreaterThan(5);
+        for (const id of ids) {
+            await page.goto(`${address}#${id}`);
+            await page.waitForTimeout(150);
+            const { top, below } = await page.evaluate((place) => {
+                const rail = document.querySelector("nav.rail");
+                const strip =
+                    rail !== null && getComputedStyle(rail).gridColumnStart !== "2"
+                        ? rail.getBoundingClientRect().bottom
+                        : 0;
+                const target = document.getElementById(place);
+                const section = target?.closest("section") ?? target;
+                const sign = section?.querySelector(".sign") ?? target;
+                return { top: sign?.getBoundingClientRect().top ?? -1, below: strip };
+            }, id);
+            expect(top, id).toBeGreaterThanOrEqual(below);
+        }
+    });
+}
 
 test.describe("with scripts off", () => {
     test.use({ javaScriptEnabled: false });
     test("the rail is a complete list of links, with nothing marked", async ({ page }) => {
         await page.goto("/path/");
-        await expect(page.locator("nav.rail a")).toHaveCount(9);
+        await expect(page.locator("nav.rail a")).toHaveCount(10);
         await expect(page.locator("nav.rail a[aria-current]")).toHaveCount(0);
     });
 });

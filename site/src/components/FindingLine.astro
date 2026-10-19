@@ -15,8 +15,15 @@ const { area, item, detail } = findingParts(label);
 <span class="line">
     {show === "all" && area.length > 0 && (
         <span class="area">
-            {area.map((level) => (
-                <span>{level}</span>
+            {area.map((level, i) => (
+                <>
+                    {i > 0 && (
+                        <span class="sep" aria-hidden="true">
+                            {" › "}
+                        </span>
+                    )}
+                    <span>{level}</span>{" "}
+                </>
             ))}
         </span>
     )}
@@ -40,10 +47,6 @@ const { area, item, detail } = findingParts(label);
     .area {
         color: var(--ink-muted);
         font-size: 0.85rem;
-    }
-    /* The separator is drawn, not read: a screen reader hears the levels alone. */
-    .area span + span::before {
-        content: " › " / "";
     }
     .what {
         overflow-wrap: anywhere;

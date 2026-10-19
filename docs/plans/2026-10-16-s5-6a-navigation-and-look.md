@@ -201,9 +201,9 @@ Decided here, so no question is needed; each can be changed at the preview:
 
 ## Task 6: Preview (Controller)
 
-- [ ] **Step 1:** Rebuild the private phone link (the preview artifact of step 5, the same address) from this branch's build, and serve the build locally from the worktree, never from the main checkout. Send phone screenshots, light and dark, of each page's top and of a rail in use.
-- [ ] **Step 2:** Andy reviews. His answers are recorded in Deviations.
-- [ ] **Step 3:** Run one fresh review of the step (Opus) and its fix pass; push.
+- [x] **Step 1:** Rebuild the private phone link (the preview artifact of step 5, the same address) from this branch's build, and serve the build locally from the worktree, never from the main checkout. Send phone screenshots, light and dark, of each page's top and of a rail in use.
+- [x] **Step 2:** Andy reviews. His answers are recorded in Deviations.
+- [x] **Step 3:** Run one fresh review of the step (Opus) and its fix pass; push.
 
 ---
 
@@ -261,6 +261,26 @@ Decided here, so no question is needed; each can be changed at the preview:
     - `findings.test.ts` (8): the parts, each kind of pair, the order, single use, no pair across areas;
     - a built-page check on every compared sample case: one tag per finding row, two per close pair, every item shown.
   - Two older checks that wanted a finding's full label word for word now check its item and its detail.
+- **Final review (2026-10-19, one fresh reviewer), and its fix pass.** No critical finding. The reviewer confirmed:
+  - no inline script or style in the build, with the production CSP raising no violation on five pages;
+  - three distinct `nav` labels;
+  - target sizes;
+  - no sideways scroll from 320 to 1280px;
+  - every link and fragment resolving;
+  - label parsing safe on all 1019 finding items (each has exactly three " — ", and none holds " - ").
+  - **Important, fixed:**
+    - **A finding's area ran together for screen readers** ("Personnel issuesTask performance"): the separators were CSS-only. Each separator is now a real `aria-hidden` span with a space beside it. A check fails if the words run together.
+    - **The phone test of a link to a place could not fail.** The padded question it used cleared the strip even with no scroll margin. My Task 3 note that it was "shown to fail" does not hold on the final build. The test now visits every place on the Path and Methods and checks that the place's sign lands below the strip, or on screen when the screen is wide. With the scroll margin removed it fails on the phone, for both pages.
+    - **`rail.ts` told the strip from the column by height alone,** so large text or a two-place rail picked the wrong one. It now uses `matchMedia("(min-width: 1000px)")`, as the CSS does, and measures again with a `ResizeObserver`. The fallback without script is raised from 3.25rem to 4rem, above the measured 61px strip.
+  - **Minor, fixed:**
+    - The phone strip's focus ring was clipped; the strip has 4px of room.
+    - Methods' places were headings, so a link hid the sign above them. The nine ids moved to the sections, with the headings now `<name>-heading`, so the links keep their addresses. The Path's ladder is the section `ladder` too.
+    - "What could come next" is a place, with the sign "After version 1", so the rail no longer marks question 8 while it is read.
+    - The first page's `h1` is inside its first stop.
+    - The case page jumped from `h1` to `h3`. A visually hidden `h2`, "Both codings, side by side", now sits above the article. The article keeps `h3`, because the first page swaps the same article in under its own `h2` (`scripts/open-row.ts`). The headings use classes, not tag names, for their style.
+    - A heading place in a section already watched for another place is now watched on its own.
+    - The findings check counts each kind of tag against the case file's own lists, not against `findingRows`, and checks every detail. The two older checks require the item and the detail in the same finding line.
+  - **Not changed:** no sample case has a "same item, a different detail" pair, so that pairing is covered by the unit tests only. The sample is S4's invented `board/1` file, which step 6c brings up to date, and a pair can be added then.
 
 ## Glossary
 

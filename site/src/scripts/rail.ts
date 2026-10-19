@@ -7,13 +7,17 @@ if (rail !== null) {
     const links = [...rail.querySelectorAll<HTMLAnchorElement>("a[data-place]")];
     const root = document.documentElement;
 
-    // The strip's height, so a heading reached by a link is not hidden beneath it (tokens.css).
+    // The strip's height, so a place reached by a link is not hidden beneath it (tokens.css).
+    // Which layout is showing is the media query's, the same as Rail.astro's CSS; the height is
+    // measured again whenever the rail changes size (text size, fonts, a narrower screen).
+    const wide = window.matchMedia("(min-width: 1000px)");
     const measure = (): void => {
-        const strip = getComputedStyle(rail).position === "sticky" && rail.offsetHeight < 120;
-        root.style.setProperty("--strip-h", strip ? `${String(rail.offsetHeight)}px` : "0px");
+        const height = wide.matches ? 0 : rail.offsetHeight;
+        root.style.setProperty("--strip-h", `${String(height)}px`);
     };
     measure();
-    window.addEventListener("resize", measure);
+    wide.addEventListener("change", measure);
+    new ResizeObserver(measure).observe(rail);
 
     const mark = (id: string): void => {
         for (const link of links) {
@@ -45,7 +49,10 @@ if (rail !== null) {
         const target = document.getElementById(id);
         // A place named by its heading is watched through the section that heading opens.
         if (target === null) continue;
-        const area = target.closest("section") ?? target;
+        // A section already watched for another place keeps it; this place's own element is
+        // watched instead, so no place is left unmarked (review, 2026-10-19).
+        const section = target.closest("section");
+        const area = section !== null && !section.hasAttribute("data-place-of") ? section : target;
         area.setAttribute("data-place-of", id);
         watch.observe(area);
     }

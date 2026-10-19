@@ -72,15 +72,23 @@ describe.skipIf(!built)("the opened case says only what is known (review, 2026-1
     it("an awaiting case still lists the agent's findings", () => {
         // Shown as its item and detail, with its area apart (step 6a).
         const parts = findingParts(get("XXX26XX006").answer?.findings[0]?.label ?? "missing");
-        expect(page("XXX26XX006")).toContain(parts.item);
-        expect(page("XXX26XX006")).toContain(parts.detail ?? "missing");
+        // Item and detail in the same finding line, not anywhere on the page (review).
+        const html = readFileSync(join(DIST, "case", "XXX26XX006", "index.html"), "utf8");
+        const lines = html.split('<span class="line"').slice(1).map(visibleText);
+        expect(
+            lines.some((l) => l.includes(parts.item) && l.includes(parts.detail ?? "missing")),
+        ).toBe(true);
     });
 
     it("a not-coded case still lists the NTSB's findings", () => {
         // Shown as its item and detail, with its area apart (step 6a).
         const parts = findingParts(get("XXX26XX005").verdict?.findings[0]?.label ?? "missing");
-        expect(page("XXX26XX005")).toContain(parts.item);
-        expect(page("XXX26XX005")).toContain(parts.detail ?? "missing");
+        // Item and detail in the same finding line, not anywhere on the page (review).
+        const html = readFileSync(join(DIST, "case", "XXX26XX005", "index.html"), "utf8");
+        const lines = html.split('<span class="line"').slice(1).map(visibleText);
+        expect(
+            lines.some((l) => l.includes(parts.item) && l.includes(parts.detail ?? "missing")),
+        ).toBe(true);
     });
 
     it("an abstained case shows no graded agent codes", () => {
@@ -438,9 +446,7 @@ describe.skipIf(!built)("the Methods page (S5 step 5, Task 5)", () => {
     });
 
     it("keeps evaluation numbers out of the board's section", () => {
-        const board = /<section[^>]*aria-labelledby="board"[^>]*>([\s\S]*?)<\/section>/.exec(
-            methods(),
-        );
+        const board = /<section[^>]*id="board"[^>]*>([\s\S]*?)<\/section>/.exec(methods());
         expect(board).not.toBeNull();
         expect(board?.[1]).not.toMatch(/\sid="n-/);
     });
@@ -493,7 +499,7 @@ describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () =>
 describe.skipIf(!built)("the rail of places (S5 step 6a, Task 3)", () => {
     const RAILS: Record<string, number> = {
         "index.html": 3,
-        "path/index.html": 9,
+        "path/index.html": 10,
         "methods/index.html": 9,
     };
     it.each(Object.entries(RAILS))("%s has a rail of %i places, each on the page", (page, n) => {
@@ -577,19 +583,23 @@ describe.skipIf(!built)("why it happened (S5 step 6a, Andy, 2026-10-19)", () => 
             if (c === undefined || c === null) throw new Error(n);
             const html = readFileSync(join(DIST, "case", n, "index.html"), "utf8");
             const text = visibleText(html);
-            const rows = findingRows(c.findings_both, c.findings_ntsb_only, c.findings_agent_only);
-            const tags = [...html.matchAll(/class="tag (both|ntsb|agent)[" ]/g)].length;
-            const expected = rows.reduce((sum, r) => sum + (r.kind === "one" ? 1 : 2), 0);
-            expect(tags).toBe(expected);
-            for (const f of [
-                ...c.findings_both,
-                ...c.findings_ntsb_only,
-                ...c.findings_agent_only,
-            ]) {
+            // Counted from the case file, not from the code under test (review, 2026-10-19):
+            // every finding carries exactly one tag, of its own kind.
+            const count = (who: string): number =>
+                [...html.matchAll(new RegExp(`class="tag ${who}[" ]`, "g"))].length;
+            expect(count("both")).toBe(c.findings_both.length);
+            expect(count("ntsb")).toBe(c.findings_ntsb_only.length);
+            expect(count("agent")).toBe(c.findings_agent_only.length);
+            const all = [...c.findings_both, ...c.findings_ntsb_only, ...c.findings_agent_only];
+            for (const f of all) {
                 const parts = findingParts(f.label);
                 expect(text).toContain(parts.item);
+                expect(text).toContain(parts.detail ?? "missing");
             }
+            const rows = findingRows(c.findings_both, c.findings_ntsb_only, c.findings_agent_only);
             if (rows.some((r) => r.kind === "close")) expect(text).toMatch(/Close: the same/);
+            // The area's levels are read as separate words (review, 2026-10-19).
+            expect(text).not.toMatch(/Personnel issuesTask/);
         },
     );
 });

@@ -89,21 +89,21 @@ const commit = kase.withheld?.commit ?? null;
 
     <div class="pair">
         <section>
-            <h3>{agentCauseHeading}</h3>
+            <h3 class="part">{agentCauseHeading}</h3>
             <p>{agentCause}</p>
         </section>
         <section>
-            <h3>The NTSB's cause</h3>
+            <h3 class="part">The NTSB's cause</h3>
             <p>{ntsbCause}</p>
         </section>
     </div>
 
-    <h3>
+    <h3 class="part">
         What happened <span class="term">· NTSB occurrence codes</span>
     </h3>
     <div class="pair">
         <section>
-            <h4>The agent's order</h4>
+            <h4 class="sub">The agent's order</h4>
             {agentCodes.length > 0 ? (
                 <ol>
                     {agentCodes.map((c) => (
@@ -123,7 +123,7 @@ const commit = kase.withheld?.commit ?? null;
             )}
         </section>
         <section>
-            <h4>The NTSB's order</h4>
+            <h4 class="sub">The NTSB's order</h4>
             {ntsbCodes.length > 0 ? (
                 <ol>
                     {ntsbCodes.map((c) => (
@@ -144,7 +144,7 @@ const commit = kase.withheld?.commit ?? null;
         </section>
     </div>
 
-    <h3>
+    <h3 class="part">
         Why it happened <span class="term">· NTSB findings</span>
     </h3>
     {findingList !== null ? (
@@ -153,7 +153,7 @@ const commit = kase.withheld?.commit ?? null;
         <div class="pair">
             {findingGroups.map((group) => (
                 <section>
-                    <h4>{group.heading}</h4>
+                    <h4 class="sub">{group.heading}</h4>
                     {group.codes.length > 0 ? (
                         <ul class="lines">
                             {group.codes.map((c) => (
@@ -235,12 +235,15 @@ const commit = kase.withheld?.commit ?? null;
         border-radius: 4px;
         background: var(--paper);
     }
-    h3,
-    h4 {
+    .part,
+    .sub {
         margin: 0;
         text-wrap: balance;
     }
-    h4 {
+    .part {
+        font-size: var(--step-1);
+    }
+    .sub {
         font-size: 1rem;
         color: var(--ink-muted);
     }

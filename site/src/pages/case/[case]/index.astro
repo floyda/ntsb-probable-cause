@@ -28,5 +28,8 @@ const { kase } = Astro.props;
 >
     <BackLinks />
     <h1>{kase.case_number}</h1>
+    <!-- The article's parts are h3, as on the first page, where a tapped row swaps it in
+         (scripts/open-row.ts); this heading keeps the page's outline whole (review). -->
+    <h2 class="vh">Both codings, side by side</h2>
     <OpenedCase kase={kase} />
 </Base>

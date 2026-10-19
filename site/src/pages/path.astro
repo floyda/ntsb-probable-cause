@@ -30,7 +30,7 @@ const R = "docs/results/";
 
 // The Path's rail (spec §21 note, 2026-10-16): the ladder and the eight questions, by short names.
 const places = [
-    { id: "ladder-heading", label: "The ladder" },
+    { id: "ladder", label: "The ladder" },
     { id: "answer-key", label: "1 · An answer key" },
     { id: "case-record", label: "2 · The case record" },
     { id: "docket", label: "3 · The docket" },
@@ -39,6 +39,7 @@ const places = [
     { id: "consistency", label: "6 · Consistency" },
     { id: "choosing", label: "7 · Choosing" },
     { id: "newly-closed", label: "8 · Newly closed" },
+    { id: "next", label: "What could come next" },
 ];
 ---
 
@@ -56,7 +57,7 @@ const places = [
         figure links to the results file and the script that produced it.
     </p>
 
-    <section aria-labelledby="ladder-heading">
+    <section id="ladder" aria-labelledby="ladder-heading">
         <Sign>Four ways to code an accident</Sign>
         <h2 id="ladder-heading">The ladder</h2>
         <p>
@@ -272,7 +273,8 @@ const places = [
         <ClosuresStrip rows={index.rows} slot="figure" />
     </PathStop>
 
-    <section class="next" aria-labelledby="next-heading">
+    <section id="next" class="next" aria-labelledby="next-heading">
+        <Sign>After version 1</Sign>
         <h2 id="next-heading">What could come next</h2>
         <p>Each would be run as a registered, measured experiment against the fixed pipeline.</p>
         <ul>

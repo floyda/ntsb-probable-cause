@@ -31,11 +31,23 @@ const CLOSE = {
                 <li class="row close">
                     <p class="close-label">{CLOSE[row.how]}</p>
                     <span class="area">
-                        {findingParts(row.ntsb.label).area.map((level) => (
-                            <span>{level}</span>
+                        {findingParts(row.ntsb.label).area.map((level, i) => (
+                            <>
+                                {i > 0 && (
+                                    <span class="sep" aria-hidden="true">
+                                        {" › "}
+                                    </span>
+                                )}
+                                <span>{level}</span>{" "}
+                            </>
                         ))}
                         {row.how === "detail" && (
-                            <strong class="shared">{findingParts(row.ntsb.label).item}</strong>
+                            <>
+                                <span class="sep" aria-hidden="true">
+                                    {" › "}
+                                </span>
+                                <strong class="shared">{findingParts(row.ntsb.label).item}</strong>
+                            </>
                         )}
                     </span>
                     <span class="pairline">
@@ -84,12 +96,6 @@ const CLOSE = {
     .area {
         color: var(--ink-muted);
         font-size: 0.85rem;
-    }
-    /* The separator is drawn, not read, as in FindingLine. */
-    .area > * + *::before {
-        content: " › " / "";
-        font-weight: 400;
-        color: var(--ink-muted);
     }
     .shared {
         color: var(--ink);

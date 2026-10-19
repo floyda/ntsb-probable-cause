@@ -44,7 +44,8 @@ const places = checkPlaces(Astro.props.places);
     ol {
         list-style: none;
         margin: 0;
-        padding: 0;
+        /* Room for a focused tab's ring, which the strip's own scrolling would otherwise clip. */
+        padding: 4px;
         display: flex;
         gap: 0.4rem;
         overflow-x: auto;
@@ -96,6 +97,7 @@ const places = checkPlaces(Astro.props.places);
         ol {
             display: grid;
             gap: 0;
+            padding: 0;
             overflow: visible;
             border-left: 2px solid var(--rule);
         }
