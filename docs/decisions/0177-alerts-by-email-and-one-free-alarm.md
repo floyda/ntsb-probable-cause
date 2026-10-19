@@ -36,3 +36,12 @@ From the S4 design session with Andy, 2026-10-10. Detail: the S4 specification, 
 ## Status
 
 Accepted, 2026-10-10 (Andy: "Agreed").
+
+## Note, 2026-10-16 (appended; nothing above is edited): item 4 read before the first bill
+
+October's first bill was not out at S4's close-out, so AWS Cost Explorer's month to date stood in
+for it. CloudWatch showed $0.00036, all of it usage type `CW:GMD-Metrics`: GetMetricData calls,
+which the console makes when it draws a metric graph. The alarm (`AlarmMonitorUsage`) and the
+custom metric (`MetricMonitorUsage`) cost $0. Andy (2026-10-16) chose to keep the alarm: the
+charge item 4 guards against is the alarm's and the metric's, and both are inside the free tier.
+A cost from viewing graphs stops when no one opens them.

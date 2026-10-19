@@ -1,7 +1,7 @@
 # S4 — Predictions and resolution: design
 
 *Drafted 2026-10-10 from a design session with Andy (2026-10-10), after S3.3 closed (pull request
-#29, merge commit `ebb16cb`). Status: Approved (Andy, 2026-10-10). The implementation plan is written from this document
+#29, merge commit `ebb16cb`). Status: Implemented (2026-10-16, pull request #36). The implementation plan is written from this document
 separately, in `docs/plans/`. The specification, the plan and the code are on one branch,
 `s4-predictions-and-resolution`, and one pull request.*
 
@@ -754,6 +754,470 @@ version 1, with spend bounded in code and on OpenRouter, and every failure reach
   to say what S4 built.
 
 ---
+
+## As built (S4, 2026-10-16)
+
+*S4 closed on 2026-10-16 in pull request #36. This part records what was built and measured,
+against §17.*
+
+S4 moved the S3.3 live shadow off Andy's Mac and made it unattended. Ellery version 1, unchanged,
+ran as a scheduled cloud task on four nights, 2026-10-13 to 2026-10-16, with no one intervening.
+It coded the 62-case backfill and 11 fresh closures, once each, with the verdict withheld. All
+seven conditions of the closing rule (§15) were met on 2026-10-16. Every figure below is from a
+committed results file (`docs/results/s4-live.txt`, `docs/results/s33-fingerprint-continuity.txt`,
+`docs/results/s4-names-dev.txt`), from the night logs in CloudWatch Logs (`/ecs/ntsb-live`), or
+from `make s4-verify-ledger`.
+
+### Delivered
+
+- **Decision records 0168 to 0185.** 0168 to 0181 were written from the design session before any
+  code. 0182 to 0185 came while the stage was built: names (0182 to 0184, Andy's choices) and the
+  resume rules (0185, confirmed by Andy at the deploy hand-off).
+- **Version 1, made exact** (§3; decisions 0168, 0169). `agent/rendered.py` gains an invented
+  record with several events, and `VERSION_1` is re-pinned to
+  `s3-v1+ge17fecdc66ec+tdff9dea78f23`. The model setting is the literal `"openai/gpt-6-luna"`.
+  Every trail row records the replying model, its provider and a request hash.
+- **The night** (`live/night.py`; §5 to §8; decisions 0170, 0171, 0174, 0175, 0185). It runs in the
+  image as `ntsb-live run`. It holds a same-day marker, sizes the night by the full-cap rule on the
+  live key's own limit (`live/cloud.py` reads `usage_monthly`), counts fetch failures, resumes an
+  unfinished run for what is left and on the docket it began with (`dockets.json`), writes later
+  scores (`live/later.py`), the export and the night record, and sends the alerts.
+- **The store and the export** (§9, §10; decisions 0172, 0173, 0176). Run folders in a private,
+  versioned bucket, pushed after every reply. Closure record version 2 holds the docket's hashes.
+  `live/board.py` and `live/export.py` build `board/1` each night, ending with
+  `export/board-1/_finished.json`. The JSON Schema is `docs/schemas/board-1.schema.json`, and the
+  invented sample is under `tests/fixtures/board/`. `ntsb-live export` builds it locally.
+- **Names on the board** (`live/names.py`; §12.2; decisions 0180, 0182 to 0184). Prose has the
+  owner, operator and registration replaced. Titles also get the title rule. The limit is
+  published, and the report counts replaced words as a floor.
+- **`NtsbLiveStack`** (`infra/live_stack.py`; §4; decisions 0171, 0177). Its own network, the
+  `ntsb-live` image repository, the task and its roles, the live bucket, the alert topic and the
+  missed-night alarm, and the ledger's role, which trusts GitHub's immutable OIDC subject. The
+  image is built and pushed by `scripts/build_live_image.sh` (`make s4-image`).
+- **The ledger** (§11; decision 0178). `.github/workflows/ledger.yml` and `live/ledger.py` append
+  every new run and night manifest's SHA-256 to `ledger.jsonl` on the protected `ledger` branch.
+  `ntsb-live verify-ledger` checks a copy of the bucket against it.
+- **The runbook** `docs/runbooks/live-cloud-nights.md`, with a row for every alert and message.
+- **The report** `scripts/s4_live_report.py` (`make s4-report`), which writes
+  `docs/results/s4-live.txt`, counts only. The other targets are `s4-dry-run`, `s4-export`,
+  `s4-verify-ledger`, `s4-spend`, `s4-names-probe`, `board-schema` and `board-sample`.
+  `s33-morning` and `s33-dry-run` are removed: paid nights run only in the image.
+
+### Done means, with evidence
+
+1. A case closing causes it to be coded and scored without anyone intervening. **Met.**
+   - On 2026-10-16 the scheduled task coded 11 cases that closed the day before, on the night after
+     they closed. The night was started by the schedule
+     (`docs/results/s4-live.txt`, closing-rule condition 3, "11 such cases").
+   - The backfill drained by scheduled nights alone: 29, 29 and 3 cases on 2026-10-13 to
+     2026-10-15 (condition 2; the night logs in `/ecs/ntsb-live`).
+2. Its results are stored in the private bucket. **Met.** Every night wrote a night manifest and
+   its run's manifest (`docs/results/s4-live.txt`: 4 nights started, 4 finished).
+3. They are hashed in the public ledger. **Met.** `make s4-verify-ledger` on 2026-10-16: "ledger
+   lines: 8; problems: 0" (condition 4). The ledger job after night 4:
+   https://github.com/floyda/ntsb-probable-cause/actions/runs/38973936763.
+4. They are exported in `board/1` for the site. **Met.** The night's export, built from the real
+   store, passes the `board/1` schema (condition 6), and the board holds 73 cases
+   (`docs/results/s4-live.txt`). The builder's tests are in `tests/test_live_export.py` and
+   `tests/test_live_board.py`.
+5. Under version 1. **Met.** `+t dff9dea78f23` on `fd6053f` and on the branch, "match: yes"
+   (`docs/results/s33-fingerprint-continuity.txt`, commit `1c27e23`, before any cloud night;
+   condition 1). Every reply came from the model asked for: 0 of 695 model calls with a trail
+   row differ (`docs/results/s4-live.txt`, "replies").
+6. With spend bounded in code and on OpenRouter. **Met.** The full-cap rule held nights 1 and 2
+   back by money (the `money-held-back` alert, 2 nights). The live key's limit is $10 a month on
+   OpenRouter. The live key's spend over four nights was $0.3494 (`docs/results/s4-live.txt`).
+7. With every failure reaching Andy by email. **Met.** The test alert email arrived on 2026-10-12,
+   and the missed-night alarm was shown to fire by a state test on 2026-10-13 (Andy's attestation;
+   condition 5). The `money-held-back` emails of nights 1 and 2 arrived.
+8. The stage is closed out (status Implemented, As-built section, roadmap marked done, plan
+   deleted). **Met** — this pull request's close-out commit; `uv run python -m scripts.check_docs`
+   clean.
+
+The Mac's key was removed on 2026-10-16 (Andy's attestation; condition 7). The closing rule's
+14-day limit was not needed.
+
+### Departures from this specification
+
+- **The fingerprint (§3.1, §3.2).** The plan's test asserted that "Maneuvering" was not in the
+  sent text. It could not pass, because the code tables in the prompt name every phase. The test
+  now reads only the `phase_of_flight` evidence line and checks a set of phases. The mutation
+  sweep then reported `isDefiningEvent` in `fields.py` as misfiled: the sweep keys a literal by
+  module and value, and two of its three sites feed only the withheld `eventCode`, so they cannot
+  move `+t`. `fields._is_defining` now holds the only literal, as `_sequence` does. Behaviour is
+  unchanged. For the model pin, the test that allowed `-luna` text only in `sources.py` now also
+  allows exactly one occurrence in `live/morning.py`. `request_sha256` repeats
+  `rendered_sha256`'s per-request cut and reuses `MODEL_FACING_KEYS`, because `rendered.py` has no
+  per-request helper.
+- **The stack and the image (§4.1, §4.2).**
+  - The container overrides the entry point as well as the command, because the `Dockerfile`'s
+    entry point is `ntsb-record`. The argv is `timeout --signal=TERM --kill-after=60 10800
+    ntsb-live` and then the command. The plan's first log line gave `timeout 10800 ntsb-live run`;
+    the follow-up to Task 12 (`679bed5`) changed it without a log line, and the module docstring
+    of `infra/live_stack.py` was corrected in the final review.
+  - The `Dockerfile` already set `NTSB_COMMIT_SHA` and `NTSB_DATA_DIR=/tmp/ntsb` and installed the
+    `aws` extra, so it is unchanged and the task sets neither value.
+  - The image is pinned with `from_registry(<repo uri>@<digest>)`, with `grant_pull` on the
+    execution role. The bucket's lifecycle has two rules, for `runs/` and `export/`, by the
+    controller's ruling.
+  - The live stack is built in `app.py` only when the context `recorder_bucket` is given, so the
+    recorder's `cdk synth` needs no live context.
+  - `NtsbLiveStack` refuses a `live_image_digest` that is not of the form
+    `^sha256:[0-9a-f]{64}$`. It also refuses the placeholder digest, given explicitly, when the
+    schedule is enabled.
+  - `scripts/build_live_image.sh` reads the digest from `--metadata-file`, then reads the pushed
+    tag's digest back with `aws ecr describe-images`. It exits 1 when that digest is empty, `None`,
+    not of the digest form, or not docker's.
+  - `make s4-image` refuses unless `CONFIRM=yes` is given, so it cannot push to ECR by accident.
+- **The Mac is retired (§4.4).** `make s33-morning` and `make s33-dry-run` were both removed.
+  With the live stack present, `s33-dry-run` would read the live key's limit with the development
+  key and refuse. `make s4-dry-run` replaces it. It reads the NTSB key and the live OpenRouter key
+  from `pass` inside the recipe, so `paid_run.sh` is unchanged. `make s33-report` stays and runs
+  S3.3's script directly. `scripts/live_env.sh` looks up the live stack only if it exists, and its
+  default profile is `ntsb`. Only an AWS answer containing "does not exist" counts as "not
+  deployed". Any other failed lookup prints one line naming its kind (login expired, access
+  denied or no credentials, throttled, network, other) and exits 1. `Settings` strips surrounding
+  whitespace from the NTSB, OpenRouter and TypeSafe keys.
+- **The night's order (§5).**
+  - The export is built and pushed before `night.json` is written, so the night record can hold
+    `export-failed`. Any exception from the export or its push is `export-failed`, and only its
+    class is printed. The night record, its push and the metric still follow.
+  - `NightDeps.export` takes the night's day and its start time, not only the folder, so a night
+    that runs past midnight UTC dates its export as it dates its records.
+  - The pull from the bucket comes before `mark_started`. A pull only reads, so a failed pull
+    leaves the day unclaimed. A second task on the same day still stops before it opens the
+    store. `mark_started` also writes the empty marker locally and records it as seen, so the
+    night manifest lists `started` and no later push uploads it again.
+  - `S3Bucket.put_if_absent` retries an HTTP 409 `ConditionalRequestConflict` twice, after
+    0.5 s and 1 s, and returns False after the third. It fails closed.
+  - `night.json` adds `later_errors` (kind to count). The night manifest's `files` lists the night
+    folder's own files, so `records.verify_manifest` reads it. `night_files` lists tonight's run
+    folder, the scores file and the state file by bucket path, with size and SHA-256. `counts` are
+    flat integers. `finished` is false when something stopped the night.
+  - Each night writes `nights/<date>/state.json`, a copy of the shared `nights/state.json` at the
+    night's end, and `night_files` lists that copy, never the shared file (§9.3).
+  - `run_night` takes an optional `limit`, passed from `ntsb-live run --limit`. In the image,
+    `ntsb-live run` exits 1 when something stopped the night and 0 otherwise, a second start
+    included. The S3.3 lock is not taken there; the marker replaces it. The cloud dry run takes
+    `live.lock` before it builds any client.
+- **The run folder is pushed after every reply (§5 step 7, §7.4),** not after each case, through a
+  hook in `drive_sync`. The hook is also called once before the first request, after the inputs
+  and the backfill have moved into the run folder (`MorningDeps.on_reply_factory`). Without that
+  first call, a task killed during its first request left nothing in the bucket, and on the launch
+  night the backfill would have been lost, since decision 0157 never recomputes it. Such a run is
+  now resumed, not started again.
+  - Every push uploads in a fixed order (`cloud.push_order`): `spec.json` next to last and
+    `run.jsonl` last. A task killed between two uploads leaves either a folder no night takes for
+    a live run, or a run the next night resumes, never a finished run with files missing. In a
+    night folder, `manifest.json` is last, because it lists `night.json`.
+  - The mirror never pushes `reservation.json`. It is the runner's local budget lock; the task
+    role cannot delete, so a copy in the bucket would count against every later night's guard.
+  - `board._collect` and `later.awaiting` read a run folder only when its `run.jsonl` says
+    finished (`closure.is_finished`).
+- **Alerts (§7.2, decision 0177).** One alert per kind, each with its own counts.
+  `ALERT_KINDS` is defined once, in `live/morning.py`, beside `LiveRefusal`, which refuses any
+  kind not in it. Kinds added to §7.2's list:
+  - `budget-guard`, for the runner's own monthly guard;
+  - `export-failed`;
+  - `resume-refused`, raised before the key, the store or any fetch, when an unfinished run's
+    `spec.json` names another commit or dirty flag. A run is never resumed across commits
+    (decisions 0018, 0033). Its message now says to deploy the image the run began on, because a
+    deploy deregisters older task-definition revisions;
+  - `later-score-failed`, for any later-score error, counted by error class (`leakage-error`,
+    `fetch-error`);
+  - `docket-changed` and `resume-failed` (decision 0185, below).
+
+  A `FetchError` or `DocketError` that escapes the morning, from a resume's or a completion's
+  fetch, stops the night as `fetch-failed`, not `night-crashed`. The refusal log's rows are
+  `{"at", "kind"}`: the old `reason` key is gone, because the old reasons `daily-limit`,
+  `monthly-cap` and `monthly-guard` are gone and the rest map one to one onto kinds.
+- **Money on a resume (§8;
+  [0185](../decisions/0185-a-resumed-night-pays-what-is-left-and-codes-the-same-docket.md)).**
+  The morning passes `settings.monthly_budget_usd` to `live_spec`, not tonight's room. The runner
+  refuses a resume whose spec differs from the run's first, and the room falls as the month's
+  spend grows, so a resume on a later night would have been refused. `cases_tonight` enforces the
+  room before any fetch, and the runner's guard stays a backstop. A resume is refused for money
+  only when its remaining exposure passes the room: for each unanswered case, $0.30 less the
+  computed cost of its replies already in `replies.jsonl`, never below zero. A full night killed
+  mid-run therefore resumes the next night, instead of waiting for the month to reset. The cloud
+  dry run passes `check_resume=False`, because the Mac's commit is not the image's; a paid night
+  keeps the check. It also prints `live key: limit_reset: <value>`. Nothing refuses on that value,
+  since no saved answer shows the field.
+- **The docket on a resume (§9.3;
+  [0185](../decisions/0185-a-resumed-night-pays-what-is-left-and-codes-the-same-docket.md)).**
+  The preferred design, dropping one changed case from the resume and closing it as not coded,
+  could not be built: `scoring.runner.refuse_unresumable` compares the whole recorded spec, case
+  ids included. The fallback was built.
+  - Each run writes `dockets.json` (`live-dockets/1`) before its first request and pushes it with
+    the inputs. `closure.build_records` takes its hashes from it, never from the cache.
+  - A resume, and the completion of a finished run that has no records, fetch each docket again
+    and compare. They compare the parsed listing (`entries_sha256`, the SHA-256 of each entry's
+    index, title and link, sorted by index), each document's SHA-256 and the first offering
+    (`DocketHashes.resume_view`). The raw page's SHA-256 is kept for the record, not compared,
+    because the page can change between fetches without any document changing. The file holds no
+    title.
+  - Any difference refuses with `docket-changed` before any call. It is not a failure kind,
+    because no case is closed by it. A docket that fails to fetch on a resume stays a
+    `fetch-failed` stop and counts against no case. A `ConfigurationError` or `ValueError` from
+    the resume or the completion becomes `resume-failed`, with its class only, so later scores,
+    the export and the night record still run.
+- **Later scores (§6.4).** `awaiting` skips closure records of version 1, because they hold no
+  `event_date`, which a later score's board row needs. `coded_on` is the UTC day of the record's
+  last model reply, or the closure day if there is none. `record_sha256` is plain
+  `json.dumps(raw, sort_keys=True)`, as the recorder's own hash is. `score_later` splits with the
+  live exclusion `{prelim_narrative}`, as the morning does.
+- **Closure record version 2 (§9.2, §9.3).** `DocketClient` already recorded each file's SHA-256 in
+  `fetch.json`, so `cached_hashes` only reads it. Version 1 stays as a read-only
+  `ClosureRecordV1`, and `read_closure_records` reads both versions, so S3.3's report still runs.
+  S3.3's tests that build records were moved to version 2. `DocumentLine.sha256` defaults to None
+  so version 1 lines still parse. Against the plan's Task 6 text, `ClosureRecord.request_sha256s`
+  is `tuple[str | None, ...]`: one entry per model call, in `call_index` order, and None where a
+  reply row carried no hash (a row written before decision 0176). A gap in the audit trail is
+  then visible, and the length always equals the number of calls.
+- **The cloud seams (§9.1, §13).** §13 first named `tests/s3_probe_fixtures.py` as the S3 fake. It
+  holds S3.1 probe trails, so the specification was corrected with a dated note, and the seams are
+  tested with in-memory fakes.
+  - The fence test that banned the word `push` under `live/` was replaced by an AST check: no live
+    file imports `push` from `store.sync` or takes `.push` on that module. `live/cloud.py`'s
+    `BucketMirror.push` is the S4 mirror, a different object from the recorder's pull-only store.
+  - `pyproject.toml` gained `include_external_packages = true`, a contract that keeps `live.cloud`
+    from importing boto3, botocore or httpx directly (`allow_indirect_imports`, since `morning`
+    and `local` reach them), and vulture `ignore_names` for protocol parameters named as boto3
+    names them.
+  - The SNS body starts with a `kinds:` line, because AWS rejects an empty message. `SnsAlerts`
+    and `PrintAlerts` refuse a kind or count name not matching `^[a-z][a-z0-9-]*$`, and a count
+    that is not an int or is a bool.
+  - `push` refuses paths outside `runs/`, `scores/` and `nights/`. `pull` skips keys that would
+    leave the folder and returns their count. The key refusal is raised outside the `except`, so
+    no exception context leaks.
+  - `seen_pairs` read `data/processed/cases.parquet`, which the container does not hold. The
+    development split's primary occurrence codes are committed as a table, codes only. It changes
+    no score.
+- **The export (§10).**
+  - In the sample, an abstained case's `BoardRow.agent_first` is None; its `answer` still holds the
+    codes. `_belief` in `tests/board_sample.py` carries a `noqa` for its argument count.
+  - `build_export` wraps `write_export`, which also returns an `ExportReport` of counts for the
+    command. Closures per night come from `Store.closures()`, by closure night. Open cases are the
+    watched cases that are not closures.
+  - A closure record of version 1 is refused (`ConfigurationError`). S3.3's Mac folders are never
+    uploaded (decision 0179), so one in the mirror means the mirror is wrong.
+  - Against the plan's Task 11 text, a case not coded because the split refused its record ("not
+    coded: leak") exports the NTSB's verdict as None and is never read another way. For a coded
+    case, a refused split is damage, and the build fails closed.
+  - Optional `board/1` fields, added at the S5 session's request (decision 0173 item 4): `mkey` on
+    `BoardRow` and `CaseFile`; `BuildStamp.launched_on`; `BoardRow.backfilled`;
+    `DocumentChoice.pages`, from a new optional `DocumentLine.pages`; and
+    `DocumentChoice.not_offered_reason`. The schema is generated with defaults required, so every
+    file written carries them, null when unknown. `not_offered_reason` later gained
+    `already_read` and `over_size_limit` (§10.1), and the `not_offered` description no longer
+    says only "could not offer as text".
+  - `BucketMirror.push_export` uploads the case files, then `index.json`, then
+    `export/board-1/_finished.json` (`board-finished/1`), last and only when every upload
+    succeeded. An export whose `index.json` has no readable stamp uploads nothing
+    (`export-failed`). The live bucket has `event_bridge_enabled=True`, which adds CDK's
+    bucket-notifications handler: a Lambda function and its role, allowed
+    `s3:PutBucketNotification` on the live bucket only.
+  - The night test validates its own export with the `board/1` models, with no `jsonschema`
+    dependency; the drift test keeps the committed schema equal to the models. The builder refuses
+    when the title rule's word list is missing.
+  - Every `aws s3 sync` in the Makefile carries `--only-show-errors`. On the third cloud night the
+    Mac's copy of the night export kept stale files: `aws s3 sync` from S3 skips a same-size file
+    unless the local copy is newer. The bucket was correct; only the mirror was stale.
+    `make s4-export` now passes `--exact-timestamps`.
+- **Names (§12.2).**
+  - The free measurement read listings straight from `<docket_dir>/<mkey>/listing.html`, with no
+    client, so it has no network path. Cases without a listing are counted and printed. Its loader
+    is `main(argv, loader)`, and it defaults to the two noise-floor run ids. A `note` is every
+    document decision's `expected_effect` in an accepted read choice, read or skipped. Count 4
+    counts each distinct flagged word once per case.
+  - Count 3 was above 0 in seven kinds of text, so Andy chose: "Exact parts only"
+    ([0182](../decisions/0182-names-on-the-board-after-the-measurement.md), replacing 0180 item 2).
+    `case_names(raw)` takes the owner and operator strings only, `board_text` replaces only those,
+    and `board_title` keeps the title rule. There is no `title_words` field and no
+    `ACCOUNTS_SHOWN`. The coding lookups' free-text arguments (`reason`, `expected_effect`) also
+    pass through `board_text`. To share one matching rule, `docket/attach.py` gained
+    `replace_values`, which `redact_known_names` now calls with unchanged output.
+    `VENDORED_DICTIONARY_PATH` is now an absolute path to the packaged `vocab/words.txt`.
+  - The plan's check for an invented surname in an account was split by 0182: the surname in a
+    document title becomes `[name]`, and the owner and operator strings are replaced in every
+    cause, account, note, reason and lookup argument. A surname that appears only in prose is not
+    replaced.
+  - Ellery's prose quotes the make, model and registration that version 1's evidence holds,
+    against §10.2. Andy chose to allow it in prose
+    ([0183](../decisions/0183-make-and-model-in-prose-registration-replaced.md)): fields hold none
+    of them, prose may name make and model, and the case's own registration is replaced in prose
+    and titles.
+  - Andy's choice of 2026-10-12
+    ([0184](../decisions/0184-names-in-document-titles.md)): `CaseNames.registration` became
+    `registrations`, every aircraft's, once each, leaving out any shorter than 3 characters.
+    `board_title` replaces the owner and operator strings and the registrations, in any case and
+    as whole strings, before the title rule. The published limit is `names.NAMES_LIMIT`, which the
+    S4 report prints.
+  - The never-holds check compares lower-cased text. It is planted with the owner in capitals in a
+    title, a second aircraft's registration in an account, and a kept `N1`.
+  - `scripts/s4_names_probe.py` gained a second counts-only section, so 0183's figures have a
+    committed source.
+  - `.pre-commit-config.yaml`'s `end-of-file-fixer` exclude named the old
+    `tests/fixtures/words.txt`. It now names `src/ntsb_probable_cause/docket/vocab/words.txt`.
+  - 0182, 0183 and 0184 were not in the original plan. The preamble, §10.2, §12.2 and §16 list or
+    note them. The records they amend carry dated notes (0157, 0158, 0161, 0163, 0166, 0167, 0173,
+    0180, 0182).
+- **The ledger (§11).**
+  - `cloud.push_order` puts a night folder's `manifest.json` last. `verify` checks a night
+    manifest's `night_files` as well as its own files, reports a ledgered night without
+    `night.json` as `night.json: missing`, and keeps earlier problems when `night_files` is
+    malformed. `ntsb-live verify-ledger` takes `--ledger PATH` and an optional `--mirror DIR`,
+    prints problem lines and a count, and exits 1 on any problem or on a malformed ledger.
+  - No checkout persists credentials. Only the commit step holds `GH_TOKEN`, and it pushes by URL
+    with nothing written to disk. `setup-uv` caching is off, and the append step uses `--no-dev`.
+    The role ARN and the bucket are repository secrets (masked), not variables. The job is guarded
+    by the variable `LEDGER_ENABLED == 'true'`, which Andy sets last. zizmor needed no ignore
+    comment.
+  - `ledger_append` ledgers only `runs/<live run id>/manifest.json` (run id
+    `^\d{8}T\d{6}-[0-9a-f]{7,40}-live-C$`) and `nights/<YYYY-MM-DD>/manifest.json`, and counts
+    any other key as skipped. It refuses, and writes nothing, when the ledger file is missing or
+    has no final newline.
+  - The first ledger run (GitHub run 38315092234) was refused by AWS ("Not authorized to perform
+    sts:AssumeRoleWithWebIdentity"). The repository's OIDC setting uses the immutable subject,
+    `repo:floyda@2824846/ntsb-probable-cause@1367368639:ref:refs/heads/<branch>`, and the ledger
+    role trusted only the old form. `infra/live_stack.py` now trusts the immutable form
+    (`GITHUB_SUBJECT_PREFIX`), `tests/test_live_stack.py` pins it, and Andy redeployed. The
+    recorder's deploy role has the same fault (below).
+  - Before the merge, the ledger job ran on a push to the S4 branch, because `ledger.yml` was
+    not on `main`. The close-out removed the S4 branch from the workflow's push trigger,
+    `DEFAULT_LEDGER_BRANCHES` and the runbook's deploy lines.
+- **The report and the closing conditions (§15).** `ntsb-live report` now runs
+  `scripts/s4_live_report.py` and takes `--mirror`, `--export`, `--night-export`, `--ledger`, an
+  optional `--attest` and `--out`. It takes no lock.
+  - Conditions 5 (the alert email received, the alarm shown to fire) and 7 (the Mac's key
+    removed) cannot be seen in the bucket, the export or the ledger. The report reads them from an
+    attestation file (`--attest`, default `$NTSB_DATA_DIR/live-attest.json`, three dated keys that
+    must parse as dates), and reads "not met" without one.
+  - Condition 2's "no one intervening" is shown only as: every run holding a backfill case is
+    listed in a scheduled night's manifest. Condition 3 counts a coded, scored case not on the
+    backfill list with `waited_days <= 1`. Condition 6 is "the export passes the `board/1` models
+    and holds a case"; committing the results file is Andy's. Condition 1 reads
+    `docs/results/s33-fingerprint-continuity.txt` and checks that no closure record carries
+    another prompt version.
+  - The "first cloud nights" are the run records started on or before the night the backfill
+    drained. A backfill case counts as settled with any closure record, or when `nights/state.json`
+    lists it unreachable, dated by the last night folder (an upper bound).
+  - `make s4-export` also copies the night's own export to `$NTSB_DATA_DIR/live-night-export`. The
+    report reads closures per night, open cases watched, open cases holding a docket and condition
+    6 from that copy, which the task built with the store. After the first night it had printed 0
+    open cases watched and 0 holding a docket, because it read them from the Mac's export, which
+    has no store; `tests/test_s4_live_report.py` now pins the fix.
+  - `scripts/s33_live_report.py` reports an AWS error as one line, in `ntsb-live`'s own wording.
+- **The runbook (§7.3).** It gained a free test of the image in the cloud (section 10, step 2:
+  `aws ecs run-task` with a command-only override `["run","--dry-run"]`), the first night's `OK`
+  email check, a paid label and a running-task check on a hand start, the S4 worktree path until
+  the merge, the step that makes the live key ($10, monthly) and stores it with `pass insert -m`,
+  "probably still there" for an older image, the resume-cost sentence, the `limit_reset` check,
+  and rows for `docket-changed`, `resume-failed` and the new printed lines. The close-out corrects
+  three rows: `resume-failed` said nothing was spent, `money-held-back` said the queue drains only
+  at the monthly reset, and section 5 printed the whole `spec.json`.
+- **The deploy and the nights, against §4.3 and §6.2's estimates.** `make s4-dry-run` on the Mac
+  printed 62 queued, 30 tonight, room $9.00, limit reset monthly. The same dry run inside the
+  image exited 0 with the same lines and called no model. Every night from 2026-10-13 to
+  2026-10-16 was started by the schedule, none by hand, and every night finished:
+  - night 1 coded 29 and did not code 1 (`leak`), $0.1891, 42.9 minutes, 32 held back by money;
+  - night 2 coded 29, $0.1121, 32.3 minutes, 3 held back;
+  - night 3 coded the last 3, $0.0090, 4.1 minutes, so the backfill drained on 2026-10-15;
+  - night 4 coded 11 fresh closures, $0.0392, 11.5 minutes.
+
+  The ledger job ran green after each night (8 lines, 0 problems). The alarm test fired on
+  2026-10-13, and the alarm was `OK` after each night. Andy removed the Mac's key on 2026-10-16.
+  `docs/results/s4-live.txt` was committed at `67a7432` with all seven conditions met.
+- **Process.**
+  - Task 11 ran before Task 10, by ruling: Task 10's `NightDeps.export` needs Task 11's
+    `build_export`. Only the order changed.
+  - Task 11b had no plan section; it was added at the S5 session's request, and nothing was
+    ticked. The final review checked it.
+  - The final whole-branch review (Task 17, first bullet) was moved before Task 15's first image
+    push, so fixes landed before an image was built. Its fix waves A and B are the "final review"
+    items above; Task 17 later reviewed only what changed after it.
+  - Task 9's Step 2, the failing run before the code, was not made: the tests and `live/cloud.py`
+    were written together. The task review and `make check` passed on the finished code.
+  - `main` was merged into the branch (`ff4bc05`) to bring in pull request #35, which lets the
+    budget code read the coding-memory side track's spend kinds. It touched no S4 file.
+  - Some entries were logged late, at the final review or the close-out.
+
+### Known issues carried forward
+
+- **The recorder's CI deploy role trusts the old OIDC subject.** `infra/recorder_stack.py`
+  (`_GITHUB_REPO_SUBJECT`) trusts `repo:floyda/ntsb-probable-cause:...`. The repository sends the
+  immutable subject, `repo:floyda@2824846/ntsb-probable-cause@1367368639:...`, which the ledger
+  role was fixed to trust at `4a53217`. The fault is latent: `AWS_DEPLOY_ROLE_ARN` is unset, so
+  `main`'s image-push step skips and the role is never assumed. It must be fixed before that
+  secret is set.
+- **`docket-changed` has no operator route beyond "tell Claude".** The whole run waits behind one
+  changed docket until a person decides, because the runner cannot drop one case from a resume.
+- **`resume-failed` prints only the exception class.** The runbook row cannot say more than that.
+- **A request sent but unanswered when the task dies is paid again on resume.** This includes a
+  run's first request. The cost is cents.
+- **The CloudWatch bill check (decision 0177 item 4) was read before the first bill.** October's
+  bill is not out, so AWS Cost Explorer's month to date stood in for it: $0.00036 under
+  CloudWatch, all usage type `CW:GMD-Metrics` (GetMetricData calls, which the console makes when
+  it draws a metric graph). The alarm and the custom metric cost $0. Andy chose to keep the alarm
+  (2026-10-16; a dated note on
+  [0177](../decisions/0177-alerts-by-email-and-one-free-alarm.md)). Viewing graphs in the console
+  costs a fraction of a cent each month it is done.
+- **After the merge, the task still runs the image built on the S4 branch, and the ledger role
+  still trusts that branch,** until Andy builds an image from `main` and deploys `NtsbLiveStack`
+  with `ledger_branches=main` (runbook, "After the stage pull request is merged").
+- **`limit_reset` is printed, not checked.** The cloud dry run shows the live key's value, but
+  nothing refuses on it, because no saved answer shows the field.
+- **The names step has published limits** (`names.NAMES_LIMIT`). A surname that appears only in
+  prose is not replaced (0182). In titles, a name made only of ordinary words, such as a common
+  surname or given name, is not replaced (0184).
+- **For S5:** `ClosureRecord.request_sha256s` can hold None for a reply row written before decision
+  0176, and readers must handle it. `not_offered_reason`'s `over_size_limit` should be rare in the
+  loop as built.
+
+### Decisions taken during the stage
+
+- [0168](../decisions/0168-the-fingerprint-covers-several-events.md): The fingerprint covers several events; version 1 is re-pinned.
+- [0169](../decisions/0169-the-model-is-pinned-by-name-and-the-replying-model-recorded.md): The model is pinned by name, and the replying model and provider are recorded.
+- [0170](../decisions/0170-live-runs-have-their-own-key-and-the-full-cap-rule.md): Live runs have their own key and limit; a night's size by the full-cap rule.
+- [0171](../decisions/0171-live-nights-run-as-a-scheduled-fargate-task.md): Live nights run as a scheduled Fargate task, from a pinned image; the Mac is retired.
+- [0172](../decisions/0172-the-store-is-run-folders-in-a-private-bucket.md): The store is run folders in a private bucket, with a nightly export.
+- [0173](../decisions/0173-the-board-export-format-board-1.md): The board export format, `board/1`.
+- [0174](../decisions/0174-scored-at-coding-or-when-the-codes-arrive.md): Scored at coding, or when the codes arrive.
+- [0175](../decisions/0175-fetch-failures-are-counted-and-every-message-has-a-runbook-row.md): Fetch failures are counted, and every message has a runbook row.
+- [0176](../decisions/0176-the-docket-is-frozen-by-its-hashes.md): The docket is frozen by its hashes.
+- [0177](../decisions/0177-alerts-by-email-and-one-free-alarm.md): Alerts by email, and one free alarm.
+- [0178](../decisions/0178-a-daily-ledger-of-manifest-hashes.md): A daily ledger of manifest hashes.
+- [0179](../decisions/0179-the-launch-is-the-first-cloud-night.md): The launch is the first cloud night; no early runs.
+- [0180](../decisions/0180-names-on-the-board.md): Names on the board.
+- [0181](../decisions/0181-s4s-closing-rule.md): S4's closing rule.
+- [0182](../decisions/0182-names-on-the-board-after-the-measurement.md): Names on the board, after the measurement: exact parts only.
+- [0183](../decisions/0183-make-and-model-in-prose-registration-replaced.md): Make and model may appear in prose; the registration is replaced.
+- [0184](../decisions/0184-names-in-document-titles.md): Names in document titles: exact parts and the title rule, the limit published.
+- [0185](../decisions/0185-a-resumed-night-pays-what-is-left-and-codes-the-same-docket.md): A resumed night pays only what is left, and codes the docket it began with.
+
+### Implementation record
+
+- Pull request: #36 (https://github.com/floyda/ntsb-probable-cause/pull/36).
+- Plan, at its last commit: https://github.com/floyda/ntsb-probable-cause/blob/76dcade9f44ba3fa9fab314166d4b0d81283a838/docs/plans/2026-10-10-s4-predictions-and-resolution.md
+- Commits: `4f952cd`..`76dcade`. The merge of `main` at `ff4bc05` brought in pull request #35,
+  which touched no S4 file.
+- The image: `live-9c5be5d`, digest
+  `sha256:5ff708455a7a64970bd027f90288ecb64761ae6f3d511f6833bca4a95ba683b7`, task definition
+  `ntsb-live:2`. Every cloud night ran it.
+- The cloud nights, each started by the schedule at 06:00 UTC:
+  - 2026-10-13, run `20261013T061355-9c5be5d-live-C`: 29 coded, 1 not coded, $0.1891, 42.9
+    minutes;
+  - 2026-10-14, run `20261014T060904-9c5be5d-live-C`: 29 coded, $0.1121, 32.3 minutes;
+  - 2026-10-15, run `20261015T060225-9c5be5d-live-C`: 3 coded, $0.0090, 4.1 minutes; the backfill
+    drained;
+  - 2026-10-16, run `20261016T060409-9c5be5d-live-C`: 11 fresh closures coded, $0.0392, 11.5
+    minutes.
+
+  Their folders are in the private live bucket and are never committed. The backfill list is
+  committed only as its count and SHA-256 (`docs/results/s4-live.txt`).
+- S4's development spend: $0.00 (`docs/results/s4-live.txt`, by commit on S4's branches).
+- Release: v0.11.0. Andy creates the tag after the merge, which is a merge commit (decisions 0018
+  and 0033).
 
 ## Glossary
 
