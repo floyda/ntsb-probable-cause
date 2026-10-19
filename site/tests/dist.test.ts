@@ -5,6 +5,7 @@ import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exampleCase } from "../src/lib/example-case";
 import { exportDir, loadExport } from "../src/lib/export";
+import { findingParts, findingRows } from "../src/lib/findings";
 import { LADDER } from "../src/lib/ladder";
 import { anchorFor, shown } from "../src/lib/methods";
 import { AUTHOR_URL, PAGES } from "../src/lib/site";
@@ -69,13 +70,17 @@ describe.skipIf(!built)("the opened case says only what is known (review, 2026-1
     };
 
     it("an awaiting case still lists the agent's findings", () => {
-        const label = get("XXX26XX006").answer?.findings[0]?.label ?? "missing";
-        expect(page("XXX26XX006")).toContain(label);
+        // Shown as its item and detail, with its area apart (step 6a).
+        const parts = findingParts(get("XXX26XX006").answer?.findings[0]?.label ?? "missing");
+        expect(page("XXX26XX006")).toContain(parts.item);
+        expect(page("XXX26XX006")).toContain(parts.detail ?? "missing");
     });
 
     it("a not-coded case still lists the NTSB's findings", () => {
-        const label = get("XXX26XX005").verdict?.findings[0]?.label ?? "missing";
-        expect(page("XXX26XX005")).toContain(label);
+        // Shown as its item and detail, with its area apart (step 6a).
+        const parts = findingParts(get("XXX26XX005").verdict?.findings[0]?.label ?? "missing");
+        expect(page("XXX26XX005")).toContain(parts.item);
+        expect(page("XXX26XX005")).toContain(parts.detail ?? "missing");
     });
 
     it("an abstained case shows no graded agent codes", () => {
@@ -552,6 +557,39 @@ describe.skipIf(!built)("the Quiet look's signs (S5 step 6a, Task 5)", () => {
             }
             // No sign stands alone: there are as many signs as places.
             expect([...html.matchAll(SIGN)]).toHaveLength(ids.length);
+        },
+    );
+});
+
+describe.skipIf(!built)("why it happened (S5 step 6a, Andy, 2026-10-19)", () => {
+    const { cases } = loadExport(exportDir());
+    const graded = [...cases.values()].filter(
+        (k) => k.comparison !== null && k.grade !== "abstained",
+    );
+    it("has graded sample cases to check", () => {
+        expect(graded.length).toBeGreaterThan(0);
+    });
+    it.each(graded.map((k) => k.case_number))(
+        "%s shows each finding once, under its tag or in a close pair",
+        (n) => {
+            const k = cases.get(n);
+            const c = k?.comparison;
+            if (c === undefined || c === null) throw new Error(n);
+            const html = readFileSync(join(DIST, "case", n, "index.html"), "utf8");
+            const text = visibleText(html);
+            const rows = findingRows(c.findings_both, c.findings_ntsb_only, c.findings_agent_only);
+            const tags = [...html.matchAll(/class="tag (both|ntsb|agent)[" ]/g)].length;
+            const expected = rows.reduce((sum, r) => sum + (r.kind === "one" ? 1 : 2), 0);
+            expect(tags).toBe(expected);
+            for (const f of [
+                ...c.findings_both,
+                ...c.findings_ntsb_only,
+                ...c.findings_agent_only,
+            ]) {
+                const parts = findingParts(f.label);
+                expect(text).toContain(parts.item);
+            }
+            if (rows.some((r) => r.kind === "close")) expect(text).toMatch(/Close: the same/);
         },
     );
 });

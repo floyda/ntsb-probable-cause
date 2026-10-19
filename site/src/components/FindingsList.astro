@@ -1,0 +1,133 @@
+---
+// Why it happened, for a case the agent and the NTSB both coded (S5 step 6a, Andy, 2026-10-19):
+// one list, findings both named first, then near misses set side by side, then the rest. Each
+// row's tag says who named it, in words and in its own outline, never by colour alone.
+import { type FindingRow, findingParts, type Who } from "../lib/findings";
+import FindingLine from "./FindingLine.astro";
+
+interface Props {
+    rows: readonly FindingRow[];
+}
+
+const { rows } = Astro.props;
+const TAG: Record<Who, string> = { both: "Both", ntsb: "NTSB only", agent: "Agent only" };
+const CLOSE = {
+    detail: "Close: the same item, a different detail",
+    item: "Close: the same area, a different item",
+} as const;
+---
+
+{rows.length === 0 ? (
+    <p>Neither named a finding.</p>
+) : (
+    <ul class="findings">
+        {rows.map((row) =>
+            row.kind === "one" ? (
+                <li class="row">
+                    <span class={`tag ${row.who}`}>{TAG[row.who]}</span>
+                    <FindingLine label={row.finding.label} />
+                </li>
+            ) : (
+                <li class="row close">
+                    <p class="close-label">{CLOSE[row.how]}</p>
+                    <span class="area">
+                        {findingParts(row.ntsb.label).area.map((level) => (
+                            <span>{level}</span>
+                        ))}
+                        {row.how === "detail" && (
+                            <strong class="shared">{findingParts(row.ntsb.label).item}</strong>
+                        )}
+                    </span>
+                    <span class="pairline">
+                        <span class="tag ntsb">{TAG.ntsb}</span>
+                        <FindingLine label={row.ntsb.label} show={row.how} />
+                    </span>
+                    <span class="pairline">
+                        <span class="tag agent">{TAG.agent}</span>
+                        <FindingLine label={row.agent.label} show={row.how} />
+                    </span>
+                </li>
+            ),
+        )}
+    </ul>
+)}
+
+<style>
+    .findings {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.6rem;
+    }
+    .row {
+        display: grid;
+        grid-template-columns: 6.5rem minmax(0, 1fr);
+        gap: 0.4rem 0.75rem;
+        align-items: start;
+        padding: 0.75rem 0.9rem;
+        border: 1px solid var(--panel-edge);
+        border-radius: 4px;
+        background: var(--paper);
+    }
+    .close {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .close-label {
+        margin: 0;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-muted);
+    }
+    .area {
+        color: var(--ink-muted);
+        font-size: 0.85rem;
+    }
+    /* The separator is drawn, not read, as in FindingLine. */
+    .area > * + *::before {
+        content: " › " / "";
+        font-weight: 400;
+        color: var(--ink-muted);
+    }
+    .shared {
+        color: var(--ink);
+    }
+    .pairline {
+        display: grid;
+        grid-template-columns: 6.5rem minmax(0, 1fr);
+        gap: 0.75rem;
+        align-items: start;
+    }
+    /* On a phone the tag sits above its finding, so the finding keeps the full width. */
+    @media (max-width: 30rem) {
+        .row,
+        .pairline {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.3rem;
+        }
+        .pairline + .pairline {
+            margin-top: 0.3rem;
+        }
+    }
+    /* Who named it: a word in a tag whose outline differs, so shape carries it as well. */
+    .tag {
+        justify-self: start;
+        padding: 0.15rem 0.45rem;
+        border-radius: 3px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        line-height: 1.3;
+        white-space: nowrap;
+        border: 1.5px solid var(--ink);
+        color: var(--ink);
+    }
+    .tag.both {
+        background: var(--ink);
+        color: var(--paper);
+    }
+    .tag.agent {
+        border-style: dashed;
+    }
+</style>

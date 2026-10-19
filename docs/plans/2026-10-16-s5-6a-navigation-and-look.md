@@ -247,6 +247,20 @@ Decided here, so no question is needed; each can be changed at the preview:
     - Beside a rail, the reading column now sits at the left of its space, not in its middle.
     - Wrapping the board in a section for the rail put it under the 44rem text width, cutting off its last column. The board's section is now full width.
     - Beside the rail the board is narrower than the 72rem it was drawn for, so the rule keeping a result's words on one line is removed. At 1280px the board no longer scrolls sideways (measured: 0px overflow).
+- **Added at the preview (Andy, 2026-10-19): "Why it happened" redrawn.** Andy asked for something better visually to bring out the different findings, and chose to build it straight into 6a, with no mock-up.
+  - Each finding leads with its item and detail in bold ("Fuel planning · Incorrect use/operation"), with its area in small type ("Personnel issues › Task performance › Planning/preparation"). The parts come from the label, which S4's board code builds from the code tables as "area — item - detail" (`lib/findings.ts`). The pairing compares labels, not codes, because how many digits each level of a code takes is not recorded anywhere in the repository.
+  - A compared case shows one list:
+    - findings both named first;
+    - then near misses as close pairs: an NTSB-only finding beside an agent-only one with the same item and another detail (paired first), or the same area and another item;
+    - then the rest.
+
+    Each finding is paired at most once. A label with no area is never paired.
+  - A tag says who named each one: "Both" (filled), "NTSB only" (outlined), "Agent only" (dashed). It has a word and a shape, never colour alone. On a phone the tag sits above its finding.
+  - Cases without a comparison keep their two lists, drawn with the same finding lines and no tags.
+  - Tests:
+    - `findings.test.ts` (8): the parts, each kind of pair, the order, single use, no pair across areas;
+    - a built-page check on every compared sample case: one tag per finding row, two per close pair, every item shown.
+  - Two older checks that wanted a finding's full label word for word now check its item and its detail.
 
 ## Glossary
 

@@ -2,6 +2,9 @@
 // One case: the agent's coding beside the NTSB's (spec §5), in plain type, from the export alone.
 import { methodsLink } from "../lib/methods";
 import type { CaseFile, Code, MarkedCode } from "../lib/board-case-types";
+import { findingRows } from "../lib/findings";
+import FindingLine from "./FindingLine.astro";
+import FindingsList from "./FindingsList.astro";
 import {
     caseReportUrl,
     commitUrl,
@@ -51,29 +54,27 @@ const ntsbCodes: readonly MarkedCode[] = graded ? comparison.ntsb_occurrence : [
 const agentPlain: readonly Code[] = graded || abstained ? [] : (answer?.occurrence ?? []);
 const ntsbPlain: readonly Code[] = graded ? [] : (verdict?.occurrence ?? []);
 
-// Findings: three groups where both answered; otherwise each side's own list.
-const findingGroups: { heading: string; codes: readonly Code[]; empty: string }[] = graded
-    ? [
-          { heading: "Both named", codes: comparison.findings_both, empty: "None." },
-          { heading: "Only the NTSB named", codes: comparison.findings_ntsb_only, empty: "None." },
-          {
-              heading: "Only the agent named",
-              codes: comparison.findings_agent_only,
-              empty: "None.",
-          },
-      ]
-    : [
-          {
-              heading: "The agent's findings",
-              codes: abstained ? [] : (answer?.findings ?? []),
-              empty: agentEmpty,
-          },
-          {
-              heading: "The NTSB's findings",
-              codes: verdict?.findings ?? [],
-              empty: verdict === null ? ntsbMissing(kase.grade) : "None.",
-          },
-      ];
+// Findings: one list of rows where both answered (lib/findings.ts); otherwise each side's own.
+const findingList =
+    comparison !== null && graded
+        ? findingRows(
+              comparison.findings_both,
+              comparison.findings_ntsb_only,
+              comparison.findings_agent_only,
+          )
+        : null;
+const findingGroups: { heading: string; codes: readonly Code[]; empty: string }[] = [
+    {
+        heading: "The agent's findings",
+        codes: abstained ? [] : (answer?.findings ?? []),
+        empty: agentEmpty,
+    },
+    {
+        heading: "The NTSB's findings",
+        codes: verdict?.findings ?? [],
+        empty: verdict === null ? ntsbMissing(kase.grade) : "None.",
+    },
+];
 const commit = kase.withheld?.commit ?? null;
 ---
 
@@ -146,22 +147,28 @@ const commit = kase.withheld?.commit ?? null;
     <h3>
         Why it happened <span class="term">· NTSB findings</span>
     </h3>
-    <div class={findingGroups.length === 3 ? "triple" : "pair"}>
-        {findingGroups.map((group) => (
-            <section>
-                <h4>{group.heading}</h4>
-                {group.codes.length > 0 ? (
-                    <ul>
-                        {group.codes.map((c) => (
-                            <li>{c.label}</li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p>{group.empty}</p>
-                )}
-            </section>
-        ))}
-    </div>
+    {findingList !== null ? (
+        <FindingsList rows={findingList} />
+    ) : (
+        <div class="pair">
+            {findingGroups.map((group) => (
+                <section>
+                    <h4>{group.heading}</h4>
+                    {group.codes.length > 0 ? (
+                        <ul class="lines">
+                            {group.codes.map((c) => (
+                                <li>
+                                    <FindingLine label={c.label} />
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p>{group.empty}</p>
+                    )}
+                </section>
+            ))}
+        </div>
+    )}
 
     {withheld !== null && (
         <p class="withheld">

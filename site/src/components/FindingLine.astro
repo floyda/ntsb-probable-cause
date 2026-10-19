@@ -1,0 +1,51 @@
+---
+// One finding as a line (S5 step 6a): its area in small type, then the item in bold and its
+// detail. `show` leaves out the parts a close pair has already said once.
+import { findingParts } from "../lib/findings";
+
+interface Props {
+    label: string;
+    show?: "all" | "item" | "detail";
+}
+
+const { label, show = "all" } = Astro.props;
+const { area, item, detail } = findingParts(label);
+---
+
+<span class="line">
+    {show === "all" && area.length > 0 && (
+        <span class="area">
+            {area.map((level) => (
+                <span>{level}</span>
+            ))}
+        </span>
+    )}
+    <span class="what">
+        {show !== "detail" && <strong>{item}</strong>}
+        {detail !== null && (
+            <span class="detail">
+                {show !== "detail" && <span aria-hidden="true"> · </span>}
+                {detail}
+            </span>
+        )}
+    </span>
+</span>
+
+<style>
+    .line {
+        display: grid;
+        gap: 0.1rem;
+        min-width: 0;
+    }
+    .area {
+        color: var(--ink-muted);
+        font-size: 0.85rem;
+    }
+    /* The separator is drawn, not read: a screen reader hears the levels alone. */
+    .area span + span::before {
+        content: " › " / "";
+    }
+    .what {
+        overflow-wrap: anywhere;
+    }
+</style>
