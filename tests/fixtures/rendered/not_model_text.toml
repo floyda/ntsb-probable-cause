@@ -210,10 +210,8 @@
 "fields.py:aircrafts[].findings[]" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent"
 "fields.py:richNarratives" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent"
 "fields.py:decision 0016: open cases carry the coded event sequence from day 1; spike ablation: at most 2.5 points of one-shot top-1" = "the written reason for an allowed coded-event field (decision 0016); a comment as a string, not sent"
-"fields.py:sequenceNumber" = "a source key or path the extractors read from the record (event and finding order), not text the model receives"
 "fields.py:findingNumber" = "a source key or path the extractors read from the record (event and finding order), not text the model receives"
 "fields.py:aircrafts[0].events" = "a source key or path the extractors read from the record (event and finding order), not text the model receives"
-"fields.py:isDefiningEvent" = "a source key or path the extractors read from the record (event and finding order), not text the model receives"
 "fields.py:evidence role " = "an import-time check's exception message about the field table; never sent"
 "fields.py: has a malformed source path: " = "an import-time check's exception message about the field table; never sent"
 "fields.py: reads " = "an import-time check's exception message about the field table; never sent"
@@ -253,6 +251,8 @@
 # reach test cannot find it; the mutation sweep (`make s33-mutation-sweep`) must show that editing
 # it moves the fingerprint, and fails when it does not.
 [selects]
+"fields.py:isDefiningEvent" = "the key that marks the defining event, whose phase is sent: the phase is sent, the key is not, and the sweep shows an edit to it moves the fingerprint (decision 0168)"
+"fields.py:sequenceNumber" = "the key that orders events when none is defining, and whose first phase is sent: the phase is sent, the key is not, and the sweep shows an edit to it moves the fingerprint (decision 0168)"
 "docket/attach.py:(?!\\w)" = "a path or pattern that picks the make, the model or the operator names to replace in a document or a listing: the replacement label is sent, this is not, and the sweep shows an edit to it moves the fingerprint"
 "docket/attach.py:(?<!\\w)" = "a path or pattern that picks the make, the model or the operator names to replace in a document or a listing: the replacement label is sent, this is not, and the sweep shows an edit to it moves the fingerprint"
 "docket/attach.py:aircrafts" = "a path or pattern that picks the make, the model or the operator names to replace in a document or a listing: the replacement label is sent, this is not, and the sweep shows an edit to it moves the fingerprint"

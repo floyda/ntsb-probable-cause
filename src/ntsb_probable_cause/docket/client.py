@@ -61,6 +61,23 @@ def _load_manifest(cache: Path, mkey: int) -> dict[str, object]:
     return loaded if isinstance(loaded, dict) else {}
 
 
+def cached_hashes(cache: Path, mkey: int) -> tuple[str | None, dict[int, str]]:
+    """The listing's and each document index's SHA-256, as ``fetch.json`` recorded them.
+
+    The hash is of the bytes as received. A case with no ``fetch.json`` gives ``(None, {})``.
+    """
+    manifest = _load_manifest(cache, mkey)
+    listing = manifest.get("listing")
+    listing_sha = listing.get("sha256") if isinstance(listing, dict) else None
+    documents = manifest.get("documents")
+    shas: dict[int, str] = {}
+    if isinstance(documents, dict):
+        for index, entry in documents.items():
+            if isinstance(entry, dict) and isinstance(entry.get("sha256"), str):
+                shas[int(index)] = entry["sha256"]
+    return (listing_sha if isinstance(listing_sha, str) else None), shas
+
+
 def _read_verified(cache: Path, mkey: int, name: str, entry: dict[str, object]) -> bytes | None:
     """The cached file's bytes, or ``None`` if missing or its hash disagrees with the manifest.
 

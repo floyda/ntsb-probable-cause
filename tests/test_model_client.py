@@ -1,6 +1,7 @@
 import ast
 import inspect
 import json
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -20,6 +21,7 @@ from ntsb_probable_cause.model.client import (
     Turn,
     Usage,
     cost_usd,
+    parse_chat_completion,
     tool_reply,
 )
 from ntsb_probable_cause.records.evidence import Evidence
@@ -326,3 +328,15 @@ def test_cached_tokens_are_recorded_not_priced() -> None:
 
     assert cost_usd(reply_with(800), settings) == cost_usd(reply_with(None), settings)
     assert cost_usd(reply_with(800), settings)[1] == "priced"
+
+
+def test_a_reply_records_its_provider_when_the_body_names_one() -> None:
+    path = Path(__file__).parent / "fixtures" / "openrouter" / "s3" / "standard-armb.json"
+    body = json.loads(path.read_text(encoding="utf-8"))["response"]
+    reply = parse_chat_completion(body)
+    assert reply.provider == "OpenAI"
+    assert reply.model == "openai/gpt-6-luna"
+    del body["provider"]
+    assert parse_chat_completion(body).provider is None
+    body["provider"] = 7
+    assert parse_chat_completion(body).provider is None

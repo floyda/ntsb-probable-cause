@@ -40,6 +40,7 @@ free.
 
 import aws_cdk as cdk
 
+from live_stack import DEFAULT_LEDGER_BRANCHES, NtsbLiveStack
 from recorder_stack import NtsbRecorderStack
 
 
@@ -51,6 +52,14 @@ def deploy_environment() -> cdk.Environment:
     return cdk.Environment(region="eu-west-2")
 
 
+def parse_branches(value: object) -> tuple[str, ...]:
+    """The ledger branches from the context: comma-separated, blanks dropped, default if none."""
+    if not isinstance(value, str):
+        return DEFAULT_LEDGER_BRANCHES
+    names = tuple(part.strip() for part in value.split(",") if part.strip())
+    return names or DEFAULT_LEDGER_BRANCHES
+
+
 if __name__ == "__main__":
     app = cdk.App()
 
@@ -60,5 +69,40 @@ if __name__ == "__main__":
         env=deploy_environment(),
         github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
     )
+
+    # The live stack is built when `recorder_bucket` is given as context (the recorder's own
+    # `cdk synth` needs none of this). Its other context values are then required: `alert_email`,
+    # `github_oidc_provider_arn`, `live_image_digest` (or `live_image_digest_placeholder=1`),
+    # optionally `live_schedule=enabled` and `ledger_branches` (comma-separated).
+    recorder_bucket = app.node.try_get_context("recorder_bucket")
+    if recorder_bucket:
+        placeholder = str(app.node.try_get_context("live_image_digest_placeholder")) == "1"
+        missing = [
+            name
+            for name in ("alert_email", "github_oidc_provider_arn")
+            if not app.node.try_get_context(name)
+        ]
+        if not app.node.try_get_context("live_image_digest") and not placeholder:
+            missing.append("live_image_digest (or live_image_digest_placeholder=1)")
+        if placeholder and app.node.try_get_context("live_schedule") == "enabled":
+            raise SystemExit(
+                "NtsbLiveStack: live_image_digest_placeholder=1 and live_schedule=enabled "
+                "cannot be set together"
+            )
+        if missing:
+            raise SystemExit("NtsbLiveStack needs CDK context: " + ", ".join(missing))
+        branches = parse_branches(app.node.try_get_context("ledger_branches"))
+        NtsbLiveStack(
+            app,
+            "NtsbLiveStack",
+            env=deploy_environment(),
+            recorder_bucket=recorder_bucket,
+            alert_email=app.node.try_get_context("alert_email"),
+            github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
+            image_digest=app.node.try_get_context("live_image_digest"),
+            allow_placeholder_digest=placeholder,
+            schedule_enabled=app.node.try_get_context("live_schedule") == "enabled",
+            ledger_branches=branches,
+        )
 
     app.synth()

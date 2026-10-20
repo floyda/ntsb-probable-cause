@@ -1,0 +1,54 @@
+# 0183 — Make and model may appear in prose; the registration is replaced
+
+From the S4 Task 11 review, 2026-10-11, with Andy. Narrows item 3 of
+[0173](0173-the-board-export-format-board-1.md) (what the export never holds) and adds to
+[0182](0182-names-on-the-board-after-the-measurement.md). Detail: the S4 specification, §10.2.
+
+## Context
+
+1. **0173 item 3 lists "a make or model" among what the export never holds.** The export's fields
+   obey it: the board shows an aircraft's category, engine count and engine type, never a make or
+   model (`board/1` `Aircraft`).
+2. **Ellery's prose quotes the evidence it reads**, and version 1's evidence holds the make, the
+   model and the registration. The Task 11 review found the case's own make in the accounts or
+   causes of 268 of `dev-400`'s 401 cases, and the registration in 1. These are the reviewer's
+   counts, from an uncommitted probe, not a scripted result.
+3. **On amateur-built aircraft the make and model usually name the builder**, and the evidence
+   already holds the label `Amateur-built` instead
+   ([0020](0020-amateur-built-make-and-model-replaced-in-evidence.md)). The review found no
+   amateur-built make in the prose.
+4. **The registration leads to an owner's name** in the public aircraft register, often the pilot who
+   died (S5 specification §12, item 11). The title rule cannot catch it: it looks for capitalised
+   words, and an N-number is all capitals.
+
+## Decision
+
+1. **The export's fields hold no make, model or registration** (0173 item 3, unchanged for fields).
+2. **Prose may name the make and model.** Prose here means Ellery's text, the coding lookups' free-text
+   arguments and the NTSB's cause statement.
+3. **The case's own registration is replaced with `[name]`** in prose and in document titles, as
+   the owner and operator strings are (0182 item 1).
+
+## Why
+
+1. **Andy (2026-10-11)**: chose "A: allow in prose".
+2. **A certified aircraft's make names a manufacturer, not a person**, and the builder's name is
+   already removed upstream (0020).
+3. **Replacing make and model would cost readability** for no gain in respect: "the [make] [model]
+   lost power".
+4. **The registration is the one identifier that leads to a person**, so it is replaced wherever it
+   appears.
+
+## What this rules out
+
+- **Replacing the case's make and model in prose.** Offered and not chosen.
+- **Leaving the registration in prose.** Rejected: it leads to the owner's name.
+
+## Status
+
+Accepted, 2026-10-11 (Andy: "A: allow in prose").
+
+## Note, 2026-10-12 (appended; nothing above is edited)
+
+- Context item 2's figures (the case's own make in the accounts or causes of 268 of `dev-400`'s 401 cases, the registration in 1) and item 3's "no amateur-built make in the prose" were the reviewer's, from an uncommitted probe, as the item says. They now have a scripted source: `scripts/s4_names_probe.py` prints a second, counts-only section, and its result is in `docs/results/s4-names-dev.txt`. The scripted counts, over the same 401 cases (causes and accounts only; whole string, any case, any aircraft; strings under 3 characters left out): the case's own make appears in 276, its model in 273, its registration in 1, any of the three in 320; of the 78 cases with an aircraft flagged amateur-built, none holds the amateur-built make. The scripted make count differs from the reviewer's 268, and the scripted one stands; the decision does not change.
+- The decision's item 3 said the registration is replaced "in prose and in document titles". The code covered the first aircraft's registration only, and titles only in part. [0184](0184-names-in-document-titles.md) settles it: every aircraft's registration, any case, in prose and in titles; a registration shorter than 3 characters is left out.
