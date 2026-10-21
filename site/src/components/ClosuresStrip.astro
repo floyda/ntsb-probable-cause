@@ -3,7 +3,7 @@
 // in the order they closed, shaped by result. Drawn from the export alone; counts only, never a
 // percentage (§12 item 10). The table beneath carries the same in words (§12 item 8).
 import type { BoardRow } from "../lib/board-index-types";
-import { closedLong, gradeCounts, GRADES } from "../lib/words";
+import { BOARD_START, closedLong, gradeCounts, GRADES } from "../lib/words";
 import Mark from "./Mark.astro";
 
 interface Props {
@@ -18,7 +18,7 @@ const ordered = [...rows].sort(
 
 <div class="strip-figure">
     {/* The counts double as the strip's key: each result's mark beside its count (Andy, 2026-10-14). */}
-    <p class="totals-lead">Since launch:</p>
+    <p class="totals-lead">Since {closedLong(BOARD_START)}:</p>
     <ul class="totals">
         {gradeCounts(rows).map(({ grade, count }) => (
             <li>

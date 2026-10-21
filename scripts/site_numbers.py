@@ -352,6 +352,14 @@ def _path_count(key: str, pattern: str, label: str) -> _Spec:
 
 
 _MOVES: Final = ("stayed right", "fixed", "broken", "stayed wrong")
+# How the site says each move: its result words are "same" and "different" (S5 spec §11); the
+# keys and the patterns keep the results file's own words.
+_MOVE_WORDS: Final = {
+    "stayed right": "stayed the same",
+    "fixed": "became the same",
+    "broken": "became different",
+    "stayed wrong": "stayed different",
+}
 
 
 def _path_moves(key: str, words: str) -> tuple[_Spec, ...]:
@@ -363,7 +371,7 @@ def _path_moves(key: str, words: str) -> tuple[_Spec, ...]:
             _path_count(
                 f"{key}.{move.replace(' ', '_')}",
                 rf"^{words}: {', '.join(parts)}$",
-                f"{words}, {move}",
+                f"{words}, {_MOVE_WORDS[move]}",
             )
         )
     return tuple(specs)
@@ -509,9 +517,9 @@ _SPECS: tuple[_Spec, ...] = (
         rf"^cases with no belief after a read choice \(after reading is before reading\): {_V}$",
         "cases with no belief after a read choice",
     ),
-    _path_count("before", rf"^- before reading: {_V}$", "right before reading"),
-    _path_count("after", rf"^- after reading: {_V}$", "right after reading"),
-    _path_count("answer", rf"^- the answer: {_V}$", "right at the answer"),
+    _path_count("before", rf"^- before reading: {_V}$", "the same before reading"),
+    _path_count("after", rf"^- after reading: {_V}$", "the same after reading"),
+    _path_count("answer", rf"^- the answer: {_V}$", "the same at the answer"),
     *_path_moves("reading", "before reading -> after reading"),
     *_path_moves("coding", "after reading -> the answer"),
     _Spec(
@@ -619,7 +627,7 @@ _SPECS: tuple[_Spec, ...] = (
         "heldout-400",
         _LUNA,
         _CLAIMS,
-        "the loop's cases that failed, for any reason, counted as wrong",
+        "the loop's cases that failed, for any reason, counted as not matching",
         run=_RUN_LINE,
         run_source=_LOOP_BLOCK,
     ),

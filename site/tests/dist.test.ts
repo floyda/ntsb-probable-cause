@@ -297,13 +297,13 @@ describe.skipIf(!built)("the Path page (S5 step 4, Task 5)", () => {
             ["After reading", "after"],
             ["The answer", "answer"],
         ] as const) {
-            expect(text).toContain(`${name}: ${c(key)} of ${cases} right`);
+            expect(text).toContain(`${name}: ${c(key)} of ${cases} the same`);
         }
         expect(text).toContain(
-            `Reading the documents it chose: fixed ${c("reading.fixed")}, broke ${c("reading.broken")}`,
+            `Reading the documents it chose: ${c("reading.fixed")} became the same, ${c("reading.broken")} became different`,
         );
         expect(text).toContain(
-            `The coding step: fixed ${c("coding.fixed")}, broke ${c("coding.broken")}`,
+            `The coding step: ${c("coding.fixed")} became the same, ${c("coding.broken")} became different`,
         );
         for (const move of ["reading", "coding"]) {
             const row = ["stayed_right", "fixed", "broken", "stayed_wrong"]

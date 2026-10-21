@@ -26,8 +26,13 @@ function openCase(link: HTMLAnchorElement): void {
                     strip.replaceWith(none);
                 }
             }
+            // The stop's sign stays in view above the case (review, 2026-10-21): scroll to the
+            // stop, then move focus without scrolling again.
             adopted.tabIndex = -1;
-            adopted.focus();
+            const stop = document.getElementById("case") ?? adopted;
+            // A jump, not a glide: a smooth scroll is skipped by some embedded browsers.
+            stop.scrollIntoView({ block: "start" });
+            adopted.focus({ preventScroll: true });
             // The address follows the case so it can be shared. A frame that forbids it (a
             // sandboxed preview) still shows the case; only a failed fetch opens the case's page.
             try {
@@ -42,12 +47,28 @@ function openCase(link: HTMLAnchorElement): void {
         });
 }
 
+// A tap anywhere on a row opens its case, not only on its date (review, 2026-10-21); the date
+// stays the row's link for the keyboard and with scripts off.
+function rowLink(target: Element): HTMLAnchorElement | null {
+    const link = target.closest<HTMLAnchorElement>("a[data-case]");
+    if (link !== null) return link;
+    if (target.closest("a, button") !== null) return null;
+    const row = target.closest(".board tbody tr");
+    return row?.querySelector<HTMLAnchorElement>("a[data-case]") ?? null;
+}
+
+for (const board of document.querySelectorAll<HTMLElement>(".board")) {
+    board.dataset["rowsOpen"] = "";
+}
+
 document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const link = target.closest<HTMLAnchorElement>("a[data-case]");
+    const link = rowLink(target);
     if (link === null) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    // Selecting a row's text is not a choice of the row.
+    if (link !== target.closest("a") && (window.getSelection()?.toString() ?? "") !== "") return;
     event.preventDefault();
     openCase(link);
 });

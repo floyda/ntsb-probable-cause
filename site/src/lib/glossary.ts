@@ -11,6 +11,10 @@ export interface Term {
 
 export const GLOSSARY: readonly Term[] = [
     {
+        term: "Abbreviations in code names",
+        means: "The NTSB's code names are shown as the NTSB writes them. Their short forms: AC, aircraft; ATC, air traffic control; CFIT, controlled flight into terrain; eng, engine; equip, equipment; IFR, instrument flight rules; info, information; maint, maintenance; malf/fail, malfunction or failure; misc, miscellaneous; oper/perf, operation or performance; proc, procedure; prop, propeller; qual, qualification; recip, reciprocating (piston) engine; sys/comp, system or component; temp, temperature; terr/obj, terrain or object; turb, turbulence; VFR, visual flight rules.",
+    },
+    {
         term: "Abstain",
         means: "The agent judged the evidence too thin and gave no answer. An abstained case is counted, never left out.",
     },

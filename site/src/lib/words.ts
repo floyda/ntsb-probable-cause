@@ -52,6 +52,10 @@ export function closedLong(iso: string): string {
     return `${closedLabel(iso)} ${String(year)}`;
 }
 
+/** The board's declared start: it counts every case closed from this night (decision 0155). */
+export const BOARD_START = "2026-09-23";
+const BOARD_START_LONG = closedLong(BOARD_START);
+
 /** How long the investigation ran: days under two months, else whole months. */
 export function tookLabel(days: number): string {
     if (days < 60) return days === 1 ? "1 day" : `${String(days)} days`;
@@ -110,14 +114,14 @@ export function gradeCounts(rows: readonly BoardRow[]): { grade: Grade; count: n
     }));
 }
 
-/** Counts since launch for each grade, abstains and failures included; no percentage (§12 item 10). */
+/** Counts since the board's declared start for each grade, abstains and failures included; no percentage (§12 item 10). */
 export function totalsLine(rows: readonly BoardRow[]): string {
     const parts = gradeCounts(rows).map(
         ({ grade, count }) => `${String(count)} ${GRADES[grade].word}`,
     );
     return parts.length === 0
-        ? "Since launch: no cases yet."
-        : `Since launch: ${parts.join(", ")}.`;
+        ? `Since ${BOARD_START_LONG}: no cases yet.`
+        : `Since ${BOARD_START_LONG}: ${parts.join(", ")}.`;
 }
 
 /**
@@ -217,7 +221,88 @@ export function differenceSentence(c: CaseFile): string {
     return `${ntsbClause} The agent put ${q(names.agent)} first and ${named}.`;
 }
 
-/** The opened case's line of facts, as separate items (spec §5 part 1). */
+/** US states and territories by the NTSB's two-letter code; any other value is shown as given. */
+const STATES: Record<string, string> = {
+    AL: "Alabama",
+    AK: "Alaska",
+    AZ: "Arizona",
+    AR: "Arkansas",
+    CA: "California",
+    CO: "Colorado",
+    CT: "Connecticut",
+    DE: "Delaware",
+    DC: "District of Columbia",
+    FL: "Florida",
+    GA: "Georgia",
+    HI: "Hawaii",
+    ID: "Idaho",
+    IL: "Illinois",
+    IN: "Indiana",
+    IA: "Iowa",
+    KS: "Kansas",
+    KY: "Kentucky",
+    LA: "Louisiana",
+    ME: "Maine",
+    MD: "Maryland",
+    MA: "Massachusetts",
+    MI: "Michigan",
+    MN: "Minnesota",
+    MS: "Mississippi",
+    MO: "Missouri",
+    MT: "Montana",
+    NE: "Nebraska",
+    NV: "Nevada",
+    NH: "New Hampshire",
+    NJ: "New Jersey",
+    NM: "New Mexico",
+    NY: "New York",
+    NC: "North Carolina",
+    ND: "North Dakota",
+    OH: "Ohio",
+    OK: "Oklahoma",
+    OR: "Oregon",
+    PA: "Pennsylvania",
+    RI: "Rhode Island",
+    SC: "South Carolina",
+    SD: "South Dakota",
+    TN: "Tennessee",
+    TX: "Texas",
+    UT: "Utah",
+    VT: "Vermont",
+    VA: "Virginia",
+    WA: "Washington",
+    WV: "West Virginia",
+    WI: "Wisconsin",
+    WY: "Wyoming",
+    PR: "Puerto Rico",
+    GU: "Guam",
+    VI: "US Virgin Islands",
+    AS: "American Samoa",
+    MP: "Northern Mariana Islands",
+};
+
+/** Kinds of flight in words a reader needs no key for; any other value is shown as given. */
+const KINDS: Record<string, string> = {
+    Personal: "personal flight",
+    Instructional: "instructional flight",
+    Business: "business flight",
+    "Other work use": "other work flight",
+    "Flight test": "test flight",
+    Positioning: "positioning flight",
+    "Air race/show": "air race or show",
+    "Aerial application": "aerial application",
+    Ferry: "ferry flight",
+};
+
+/** The highest injury level, named as injuries so "Minor" or "None" is not read alone. */
+const INJURIES: Record<string, string> = {
+    Fatal: "fatal injuries",
+    Serious: "serious injuries",
+    Minor: "minor injuries",
+    None: "no injuries",
+};
+
+/** The opened case's line of facts, as separate items (spec §5 part 1; review, 2026-10-21). */
 export function factsLine(c: CaseFile): string[] {
     const items = [
         c.case_number,
@@ -227,10 +312,17 @@ export function factsLine(c: CaseFile): string[] {
     ];
     const f = c.facts;
     if (f !== null) {
-        for (const value of [f.state, f.kind_of_flight, f.injury_level]) {
-            if (value !== null && value.trim() !== "") items.push(value);
+        const named: [string | null, Record<string, string>][] = [
+            [f.state, STATES],
+            [f.kind_of_flight, KINDS],
+            [f.injury_level, INJURIES],
+        ];
+        for (const [value, words] of named) {
+            if (value !== null && value.trim() !== "") items.push(words[value.trim()] ?? value);
         }
-        items.push(`${String(f.documents_read)} of ${String(f.documents_listed)} documents read`);
+        items.push(
+            `read ${String(f.documents_read)} of the docket's ${String(f.documents_listed)} documents`,
+        );
     }
     return items;
 }

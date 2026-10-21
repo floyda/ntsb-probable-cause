@@ -40,10 +40,21 @@ const places = [
     current="home"
     places={places}
 >
-    <section id="question" class="caveat" aria-labelledby="caveat-heading">
+    {/* Stop 1 (spec §2, §3.1): the question, two sentences on the task, then the caveat. */}
+    <section id="question" class="caveat" aria-labelledby="question-heading">
         <h1>Ellery</h1>
         <Sign>1 · The question</Sign>
-        <h2 id="caveat-heading">Read this first</h2>
+        <h2 id="question-heading">
+            Can an agent read an accident docket and code the cause as the investigator did, and
+            does it need to be an agent to do so?
+        </h2>
+        <p>
+            When the NTSB closes a US aviation accident case, it publishes a probable cause and
+            codes what happened and why, from fixed lists. Ellery reads the evidence the
+            investigators gathered, never their own write-up or the verdict, and picks its codes
+            from the same lists, so its answer can be set beside the NTSB's.
+        </p>
+        <h3>Read this first</h3>
         <p>
             The board runs Ellery, version 1, an AI agent. It reads the same evidence, with the same
             tools, as a simpler fixed method. On {caseCount("ladder.loop.top1")} accidents it had
@@ -106,8 +117,12 @@ const places = [
         padding-block: var(--space-section);
         border-top: 1px solid var(--rule);
     }
-    h2 {
+    h2,
+    h3 {
         margin: 0;
+    }
+    #question-heading {
+        text-wrap: balance;
     }
     p {
         margin-block: 0;

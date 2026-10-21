@@ -289,6 +289,7 @@ extend-ignore-re = [
 mis = "mis" # first half of the hyphenated "mis-pointed" in docs/decisions/0016; not a misspelling
 Flate = "Flate" # the PDF compression filter FlateDecode, named by S2.6's page facts (docket/pages.py)
 ANC = "ANC" # the NTSB's Anchorage case-number prefix in the typesafe fixtures; not a misspelling
+ND = "ND" # North Dakota's two-letter code, in the site's state names (site/src/lib/words.ts)
 
 [tool.typos.files]
 # Real NTSB case numbers, IDs and abbreviations (e.g. "ANC...", "HOM", "TPE") trigger many false

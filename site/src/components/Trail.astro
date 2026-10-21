@@ -63,29 +63,51 @@ const verdict = verdictView(kase);
                             role="region"
                             aria-labelledby={`docs-${step.choice.step}`}
                         >
-                            <table>
+                            {/* The roles keep the table's meaning where a phone lays it out as
+                                stacked rows (the styles below). */}
+                            <table role="table">
                                 <caption class="vh" id={`docs-${step.choice.step}`}>
                                     Documents at the {step.name.toLowerCase()}
                                 </caption>
-                                <thead>
-                                    <tr>
-                                        <th scope="col">
+                                <thead role="rowgroup">
+                                    <tr role="row">
+                                        <th scope="col" role="columnheader">
                                             Document <span class="term">· the docket</span>
                                         </th>
-                                        <th scope="col">Decision</th>
-                                        <th scope="col">Detail</th>
-                                        <th scope="col">The agent's note</th>
+                                        <th scope="col" role="columnheader">
+                                            Decision
+                                        </th>
+                                        <th scope="col" role="columnheader">
+                                            Detail
+                                        </th>
+                                        <th scope="col" role="columnheader">
+                                            The agent's note
+                                        </th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody role="rowgroup">
                                     {step.choice.documents.map((doc) => {
                                         const line = documentLine(doc);
                                         return (
-                                            <tr>
-                                                <td>{titleShown(doc.title)}</td>
-                                                <td>{line.decision}</td>
-                                                <td>{line.detail ?? "—"}</td>
-                                                <td>{doc.note ?? "—"}</td>
+                                            <tr role="row">
+                                                <td role="cell" class="title">
+                                                    {titleShown(doc.title)}
+                                                </td>
+                                                <td role="cell">{line.decision}</td>
+                                                <td
+                                                    role="cell"
+                                                    class:list={{ empty: line.detail === null }}
+                                                    data-label="Detail"
+                                                >
+                                                    {line.detail ?? "—"}
+                                                </td>
+                                                <td
+                                                    role="cell"
+                                                    class:list={{ empty: doc.note === null }}
+                                                    data-label="The agent's note"
+                                                >
+                                                    {doc.note ?? "—"}
+                                                </td>
                                             </tr>
                                         );
                                     })}
@@ -202,12 +224,6 @@ const verdict = verdictView(kase);
         outline: 2px solid currentColor;
         outline-offset: 2px;
     }
-    /* On a phone the table keeps a readable width and scrolls in its own frame. */
-    @media (max-width: 640px) {
-        table {
-            min-width: 34rem;
-        }
-    }
     table {
         border-collapse: collapse;
         width: 100%;
@@ -223,6 +239,42 @@ const verdict = verdictView(kase);
     th {
         color: var(--ink-muted);
         font-weight: 700;
+    }
+    /* On a phone each document is a stacked row: its title, its decision, then the detail and the
+       agent's note, each named, so nothing is cut off at the screen's edge (review, 2026-10-21). */
+    @media (max-width: 640px) {
+        table,
+        tbody,
+        tr,
+        td {
+            display: block;
+        }
+        thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+        tr {
+            padding-block: 0.5rem;
+            border-bottom: 1px solid var(--rule);
+        }
+        td {
+            border-bottom: none;
+            padding: 0.1rem 0;
+        }
+        td.title {
+            font-weight: 700;
+        }
+        td.empty {
+            display: none;
+        }
+        td[data-label]::before {
+            content: attr(data-label) ": ";
+            color: var(--ink-muted);
+        }
     }
     .lookups {
         margin: 0;

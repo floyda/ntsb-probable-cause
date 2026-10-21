@@ -86,6 +86,12 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         and the script and results file behind it. Each commit links to the project's code as it
         was. The sections follow the order in which a reader meets the numbers.
     </p>
+    {/* The name line (spec §12 item 15). */}
+    <p>
+        Ellery is named after Ellery Queen, the detective of 1930s American novels that stopped near
+        the end to tell readers they now held every clue. Here every reader can check Ellery's
+        answer against the NTSB's. The name stands for no real person.
+    </p>
 
     <section id="reading" aria-labelledby="reading-heading">
         <Sign>Part 1</Sign>
@@ -97,7 +103,7 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             first is the defining event. "First code matches" means the agent's first code is the
             NTSB's first code. For example, if the NTSB coded "Loss of control in flight" first and
             so did the agent, it matches; if the agent put "Aerodynamic stall/spin" first, it does
-            not. This is the headline measure, and it is scored by exact match, with no person or
+            not. This is the headline measure, and it is checked by exact match, with no person or
             model judging.
         </p>
         <h3>Among its three (top-3)</h3>
@@ -170,8 +176,8 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             {launched !== null && (
                 <>
                     {" "}
-                    Cases that closed before the launch on {closedLong(launched)} were coded after
-                    it, from the start, and carry the mark ◦.
+                    Cases that closed before the live runs began on {closedLong(launched)} were
+                    coded after that, from the start, and carry the mark ◦.
                 </>
             )}{" "}
             The board shows counts, never a percentage: a live headline rate would make it a
@@ -193,11 +199,11 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
         <p>
             Four ways of coding an accident, each with more machinery than the one before. The model
             steps are S3.2's held-out runs on the same {String(ladderCases)} cases, under one rule
-            registered before they ran: a case that failed counts as wrong, and a case the guard
-            refused is left out of both sides of a comparison (none was, in these runs). The first
-            step uses no model: for each case it guesses the commonest first code among development
-            cases with the same phase of flight and weather, and it is scored on every held-out
-            case. The case record alone has no bill in a committed file, so it shows none.
+            registered before they ran: a case that failed counts as not matching, and a case the
+            guard refused is left out of both sides of a comparison (none was, in these runs). The
+            first step uses no model: for each case it guesses the commonest first code among
+            development cases with the same phase of flight and weather, and it is checked on every
+            held-out case. The case record alone has no bill in a committed file, so it shows none.
         </p>
         <MethodsGroup id="ladder" />
     </section>
@@ -247,14 +253,14 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             <a href={commitUrl(registeredIn)}>
                 <code>{registeredIn.slice(0, 7)}</code>
             </a>
-            ), so that none could be chosen after a result was seen. A script scored each one, and
+            ), so that none could be chosen after a result was seen. A script checked each one, and
             each is published whether it was met or not: {String(met)} were met and{" "}
             {String(predictions.length - met)} were not.
         </p>
         <p>
             The words of each prediction are the registration's, unedited. The disclosures they
             refer to are in <a href={fileAtUrl(registeredIn, REGISTRATION)}>the registration</a> as
-            committed; the scoring is in{" "}
+            committed; each one's outcome is in{" "}
             <a href={repoUrl(`docs/results/s32-claims-heldout.txt`)}>
                 <code>s32-claims-heldout.txt</code>
             </a>
@@ -284,7 +290,7 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             Before S3.2, the ladder's middle steps were S1's one-shot ceiling and S2.4's fixed
             pipeline. S3.2's runs replaced them. S1 ran on an earlier model. S2.4's pipeline had no
             coding tools, and it left failed cases out of its count ({String(s24Scored)} cases
-            scored), where S3.2 counts a failed case as wrong.
+            scored), where S3.2 counts a failed case as not matching.
         </p>
         <MethodsGroup id="history" />
         {s1Commit !== null && (
@@ -318,9 +324,9 @@ const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes
             loop stops instead, and the case counts as failed.
         </p>
         <p>
-            <strong>Failures.</strong> A failed case counts as wrong in every S3.2 figure. The
-            counts, for the loop's held-out run and for its two development runs (S3.1's run-twice
-            pair):
+            <strong>Failures.</strong> A failed case counts as not matching in every S3.2 figure.
+            The counts, for the loop's held-out run and for its two development runs (S3.1's
+            run-twice pair):
         </p>
         <MethodsGroup id="limits" />
     </section>

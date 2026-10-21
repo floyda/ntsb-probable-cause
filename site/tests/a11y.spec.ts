@@ -310,3 +310,28 @@ test("a chosen row still opens its case when the address cannot change", async (
     expect(new URL(page.url()).pathname).toBe("/");
     await expect(page.locator(".board-frame table")).toBeVisible();
 });
+
+// A tap anywhere on a row opens its case, not only on its date; the stop's sign stays in view
+// above it (review, 2026-10-21).
+test("a tap on a row's result opens its case, with the stop's sign in view", async ({ page }) => {
+    await page.goto("/");
+    const row = page.locator(".board tbody tr").nth(1);
+    const n = (await row.locator("a[data-case]").getAttribute("data-case")) ?? "";
+    await row.locator("td").last().click();
+    await expect(page.locator(`article#opened[data-case="${n}"]`)).toBeFocused();
+    const sign = page.locator("#case .sign");
+    await expect(sign).toBeInViewport();
+});
+
+// On a phone each document of a trail is a stacked row, so no part of it is cut off at the
+// screen's edge (review, 2026-10-21).
+test("a trail's document rows fit the screen", async ({ page }) => {
+    await page.goto("/");
+    const trail = await page.locator('a[href$="/trail/"]').first().getAttribute("href");
+    test.skip(trail === null, "no case with a trail");
+    await page.goto(trail ?? "/");
+    const clipped = await page
+        .locator(".frame")
+        .evaluateAll((frames) => frames.filter((f) => f.scrollWidth > f.clientWidth + 1).length);
+    expect(clipped).toBe(0);
+});

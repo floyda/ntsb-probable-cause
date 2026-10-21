@@ -6,6 +6,7 @@ import "../styles/board.css";
 import type { BoardIndex, BoardRow } from "../lib/board-index-types";
 import {
     aircraftLabel,
+    BOARD_START,
     closedLabel,
     closedLong,
     firstNames,
@@ -42,7 +43,11 @@ function ntsbCell(row: BoardRow): string {
 <figure class="board">
     <div class="board-frame" tabindex="0" role="region" aria-labelledby="board-caption">
         <table>
-            <caption id="board-caption">Recently closed cases</caption>
+            {/* Its name differs from the stop's heading, so the two regions are told apart
+                (review, 2026-10-21); the heading above says the rest. */}
+            <caption id="board-caption">
+                <span class="vh">Recently closed cases, </span>newest first
+            </caption>
             <thead>
                 <tr>
                     <th scope="col">Closed</th>
@@ -70,17 +75,18 @@ function ntsbCell(row: BoardRow): string {
                             {row.backfilled === true && (
                                 <span
                                     class="from-start"
-                                    title="coded after launch, from the declared start"
+                                    title="closed before the live runs began; coded later, from the declared start"
                                 >
                                     ◦
                                     <span class="vh">
                                         {" "}
-                                        coded after launch, from the declared start
+                                        closed before the live runs began; coded later, from the
+                                        declared start
                                     </span>
                                 </span>
                             )}
                         </td>
-                        <td class="wide">{tookLabel(row.took_days)}</td>
+                        <td class="wide took">{tookLabel(row.took_days)}</td>
                         <td>{aircraftLabel(row.aircraft)}</td>
                         <td class="wide">{agentCell(row)}</td>
                         <td class="wide">{ntsbCell(row)}</td>
@@ -97,13 +103,13 @@ function ntsbCell(row: BoardRow): string {
         <p>{totalsLine(index.rows)}</p>
         {anyBackfilled && launched !== null && (
             <p>
-                ◦ Closed before the launch on {closedLong(launched)} and coded after it, from the
-                declared start of 23 Sep 2026.
+                ◦ Closed before the live runs began on {closedLong(launched)}, and coded after that,
+                from the declared start of {closedLong(BOARD_START)}.
             </p>
         )}
         <p>
-            The NTSB's own coding is not fully consistent, so “different” does not simply mean
-            wrong.
+            The NTSB's own coding is <a href="/path/#consistency">not fully consistent</a>, so
+            “different” does not simply mean wrong.
         </p>
     </figcaption>
 </figure>

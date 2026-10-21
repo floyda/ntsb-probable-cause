@@ -152,7 +152,7 @@
     },
     "limits.loop.failed": {
       "high": null,
-      "label": "the loop's cases that failed, for any reason, counted as wrong",
+      "label": "the loop's cases that failed, for any reason, counted as not matching",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": 400,
@@ -482,7 +482,7 @@
     },
     "q7.path.after": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: right after reading",
+      "label": "the loop's beliefs against the NTSB's first code: the same after reading",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -497,7 +497,7 @@
     },
     "q7.path.answer": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: right at the answer",
+      "label": "the loop's beliefs against the NTSB's first code: the same at the answer",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -512,7 +512,7 @@
     },
     "q7.path.before": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: right before reading",
+      "label": "the loop's beliefs against the NTSB's first code: the same before reading",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -542,7 +542,7 @@
     },
     "q7.path.coding.broken": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, broken",
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, became different",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -557,7 +557,7 @@
     },
     "q7.path.coding.fixed": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, fixed",
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, became the same",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -572,7 +572,7 @@
     },
     "q7.path.coding.stayed_right": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, stayed right",
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, stayed the same",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -587,7 +587,7 @@
     },
     "q7.path.coding.stayed_wrong": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, stayed wrong",
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, stayed different",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -617,7 +617,7 @@
     },
     "q7.path.reading.broken": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, broken",
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, became different",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -632,7 +632,7 @@
     },
     "q7.path.reading.fixed": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, fixed",
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, became the same",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -647,7 +647,7 @@
     },
     "q7.path.reading.stayed_right": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, stayed right",
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, stayed the same",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,
@@ -662,7 +662,7 @@
     },
     "q7.path.reading.stayed_wrong": {
       "high": null,
-      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, stayed wrong",
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, stayed different",
       "low": null,
       "model": "openai/gpt-6-luna",
       "n": null,

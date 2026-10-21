@@ -170,6 +170,16 @@ Decided here; each can change at the preview:
     - Rows have their own trigger, with no bottom margin, so no row in view is left blank.
     - A dated note in spec §4 records it, and a test scrolls the window and finds every row in view shown.
   - **Decision 0187 amended:** inside a word the lost character is an apostrophe, elsewhere a dash (`8dcd2de`).
+  - **The Fable review of 21 October, its fixes (Andy: "go ahead and fix"):**
+    - Stop 1 asks the question (spec §2) and gives two sentences on the task before the caveat.
+    - Result words follow §11: question 7's figure says "the same" and "different", "became the same" and "became different", never "right", "wrong", "fixed" or "broken". The Path, Methods and the split diagram say "check" or "match", never "score". The numbers file's labels follow; its keys and patterns keep the results file's words.
+    - "The launch" was the first cloud night, not the site's launch. The board and Methods now say "before the live runs began", and the counts say "Since 23 Sep 2026", the board's declared start (`BOARD_START`, decision 0155).
+    - The board's consistency line links to the Path's question 6.
+    - A tap anywhere on a board row opens its case; the date stays the row's link. The page jumps to the stop's sign, then moves focus without scrolling (a smooth scroll is skipped by some embedded browsers).
+    - On a phone a trail's documents are stacked rows, named by ARIA roles, so the detail and note are never cut off.
+    - The facts line names the state, the kind of flight and the injuries in words ("Hawaii", "instructional flight", "minor injuries") and the docket's count ("read 6 of the docket's 8 documents").
+    - The board region is named apart from its stop ("newest first"); "Took" never wraps; the phone board fits 375px; a short page keeps its footer at the foot of the screen; Methods carries the name line (§12 item 15); the glossary explains the code names' short forms; Path question 3 says S2.4 left failed cases out.
+    - Not changed: question 1's example keeps the NTSB's labels word for word, separators included; the slashed zero is the reading face's own (Atkinson Hyperlegible, chosen for legibility).
 
 ## Glossary
 

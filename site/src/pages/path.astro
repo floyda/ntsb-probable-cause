@@ -14,7 +14,7 @@ import Sign from "../components/Sign.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 import { assertPathClaims } from "../lib/claims";
-import { countOf, pointsOn, usd, withInterval } from "../lib/numbers";
+import { countOf, entry, pointsOn, usd, withInterval } from "../lib/numbers";
 import { entryLink } from "../lib/methods";
 import { repoUrl } from "../lib/words";
 
@@ -74,7 +74,7 @@ const places = [
         methods="answer-key"
         n={1}
         question="Is there an answer key nobody had to write?"
-        decision="Score every answer by exact match against the NTSB's own codes, with no person or model grading it."
+        decision="Check every answer by exact match against the NTSB's own codes, with no person or model judging it."
         results={[`${R}s1-bars.txt`]}
         scripts={["apps/eval/", "scripts/site_example_case.py"]}
     >
@@ -99,7 +99,7 @@ const places = [
             {withInterval("ladder.no_docket.top1")}. Always guessing the commonest code matched in{" "}
             {withInterval("ladder.baseline.top1")}. The agent did no better than guessing.
         </p>
-        <p>S1's one-shot ceiling, on an earlier stack, scored below that guess.</p>
+        <p>S1's one-shot ceiling, on an earlier stack, matched less often than that guess.</p>
         <Ladder id="ladder-q2" lit={["baseline", "no_docket"]} sentence={false} slot="figure" />
     </PathStop>
 
@@ -116,7 +116,9 @@ const places = [
             Yes. It is the largest gain on the ladder. It was first measured in S2.4, with the fixed
             pipeline's first version, before its coding tools: against the one-shot ceiling, the
             same model answering from the case record alone, reading the docket raised the
-            first-code match by {pointsOn("q3.docket_gain")}.
+            first-code match by {pointsOn("q3.docket_gain")}. S2.4 left failed cases out and counted{" "}
+            {String(entry("q3.docket_gain").n)} cases. The ladder counts a failed case as not
+            matching, so its steps differ from that figure.
         </p>
         <Ladder id="ladder-q3" lit={["fixed"]} sentence={false} slot="figure" />
     </PathStop>
@@ -209,7 +211,7 @@ const places = [
         <p>
             This does not say the NTSB was inconsistent: the same sentence can follow accidents
             whose sequences of events differ. It bounds what any coder reading only the sentence
-            could score.
+            could match.
         </p>
         <FirstCodes slot="figure" />
     </PathStop>

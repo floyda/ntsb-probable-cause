@@ -64,6 +64,19 @@
     border-bottom: none;
 }
 
+.board td.took {
+    white-space: nowrap;
+}
+
+/* With the script, a whole row opens its case (scripts/open-row.ts). */
+.board[data-rows-open] tbody tr {
+    cursor: pointer;
+}
+
+.board[data-rows-open] tbody tr:hover a {
+    text-decoration-thickness: 2px;
+}
+
 .board a {
     color: inherit;
     text-decoration: underline;
@@ -102,12 +115,13 @@
     .board .wide {
         display: none;
     }
+    /* Small enough that the three columns fit a 375px screen without scrolling sideways. */
     .board table {
-        font-size: 1rem;
+        font-size: 0.95rem;
     }
     .board th,
     .board td {
-        padding-inline: 0.4rem;
+        padding-inline: 0.3rem;
     }
 }
 

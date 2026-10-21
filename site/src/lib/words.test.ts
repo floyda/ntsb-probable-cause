@@ -60,7 +60,7 @@ describe("board lines", () => {
     });
     it("counts each grade, leaving out zeros", () => {
         expect(totalsLine(index.rows)).toBe(
-            "Since launch: 1 same first code, 1 same codes in another order, 1 different, 1 agent abstained, 2 not coded, 1 awaiting the NTSB's codes.",
+            "Since 23 Sep 2026: 1 same first code, 1 same codes in another order, 1 different, 1 agent abstained, 2 not coded, 1 awaiting the NTSB's codes.",
         );
     });
 });
@@ -105,10 +105,10 @@ describe("the opened case's lines", () => {
             "closed 9 Oct 2026",
             "took 47 days",
             "Aeroplane, 1 piston",
-            "TX",
-            "Personal",
-            "Fatal",
-            "3 of 5 documents read",
+            "Texas",
+            "personal flight",
+            "fatal injuries",
+            "read 3 of the docket's 5 documents",
         ]);
     });
     it("says when the case was coded and that the verdict was withheld", () => {

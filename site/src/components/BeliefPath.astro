@@ -1,8 +1,9 @@
 ---
 // Question 7's figure (spec §7.4; decision 0186): the loop's belief before reading, after
 // reading and at the answer, against the NTSB's first code, on the held-out cases it answered.
-// Each checkpoint is one bar of every case, the right ones drawn dark; between the bars, how many
-// cases each step fixed and broke. Counts only, from the numbers file; it can go either way.
+// Each checkpoint is one bar of every case, those the same as the NTSB's drawn dark; between the
+// bars, how many cases each step made the same and made different. Result words are "same" and
+// "different" (spec §11). Counts only, from the numbers file; it can go either way.
 import { count, entry, pointsOn } from "../lib/numbers";
 
 const value = (key: string): number => entry(`q7.path.${key}`).value;
@@ -20,8 +21,9 @@ const moves: Record<string, { key: string; name: string }> = {
 
 <figure class="belief-path" aria-labelledby="belief-path-caption">
     <figcaption id="belief-path-caption">
-        How often the loop's first code scored right against the NTSB's, at three points, on the{" "}
-        {count("q7.path.cases")} held-out cases it answered (an abstained answer counts as wrong).
+        How often the loop's first code was the same as the NTSB's, at three points, on the{" "}
+        {count("q7.path.cases")} held-out cases it answered (an abstained answer counts as
+        different).
     </figcaption>
     <ol class="points" aria-hidden="true">
         {checkpoints.map((c) => {
@@ -30,17 +32,17 @@ const moves: Record<string, { key: string; name: string }> = {
                 <>
                     {move !== undefined && (
                         <li class="move">
-                            {move.name}: fixed {count(`q7.path.${move.key}.fixed`)}, broke{" "}
-                            {count(`q7.path.${move.key}.broken`)}
+                            {move.name}: {count(`q7.path.${move.key}.fixed`)} became the same,{" "}
+                            {count(`q7.path.${move.key}.broken`)} became different
                         </li>
                     )}
                     <li class="point">
                         <span class="name">
                             {c.name}: <strong>{count(`q7.path.${c.key}`)}</strong> of{" "}
-                            {count("q7.path.cases")} right
+                            {count("q7.path.cases")} the same
                         </span>
                         <svg viewBox={`0 0 ${String(cases)} 10`} preserveAspectRatio="none">
-                            <rect class="right" x="0" y="0" width={value(c.key)} height="10" />
+                            <rect class="same" x="0" y="0" width={value(c.key)} height="10" />
                             <rect
                                 class="rest"
                                 x={value(c.key)}
@@ -70,7 +72,7 @@ const moves: Record<string, { key: string; name: string }> = {
             <thead>
                 <tr>
                     <th scope="col">Point</th>
-                    <th scope="col">Right</th>
+                    <th scope="col">Same</th>
                     <th scope="col">Cases</th>
                 </tr>
             </thead>
@@ -89,10 +91,10 @@ const moves: Record<string, { key: string; name: string }> = {
             <thead>
                 <tr>
                     <th scope="col">Step</th>
-                    <th scope="col">Stayed right</th>
-                    <th scope="col">Fixed</th>
-                    <th scope="col">Broken</th>
-                    <th scope="col">Stayed wrong</th>
+                    <th scope="col">Stayed the same</th>
+                    <th scope="col">Became the same</th>
+                    <th scope="col">Became different</th>
+                    <th scope="col">Stayed different</th>
                 </tr>
             </thead>
             <tbody>
@@ -147,7 +149,7 @@ const moves: Record<string, { key: string; name: string }> = {
         height: 1rem;
         display: block;
     }
-    .right {
+    .same {
         fill: var(--ink);
     }
     .rest {
