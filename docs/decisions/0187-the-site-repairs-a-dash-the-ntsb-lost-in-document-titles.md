@@ -52,3 +52,13 @@ Andy's ruling, 2026-10-20, through the S4 session, and confirmed in the S5 sessi
 ## Status
 
 Accepted.
+
+## Amendment, 2026-10-21 (Andy)
+
+The export of 20 October showed the same sequence standing for a lost apostrophe as well. Of 39
+instances, 37 sit between words, where a dash belongs, and 2 inside a word, as in
+"SPECIALIST`\uFFFD\uFFFD`S FACTUAL REPORT", where an apostrophe was lost. A UTF-8 right single
+quotation mark (`E2 80 99`) garbles to the same sequence as an en dash (`E2 80 93`). Item 1 now
+reads: the sequence is shown as a right single quotation mark (U+2019) when a letter stands on
+both sides of it, and as an en dash everywhere else. Both are guesses, stated as such; items 2
+and 3 are unchanged. The text above is left as it was decided.

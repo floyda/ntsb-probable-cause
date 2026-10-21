@@ -98,12 +98,15 @@ const NOT_OFFERED: Record<
 };
 
 /**
- * A document's title as the site shows it (decision 0187): the exact sequence "A", U+FFFD, U+FFFD,
- * where the NTSB's own docket page lost a dash, becomes an en dash. A guess at the lost
- * character, made in the site so S4's export stays an exact copy; nothing else is changed.
+ * A document's title as the site shows it (decision 0187, amended 2026-10-21): the exact sequence
+ * "A", U+FFFD, U+FFFD, where the NTSB's own docket page lost a character, becomes an apostrophe
+ * inside a word ("SPECIALIST'S") and an en dash anywhere else. A guess at the lost character,
+ * made in the site so S4's export stays an exact copy; nothing else is changed.
  */
 export function titleShown(title: string): string {
-    return title.replaceAll("A\uFFFD\uFFFD", "\u2013");
+    return title.replace(/(.?)A\uFFFD\uFFFD(?=(.?))/gu, (_m, before: string, after: string) =>
+        /\p{L}/u.test(before) && /\p{L}/u.test(after) ? `${before}\u2019` : `${before}\u2013`,
+    );
 }
 
 /** What happened to one docket document at a read choice, with its pages when known. */

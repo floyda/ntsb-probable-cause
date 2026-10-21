@@ -174,6 +174,16 @@ describe("a document's title as shown (decision 0187)", () => {
         );
         expect(titleShown(`A ${LOST} B ${LOST} C`)).toBe("A – B – C");
     });
+    it("shows it as an apostrophe inside a word (amended 2026-10-21)", () => {
+        expect(titleShown(`ENGINE DATA MONITOR - SPECIALIST${LOST}S FACTUAL REPORT`)).toBe(
+            "ENGINE DATA MONITOR - SPECIALIST\u2019S FACTUAL REPORT",
+        );
+        expect(titleShown(`PILOT${LOST}S STATEMENT ${LOST} FAA`)).toBe(
+            "PILOT\u2019S STATEMENT \u2013 FAA",
+        );
+        expect(titleShown(`${LOST}S`)).toBe("\u2013S");
+        expect(titleShown(`END${LOST}`)).toBe("END\u2013");
+    });
     it("changes nothing else, a lone replacement mark included", () => {
         for (const title of ["PILOT'S STATEMENT", "A� B", "��", "MEMO - AIRPORT", "AA"]) {
             expect(titleShown(title)).toBe(title);
