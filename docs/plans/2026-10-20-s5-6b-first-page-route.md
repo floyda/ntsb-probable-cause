@@ -117,18 +117,18 @@ Decided here; each can change at the preview:
 
 ## Task 3: The arrival motion
 
-- [ ] **Step 1: Failing tests** in `a11y.spec.ts`:
+- [x] **Step 1: Failing tests** in `a11y.spec.ts`:
   - right after load, a full-page capture finds every stop's heading visible (Review Focus 1);
   - with `reducedMotion: "reduce"`, no element has a running transition after a scroll (Review Focus 2);
   - with scripts off, nothing is hidden;
   - scrolling to stop 5 leaves its bars at their full widths within one second.
-- [ ] **Step 2: `scripts/arrive.ts`.**
+- [x] **Step 2: `scripts/arrive.ts`.**
   - It does nothing under `prefers-reduced-motion: reduce`.
   - On the first scroll, it marks the stops below the screen as waiting (`data-arrive="wait"`). Their parts are hidden by CSS from then on.
   - As each stop reaches the screen, it is marked `arrived`. Its parts rise in turn; the board's rows turn over one after another; the ladder's bars grow from the left; the strip's blocks and the questions appear in sequence.
   - Each run is under about a second and never repeats.
   - CSS does all the motion. The script sets only attributes.
-- [ ] **Step 3:** Run the tests and `make check`. Commit `S5 step 6b Task 3: the arrival motion`.
+- [x] **Step 3:** Run the tests and `make check`. Commit `S5 step 6b Task 3: the arrival motion`.
 
 ## Task 4: Preview (Controller)
 
@@ -151,6 +151,17 @@ Decided here; each can change at the preview:
   - The answers are `ROUTE_QUESTIONS` in `lib/route.ts`. Question 6's "one case in three" is worded from `q6.twins` by `oneIn`. Question 3's "the largest gain on the ladder" gains a guard, `q3.largest_gain`: the rise from the case record alone to the fixed pipeline must be the largest between neighbouring steps. It is tested to fail. The first page now calls `assertPathClaims()`, so every guarded answer stops its build too.
   - An older test checked that the page's "table" stays visible after a row opens. The first page now also holds the ladder's hidden table, so it checks the board's table. It also checks that stop 4's strip follows the chosen case.
   - The "every place lands clear of the rail" test now includes the first page.
+- **Andy's choice 2 (2026-10-21):** all four kinds of motion (A).
+- **Task 3 (2026-10-21):**
+  - **What arrives is each stop, and each figure inside one** (the ladder, the strip, the questions), not stops alone. Seen in the phone frames: the board's stop had its top edge on screen at load, so a stop-only rule never let its rows turn over.
+  - **The board's rows each arrive on their own** as they reach the screen. Rows that arrive together turn over one after another (`--j`, 60ms apart).
+  - A waiting stop's parts rise in turn. The ladder's bars grow from the left in order, then their whiskers show. The strip's beliefs and the eight questions appear in sequence. Every delay is capped, so each arrival ends within about a second; the test waits 1.2s and finds the ladder's bars at full width.
+  - `styles/arrive.css` does all the motion inside `prefers-reduced-motion: no-preference`. `scripts/arrive.ts` sets only attributes and per-item CSS variables, through the CSSOM, which the CSP allows. It marks nothing until the first scroll, and nothing under reduced motion.
+  - Tests in all three projects:
+    - every stop's heading is visible, and nothing is marked, before any scroll;
+    - an arrival is finished within 1.2s;
+    - reduced motion marks nothing;
+    - with scripts off, nothing is hidden.
 
 ## Glossary
 

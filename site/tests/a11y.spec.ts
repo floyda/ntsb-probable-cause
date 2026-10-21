@@ -187,3 +187,74 @@ test.describe("with scripts off", () => {
         await expect(page.locator("nav.rail a[aria-current]")).toHaveCount(0);
     });
 });
+
+// The first page's arrival motion (spec §3.1; S5 step 6b, Task 3). Its four limits: the page is
+// complete before anyone scrolls, reduced motion and no script show everything at once, and each
+// arrival ends in under about a second.
+test.describe("the first page's arrival", () => {
+    const headings = async (page: import("@playwright/test").Page): Promise<number[]> =>
+        page
+            .locator("main > section h2")
+            .evaluateAll((hs) => hs.map((h) => Number(getComputedStyle(h).opacity)));
+
+    test("leaves every stop visible to anything that does not scroll", async ({ page }) => {
+        await page.goto("/");
+        await page.waitForTimeout(300);
+        const seen = await headings(page);
+        expect(seen.length).toBeGreaterThanOrEqual(5);
+        expect(seen.every((o) => o === 1)).toBe(true);
+        await expect(page.locator("[data-arrive]")).toHaveCount(0);
+    });
+
+    test("finishes each arrival within about a second", async ({ page }) => {
+        await page.goto("/");
+        await page.mouse.wheel(0, 200);
+        await page.waitForTimeout(100);
+        await page.locator("#loop").scrollIntoViewIfNeeded();
+        await page.waitForTimeout(1200);
+        const state = await page.evaluate(() => {
+            const bars = [
+                ...document.querySelectorAll<SVGRectElement>("#loop svg.drawing rect.bar"),
+            ]
+                .filter(
+                    (r) =>
+                        r.getBoundingClientRect().width > 0 ||
+                        r.closest("svg")?.getBoundingClientRect().width,
+                )
+                .map((r) => getComputedStyle(r).transform);
+            const h = document.querySelector("#loop h2");
+            return {
+                arrive: document.getElementById("loop")?.getAttribute("data-arrive") ?? null,
+                opacity: h === null ? -1 : Number(getComputedStyle(h).opacity),
+                bars,
+            };
+        });
+        expect(state.arrive).toBe("arrived");
+        expect(state.opacity).toBe(1);
+        for (const t of state.bars) expect(["none", "matrix(1, 0, 0, 1, 0, 0)"]).toContain(t);
+    });
+});
+
+test.describe("the first page with reduced motion", () => {
+    test.use({ reducedMotion: "reduce" });
+    test("shows everything at once and moves nothing", async ({ page }) => {
+        await page.goto("/");
+        await page.mouse.wheel(0, 400);
+        await page.waitForTimeout(150);
+        await page.locator("#path").scrollIntoViewIfNeeded();
+        await expect(page.locator("[data-arrive]")).toHaveCount(0);
+    });
+});
+
+test.describe("the first page with scripts off", () => {
+    test.use({ javaScriptEnabled: false });
+    test("hides nothing", async ({ page }) => {
+        await page.goto("/");
+        await page.locator("#path").scrollIntoViewIfNeeded();
+        await expect(page.locator("[data-arrive]")).toHaveCount(0);
+        const opacity = await page
+            .locator("#path h2")
+            .evaluate((h) => Number(getComputedStyle(h).opacity));
+        expect(opacity).toBe(1);
+    });
+});

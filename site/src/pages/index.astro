@@ -6,6 +6,7 @@ import RouteQuestions from "../components/RouteQuestions.astro";
 import Sign from "../components/Sign.astro";
 import TrailStrip from "../components/TrailStrip.astro";
 import Base from "../layouts/Base.astro";
+import "../styles/arrive.css";
 import { exportDir, loadExport } from "../lib/export";
 import { methodsLink } from "../lib/methods";
 import { assertPathClaims } from "../lib/claims";
@@ -94,6 +95,7 @@ const places = [
 
 <script>
     import "../scripts/open-row.ts";
+    import "../scripts/arrive.ts";
 </script>
 
 <style>

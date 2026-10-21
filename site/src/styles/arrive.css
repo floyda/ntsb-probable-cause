@@ -1,0 +1,76 @@
+/* The first page's arrival (spec §3.1; S5 step 6b, Andy chose all four kinds on 2026-10-21).
+   Nothing here applies until scripts/arrive.ts has seen the reader scroll and marked a stop
+   below the screen `data-arrive="wait"`, and each figure (the board, the ladder, the strip, the
+   questions) below it on its own, so a figure arrives when it reaches the screen even if its
+   stop's heading was already in view. Under reduced motion nothing is marked. Each arrival
+   runs once and ends in under about a second. Motion never marks a result good or bad. */
+@media (prefers-reduced-motion: no-preference) {
+    /* 1. A stop's parts rise into place, in turn. */
+    section[data-arrive="wait"] > * {
+        opacity: 0;
+        transform: translateY(0.75rem);
+    }
+    section[data-arrive="arrived"] > * {
+        transition:
+            opacity 0.4s ease-out,
+            transform 0.4s ease-out;
+    }
+    section[data-arrive="arrived"] > :nth-child(2) {
+        transition-delay: 0.06s;
+    }
+    section[data-arrive="arrived"] > :nth-child(3) {
+        transition-delay: 0.12s;
+    }
+    section[data-arrive="arrived"] > :nth-child(n + 4) {
+        transition-delay: 0.18s;
+    }
+
+    /* 2. The board's rows turn over as they reach the screen, one after another, as a terminal
+       display does. Each row is its own unit; rows that arrive together are staggered (--j). */
+    .board tbody tr[data-arrive="wait"] {
+        opacity: 0;
+        transform: perspective(30rem) rotateX(-80deg);
+    }
+    .board tbody tr[data-arrive="arrived"] {
+        transform-origin: top center;
+        transition:
+            opacity 0.2s ease-out,
+            transform 0.25s ease-out;
+        transition-delay: calc(var(--j, 0) * 0.06s);
+    }
+
+    /* 3. The ladder's bars grow from the left, in order; their whiskers follow. */
+    :is([data-arrive="wait"] .ladder, .ladder[data-arrive="wait"]) rect.bar {
+        transform: scaleX(0);
+    }
+    :is([data-arrive="wait"] .ladder, .ladder[data-arrive="wait"]) .whisker {
+        opacity: 0;
+    }
+    :is([data-arrive="arrived"] .ladder, .ladder[data-arrive="arrived"]) rect.bar {
+        transform-box: fill-box;
+        transform-origin: left center;
+        transition: transform 0.5s ease-out;
+        transition-delay: calc(0.15s + var(--i, 0) * 0.08s);
+    }
+    :is([data-arrive="arrived"] .ladder, .ladder[data-arrive="arrived"]) .whisker {
+        transition: opacity 0.2s ease-out;
+        transition-delay: calc(0.55s + var(--i, 0) * 0.08s);
+    }
+
+    /* 4. The trail's beliefs and the path's questions appear in sequence. */
+    :is([data-arrive="wait"] :is(.items, .questions), :is(.items, .questions)[data-arrive="wait"])
+        > li {
+        opacity: 0;
+        transform: translateY(0.4rem);
+    }
+    :is(
+            [data-arrive="arrived"] :is(.items, .questions),
+            :is(.items, .questions)[data-arrive="arrived"]
+        )
+        > li {
+        transition:
+            opacity 0.3s ease-out,
+            transform 0.3s ease-out;
+        transition-delay: calc(0.15s + var(--i, 0) * 0.06s);
+    }
+}
