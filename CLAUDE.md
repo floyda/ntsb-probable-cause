@@ -634,7 +634,10 @@ recall@10 +2.6 points [+0.8, +4.5] over counts, against a noise of 0.6; top-1 +2
 the large model (its five nearest, the picking call, cosine × fit, today's filled by the nearest)
 each failed 0213's rule against today's cause lookup on the steering slice, finding recall@10 −1.9
 to −0.0 points; `winner: none`, so `dev-seal-400` stays unread, today's cause lookup stays, and the
-lookup question for `pilot-2010-recount` is closed. Learner spend rows are kind `learning`, on their own monthly line
+lookup question for `pilot-2010-recount` is closed. **From 2026-10-21 a finding round passes only on an interval** (0216): the finding gain's
+paired 95% interval above zero, noise pooled over every named identical pair, and top-1, top-3 and
+finding precision@10 not falling beyond their noise, with codes per case printed, because recall@10
+(ten digits, over a list of any length) rewards longer lists; the headline mark is unchanged. Learner spend rows are kind `learning`, on their own monthly line
 `NTSB_LEARNING_MONTHLY_BUDGET_USD` (default $90, never counted by the $40 guard; raised for one
 command by 0208); coding-test rows are kind `coding-test`, on the $40 guard and the side track's
 $10 line. The learner reads `ANTHROPIC_API_KEY`, which `scripts/with_pass_keys.sh` takes from `pass`

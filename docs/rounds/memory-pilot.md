@@ -480,3 +480,11 @@ None written (Andy, 2026-10-15).
   to three guesses.
 
 Approved by Andy, 2026-10-15
+
+## Correction, 2026-10-21 (decision 0216)
+
+The glossary's entry for **finding recall@10** is wrong. It is the share of the NTSB's flagged
+findings that the answer gives at all ten digits, over the whole list of finding codes the answer
+gives, however long (`scoring/metrics.py:_precision_recall`). It is not limited to the answer's
+first ten codes. The "10" counts digits, not codes. The registered rule and the results do not
+change: the code has always computed it this way.
