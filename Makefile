@@ -1,4 +1,4 @@
-.PHONY: check lint type test site-check site-numbers site-example-case s5-belief-path site-board-sync ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s32-cap-check s32-context-ratio s32-noise s32-calibration s32-behaviour-dev s32-coding-ablation-report s32-claims s32-heldout-diagnosis s32-coding-ablation s32-heldout-a s32-heldout-b-answer s32-heldout-b-tools s32-heldout-b-check s32-heldout-c s32-heldout-c-nodocket s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results s33-continuity s33-dry-run s33-morning s33-report s33-mutation-sweep
+.PHONY: check lint type test site-check site-numbers site-example-case s5-belief-path site-board-sync ingest build scan probe bars armb s2-bars docket-scan scan-docket docket-shape-open ongoing-probe record change-feed-probe recorder-report s24-probe s24-gate s24-bars-ceiling s24-bars-b page-kinds analysis-handcheck s26-reply-budget s26-reply-budget-roomy s26-inventory-probe s26-inventory s26-transcriber-keys s26-transcriber-probe s26-transcriber-run s26-transcriber-resolution s26-transcriber-recheck s26-transcribe-dev-dry s26-transcribe-dev s26-dev-runs stage-spend s3-spend s3-draw-sealed s3-coding-stats s3-shape-probe s3-armb-tools s3-smoke-sync s3-smoke-batch s3-noise-floor s3-noise-report s32-cap-check s32-context-ratio s32-noise s32-calibration s32-behaviour-dev s32-coding-ablation-report s32-claims s32-heldout-diagnosis s32-coding-ablation s32-heldout-a s32-heldout-b-answer s32-heldout-b-tools s32-heldout-b-check s32-heldout-c s32-heldout-c-nodocket s3-round s3-round-result s3-case-groups s3-trail-pages s3-miss-kinds s3-precedent-probe s3-precedent-pages s3-coding-consistency s3-finding-consistency s3-finding-precedent s3-finding-misses s3-check-diagnostic s27-coding-stats s27-round0-cards s27-noise-floor s27-judge s27-round0-results s27-check s27-round1-results s27-round1-jev2-results s27-round s27-check-guidance s27-round-result s27-round-comparisons s27-page-value s27-models-fetch s27-shortlist s27-transcriber-probe s27-batch-image s27-retest-verify s27-retest-run s27-retest-pages s27-retest-automatic s27-retest-score s27-routing-pages s27-routing-tally s27-retest-readable s27-sealed-run s27-sealed-results s33-continuity s33-report s33-mutation-sweep board-schema board-sample s4-names-probe s4-spend s4-dry-run s4-export s4-verify-ledger s4-report s4-image
 
 check: lint type test site-check
 
@@ -767,30 +767,83 @@ s33-continuity:
 s33-mutation-sweep:
 	uv run --locked python -m scripts.s33_mutation_sweep
 
-s33-dry-run:
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws ntsb-live run --dry-run
-# scripts/live_env.sh sets AWS_PROFILE (default ntsb-live) and, if unset, NTSB_STORE from the recorder
-# stack's BucketName; --extra aws brings boto3 and awscrt (pinned in uv.lock) to read the `ntsb-live` profile.
-# S3.3 spec §12 item 5, free: checks, store, queue, one fetch; no model call. Needs the `ntsb-live` key in pass
-# and the NTSB API; writes only the store work file and the live docket cache under NTSB_DATA_DIR.
-
-s33-morning:
-	uv run --locked python -m scripts.stage_spend --stage s3 --estimate 2.00
-	uv run --locked python -m scripts.stage_spend --stage s33 --estimate 2.00
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && caffeinate -i uv run --locked --extra aws ntsb-live run $(if $(LIMIT),--limit $(LIMIT))
-# S3.3 spec §4, paid: one live morning, at most 50 cases a UTC day (decision 0167), about 1.2 to 1.6
-# minutes a case at the standard price (decision 0165; the estimate is 50 cases at $0.04).
-# Run through scripts/paid_run.sh (no `aws login` needed; pass must be unlocked). LIMIT=1 on the first one.
-# Writes a live run folder (record, closures, manifest) under NTSB_RUNS_DIR. Read
-# docs/runbooks/live-shadow-mornings.md first.
-
 s33-report:
-	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws ntsb-live report --out docs/results/s33-live-shadow.txt
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && uv run --locked --extra aws python -m scripts.s33_live_report --out docs/results/s33-live-shadow.txt
 # S3.3 spec §10, free: the counts-only results file docs/results/s33-live-shadow.txt, from the live
-# run folders, the refusal log and the recorder's store (same AWS login and store lookup as the
-# morning recipes). No model key, no NTSB key. Reads the store; uploads nothing.
-# It runs through the report command of ntsb-live, which holds live.lock: the report replaces the same store
-# work file a morning uses, so it must never run beside one. Run it by hand from this branch's
+# run folders, the refusal log and the recorder's store (the `ntsb` profile and the store lookup of
+# scripts/live_env.sh). No model key, no NTSB key. Reads the store; uploads nothing.
+# Since S4 (Task 14) `ntsb-live report` is the S4 report, so this target runs S3.3's script
+# directly. The S3.3 mornings have ended (the cloud runs the nights, decision 0171), so no morning
+# can hold the store work file beside it. Run it by hand from this branch's
 # worktree until S3.3 is merged (then from the main folder), with NTSB_DATA_DIR set to the main
 # folder's data/ (the runs are there). Never through scripts/paid_run.sh: that would leave the
 # paid checkout with an uncommitted results file.
+# Removed in S4 Task 14: s33-morning (paid nights run only in the cloud image, decision 0171) and
+# s33-dry-run (superseded by s4-dry-run: with the live stack present it would read the live key's
+# limit with the development key and refuse, and without it it is s4-dry-run's local fallback).
+
+# S4 Task 3, free: the board/1 JSON Schema, written from live/export.py.
+board-schema:
+	uv run --locked python -m scripts.board_schema
+
+# S4 Task 3, free: the invented board/1 sample under tests/fixtures/board/.
+board-sample:
+	uv run --locked python -m tests.board_sample
+
+# S4 Task 4, free: can names reach the board through text the names rule would not catch?
+# Counts only, on the two dev-400 noise-floor runs (decision 0180 item 4). Run with
+# NTSB_DATA_DIR set to the main folder's data/.
+s4-names-probe:
+	uv run --locked python -m scripts.s4_names_probe --out docs/results/s4-names-dev.txt
+
+# S4 Task 14, free: S4's development spend by commit on its s4- branches against the $10 line
+# (decision 0170 item 6). No S4 target is paid, so this is a check, not a gate.
+s4-spend:
+	uv run --locked python -m scripts.stage_spend --stage s4 --estimate $(or $(EST),0)
+
+# S4 Task 14: the pass entries the cloud dry run reads, and Andy's attestation file.
+PASS_NTSB ?= api/ntsb
+PASS_LIVE_OPENROUTER ?= api/openrouter-live
+ATTEST ?= $(or $(NTSB_DATA_DIR),data)/live-attest.json
+
+# S4 Task 14, free: the cloud dry run on the Mac. Reads the live bucket, the live key's
+# monthly spend and the store, fetches one case, calls no model, writes nothing to the bucket.
+# Needs `aws login`, and `pass` unlocked for the NTSB key (PASS_NTSB, default api/ntsb) and the
+# LIVE OpenRouter key (PASS_LIVE_OPENROUTER, default api/openrouter-live); both are read inside
+# the recipe and never printed. Stops if the live stack is not deployed (no NTSB_LIVE_BUCKET).
+s4-dry-run:
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && { test -n "$$NTSB_LIVE_BUCKET" || { echo "s4-dry-run: NtsbLiveStack is not deployed (no live bucket found); this target needs it." >&2; exit 1; }; } && NTSB_API_KEY="$$(pass show $(PASS_NTSB) | sed -n 1p)" OPENROUTER_API_KEY="$$(pass show $(PASS_LIVE_OPENROUTER) | sed -n 1p)" uv run --locked --extra aws ntsb-live run --dry-run
+
+# S4 Task 14, free: copies the live bucket's runs/, scores/ and nights/ to $NTSB_DATA_DIR/live-mirror
+# (the `ntsb` profile) and builds the board/1 export from that copy into $NTSB_DATA_DIR/live-export.
+# It also copies the night's own export (export/board-1/, built in the task with the store, so it
+# holds closures per night) to $NTSB_DATA_DIR/live-night-export, which the report reads for that
+# section and for closing condition 6 (decision 0181 item 6). The local build has no store.
+# Runs on the Mac because the local export needs .git for its commit stamp.
+# All three folders hold open-split text: they are ignored by git and never committed (decision 0024).
+s4-export:
+	env_out="$$(scripts/live_env.sh)" && eval "$$env_out" && { test -n "$$NTSB_LIVE_BUCKET" || { echo "s4-export: NtsbLiveStack is not deployed (no live bucket found); this target needs it." >&2; exit 1; }; } && for part in runs scores nights; do aws s3 sync "s3://$$NTSB_LIVE_BUCKET/$$part" "$${NTSB_DATA_DIR:-data}/live-mirror/$$part" --profile ntsb --region eu-west-2 --no-progress --only-show-errors --exact-timestamps; done && aws s3 sync "s3://$$NTSB_LIVE_BUCKET/export/board-1" "$${NTSB_DATA_DIR:-data}/live-night-export" --delete --profile ntsb --region eu-west-2 --no-progress --only-show-errors --exact-timestamps
+	uv run --locked ntsb-live export --from "$${NTSB_DATA_DIR:-data}/live-mirror" --out "$${NTSB_DATA_DIR:-data}/live-export"
+
+# S4 Task 14, free: fetches the public ledger branch and checks the local mirror (run s4-export
+# first) against it (decision 0178). Prints keys and problem kinds only; exits 1 on a problem.
+s4-verify-ledger:
+	git fetch origin ledger
+	git show origin/ledger:ledger.jsonl > "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl"
+	uv run --locked ntsb-live verify-ledger --ledger "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl"
+
+# S4 Task 14, free: the counts-only results file docs/results/s4-live.txt, from the local mirror,
+# the exports and the ledger branch. It depends on s4-export, which needs the AWS login (`aws login`)
+# and reads the live bucket; the report itself then reads only local files.
+# Andy's dated attestations (alert email received, alarm test fired, Mac key removed) are read from
+# ATTEST, default $NTSB_DATA_DIR/live-attest.json, when that file exists. See the runbook.
+s4-report: s4-export
+	git fetch origin ledger
+	git show origin/ledger:ledger.jsonl > "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl"
+	uv run --locked ntsb-live report --mirror "$${NTSB_DATA_DIR:-data}/live-mirror" --export "$${NTSB_DATA_DIR:-data}/live-export" --night-export "$${NTSB_DATA_DIR:-data}/live-night-export" --ledger "$${NTSB_DATA_DIR:-data}/live-ledger.jsonl" $(if $(wildcard $(ATTEST)),--attest $(ATTEST)) --out docs/results/s4-live.txt
+
+# S4 Task 14: builds the live image and PUSHES it to ECR (scripts/build_live_image.sh), then prints
+# the digest for `cdk deploy`. It asks Andy first: it does not run unless CONFIRM=yes is given.
+s4-image:
+	$(if $(filter yes,$(CONFIRM)),,$(error s4-image pushes an image to ECR and asks Andy first: run it as `make s4-image CONFIRM=yes`))
+	scripts/build_live_image.sh

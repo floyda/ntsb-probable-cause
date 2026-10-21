@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     docket_dir: Path = Path("data/docket")
     # S3.3: the live shadow's own document cache, apart from the development one.
     live_docket_dir: Path = Path("data/live-docket")
+    # S4 (decisions 0172, 0177): the live night's bucket and alert topic; unset off the cloud.
+    live_bucket: str | None = None
+    live_alert_topic_arn: str | None = None
     # S2.6 (decision 0081): the per-page transcription cache; never committed.
     transcription_dir: Path = Path("data/transcriptions")
     # `str`, not `Path`: the recorder's sync step (Task 10) accepts an `s3://bucket/key`
@@ -54,6 +57,19 @@ class Settings(BaseSettings):
     # `git` (which would fail there). Unset everywhere else: the Mac bridge and any developer
     # checkout have `.git` and read the commit from it (`gitinfo.commit_state()`).
     commit_sha: str | None = None
+
+    @field_validator("ntsb_api_key", "openrouter_api_key", "typesafe_api_key", mode="before")
+    @classmethod
+    def _strip_key_whitespace(cls, value: object) -> object:
+        """Surrounding whitespace is not part of a key (S4 Task 14, fix round 1).
+
+        A key stored with its trailing newline (for example by a piped ``pass show``) would put
+        a newline in the ``Authorization`` header. Stripping here is defence in depth; it
+        changes no model text. A key of only whitespace becomes empty, which ``require_*`` refuse.
+        """
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
     @field_validator("commit_sha", mode="before")
     @classmethod

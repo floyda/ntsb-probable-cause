@@ -19,7 +19,7 @@ Printed alone
 
 Usage
     make s33-report
-    uv run --locked --extra aws ntsb-live report [--out PATH]
+    uv run --locked --extra aws python -m scripts.s33_live_report [--out PATH]
 """
 
 import argparse
@@ -39,9 +39,10 @@ from ntsb_probable_cause.live.queue import DECLARED_START, closures_per_night
 from ntsb_probable_cause.live.records import (
     BACKFILL_FILE,
     CLOSURES_FILE,
+    AnyClosureRecord,
     Backfill,
-    ClosureRecord,
     failure_kind,
+    read_closure_records,
 )
 from ntsb_probable_cause.scoring.codes import CodeTables, load_tables
 from ntsb_probable_cause.scoring.metrics import wilson
@@ -68,7 +69,7 @@ class _Run:
         cases = folder / "cases.jsonl"
         self.results = read_jsonl(cases, CaseResult) if cases.is_file() else []
         closures = folder / CLOSURES_FILE
-        self.closures = read_jsonl(closures, ClosureRecord) if closures.is_file() else []
+        self.closures = read_closure_records(closures) if closures.is_file() else []
         backfill = folder / BACKFILL_FILE
         self.backfill = (
             Backfill.model_validate_json(backfill.read_text()) if backfill.is_file() else None
@@ -80,7 +81,7 @@ def _pct(value: float) -> str:
 
 
 def _mornings(
-    runs: Sequence[_Run], counts: Sequence[Mapping[str, Any]], records: list[ClosureRecord]
+    runs: Sequence[_Run], counts: Sequence[Mapping[str, Any]], records: list[AnyClosureRecord]
 ) -> list[str]:
     lines = ["mornings", f"runs: {len(runs)}"]
     lines.append("cases per run: " + (", ".join(str(len(r.results)) for r in runs) or "none"))
@@ -154,7 +155,7 @@ def _money(runs: Sequence[_Run]) -> list[str]:
     return lines
 
 
-def _outcomes(records: Sequence[ClosureRecord]) -> list[str]:
+def _outcomes(records: Sequence[AnyClosureRecord]) -> list[str]:
     """Every case once: graded, abstained, coded with no verdict to grade, or not coded.
 
     The three grades count only cases Ellery coded (``outcome == "coded"``) that held a verdict
@@ -218,14 +219,15 @@ def _missing_codes(
 
 def _checks(  # noqa: PLR0913, PLR0917 -- one section, six inputs.
     runs: Sequence[_Run],
-    records: Sequence[ClosureRecord],
+    records: Sequence[AnyClosureRecord],
     tables: CodeTables,
     refusals: Sequence[Mapping[str, str]],
     counts: Sequence[Mapping[str, Any]],
     closures: Sequence[Closure],
 ) -> list[str]:
     (occ_codes, occ_cases), (find_codes, find_cases) = _missing_codes(runs, tables)
-    kinds = Counter(str(row.get("reason", "unknown")) for row in refusals)
+    # Rows since S4 Task 7 are ``{"at", "kind"}``; S3.3's held ``reason`` and are still read.
+    kinds = Counter(str(row.get("kind", row.get("reason", "unknown"))) for row in refusals)
     unscored = sum(1 for r in records if r.outcome == "coded" and not r.scored)
     na_numbers = {c.ntsb_number for c in closures if c.closed_as == "N/A"}
     na_coded = sum(1 for r in records if r.case_id in na_numbers)
@@ -269,7 +271,10 @@ def _per_night(closures: Sequence[Closure], today: date) -> list[str]:
 
 
 def _closing(
-    runs: Sequence[_Run], backfill: Backfill | None, records: Sequence[ClosureRecord], today: date
+    runs: Sequence[_Run],
+    backfill: Backfill | None,
+    records: Sequence[AnyClosureRecord],
+    today: date,
 ) -> list[str]:
     coded = {r.case_id for run in runs for r in run.results}
     drained = backfill is not None and set(backfill.case_ids) <= coded
@@ -313,7 +318,8 @@ def report_text(  # noqa: PLR0913 -- the report's inputs.
         folders: Live run folders, oldest first.
         closures: Every closure in the recorder's store.
         tables: The code tables Ellery and the scorer share.
-        refusals: Rows of ``live-refusals.jsonl`` (``{"at", "reason"}``).
+        refusals: Rows of ``live-refusals.jsonl`` (``{"at", "kind"}``; S3.3's older rows
+            are ``{"at", "reason"}`` and read the same way).
         today: The UTC date the report is read on (the closing rule's clock).
         counts: Rows of ``live-morning-counts.jsonl`` (counts and run ids only).
 
@@ -355,7 +361,24 @@ def _read_rows(runs_dir: Path, name: str) -> list[dict[str, Any]]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Print the report and, with ``--out``, write it. Returns the exit code."""
+    """Print the report and, with ``--out``, write it; an AWS error is one line, not a traceback.
+
+    Returns the exit code. The error text is ``ntsb-live``'s own (an expired login says to log in
+    again), so the two commands speak alike.
+    """
+    try:
+        return _main(argv)
+    except Exception as error:
+        from apps.live.__main__ import _error_line  # noqa: PLC0415 -- one shared wording
+
+        line = _error_line("s33_live_report", Settings(), error)
+        if line is None:
+            raise
+        print(line, file=sys.stderr)
+        return 1
+
+
+def _main(argv: Sequence[str] | None) -> int:
     parser = argparse.ArgumentParser(prog="s33_live_report", description=__doc__)
     parser.add_argument("--out", default=None, help="also write the text to this file")
     args = parser.parse_args(argv)

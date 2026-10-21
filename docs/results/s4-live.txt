@@ -1,0 +1,93 @@
+S4 live nights: counts only (decision 0024). The open split enters this report only as counts and distributions; no case number, title or text is in it. Live and held-out numbers are never shown together (decision 0021); at this size the interval is wide.
+
+nights
+nights started: 4
+nights finished: 4
+nights stopped, with a record: 0
+nights started with no record (killed, crashed or still running): 0
+first night: 2026-10-13; last night: 2026-10-16
+
+alerts, by kind (one per night per kind)
+alert, money-held-back: 2
+
+cases
+cases on the board: 73
+cases coded: 72
+cases not coded: 1
+not coded, leak: 1
+unreachable (not coded, final): 0
+awaiting the NTSB's codes: 0
+later scores written (night records): 0
+later scores held (score files): 0
+open cases watched, counts only: 934
+open cases holding a docket, counts only: 4
+
+grades
+grade, same_first: 21
+grade, same_codes_other_order: 6
+grade, different: 43
+grade, abstained: 2
+grade, not_coded: 1
+grade, awaiting_ntsb: 0
+95% interval for same first code (21 of 73 cases the NTSB has coded, a case not coded or abstained counting as not right): 20% to 40%
+finding recall@10, mean over 72 cases: 0.288
+
+replies (decision 0169)
+model calls with a trail row: 695
+replies, provider OpenAI: 695
+replies whose model differs from the one asked for: 0
+calls with no reply model recorded: 0
+
+names (decisions 0180 item 5, 0182, 0183, 0184)
+words replaced with a name marker in the export: 23, a floor.
+limit: A name the rules cannot recognise is not replaced: in prose, any name other than the owner, operator and registration; in titles, also a name made only of ordinary words, such as a common surname or given name. A registration shorter than 3 characters is not replaced, because it would hit tokens like "N1".
+
+money
+live key, first cloud nights (to the night the backfill drained): $0.3102 over 3 run records (computed list price $0.3102)
+live key, later nights: $0.0392 over 1 run records (computed list price $0.0392)
+the live key's spend is counted from each night's run records (decision 0170 item 6); a call that never reached a record is not in it
+development spend, S4 (the development key, apart from the live key):
+S4 spend so far: $0.00 ($0.00 evaluation runs, $0.00 preparation spend rows; counted by commit from ebb16cb on S4's own branches, decisions 0128 item 2, 0135)
+
+backfill
+backfill: 62 cases, SHA-256 d15e329ef245fb1d644bee7220d0613f7215e1f60486b8ceec442c1c17aacf71
+fixed on 2026-10-13
+
+closures per night (UTC), since 2026-09-23
+2026-09-23: 7
+2026-09-24: 0
+2026-09-25: 0
+2026-09-26: 0
+2026-09-27: 0
+2026-09-28: 0
+2026-09-29: 0
+2026-09-30: 0
+2026-10-01: 13
+2026-10-02: 27
+2026-10-03: 0
+2026-10-04: 0
+2026-10-05: 0
+2026-10-06: 0
+2026-10-07: 0
+2026-10-08: 0
+2026-10-09: 15
+2026-10-10: 0
+2026-10-11: 0
+2026-10-12: 0
+2026-10-13: 0
+2026-10-14: 0
+2026-10-15: 0
+2026-10-16: 11
+
+closing rule (decision 0181)
+1. version 1 re-pinned with continuity shown, no other label run: met
+2. backfill drained by scheduled nights (62 cases): met (it counts any night manifest, so a hand-started night cannot be told apart)
+3. a fresh closure coded and scored on the night after it closed (11 such cases): met
+4. the ledger holds those runs' manifest hashes: met
+5. test alert email received and the alarm shown to fire (Andy's attestation: 2026-10-12; 2026-10-13): met
+6. the night's export, built from the real store, passes board/1 and holds at least one case: met
+7. the Mac's key removed (Andy's attestation: 2026-10-16): met
+(condition 6 also needs this file committed by Andy from this script; conditions 5 and 7 are Andy's word, dated in the attestation file)
+days since the backfill drained: 1
+time limit (14 days after the drain, no fresh closure): not reached
+closing rule: all seven conditions met

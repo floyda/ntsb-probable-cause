@@ -11,7 +11,7 @@ from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -37,7 +37,12 @@ class SpendRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     job_id: str
-    kind: Literal["inventory", "transcriber-test", "transcription", "probe"]
+    # ``learning`` (Claude credit, its own monthly line) and ``coding-test`` (OpenRouter, the
+    # coding-memory side track's line) are written by the side track's branch (its decision 0207);
+    # they are known here so that every branch can read the shared runs folder.
+    kind: Literal[
+        "inventory", "transcriber-test", "transcription", "probe", "learning", "coding-test"
+    ]
     model: str
     started: datetime
     calls: int
@@ -82,13 +87,17 @@ def spent_usd(record: RunRecord) -> float:
     return reported if reported is not None and counts_billed(record) else record.cost_usd
 
 
+# Claude credit spend: never counted by the monthly guard or a stage's line (decision 0207).
+LEARNING: Final = "learning"
+
+
 def month_spent(runs_dir: Path, *, now: datetime) -> float:
     """Cost of every run started in ``now``'s month, aborted runs included.
 
     A run folder's ``run.jsonl`` may hold more than one ``RunRecord`` (the answering run
     and a judge pass), and every one of them counts, each as ``spent_usd`` says (0135). So does
-    every preparation job's spend rows (0081). Reservations are not spend and are not counted
-    here.
+    every preparation job's spend rows (0081), except ``learning`` rows: Claude credit has its
+    own line (decision 0207). Reservations are not spend and are not counted here.
     """
     if not runs_dir.exists():
         return 0.0
@@ -99,7 +108,11 @@ def month_spent(runs_dir: Path, *, now: datetime) -> float:
                 total += spent_usd(record)
     for spend_file in sorted(runs_dir.glob(f"*/{SPEND_FILE}")):
         for spend in read_jsonl(spend_file, SpendRecord):
-            if spend.started.year == now.year and spend.started.month == now.month:
+            if (
+                spend.kind != LEARNING
+                and spend.started.year == now.year
+                and spend.started.month == now.month
+            ):
                 total += spend.cost_usd
     return total
 
@@ -119,7 +132,8 @@ def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, 
 
     Counted by commit, not by date, because S2.6 found a date filter caught another stage's
     runs (decision 0098 item 6). A judge pass is a run record (``<run id>-judge``) and counts.
-    Each run record counts as ``spent_usd`` says (decision 0135).
+    Each run record counts as ``spent_usd`` says (decision 0135). ``learning`` rows are Claude
+    credit with their own line and never count toward a stage's (decision 0207).
     """
     runs = sum(
         spent_usd(record)
@@ -131,7 +145,7 @@ def stage_spent(runs_dir: Path, stage_commits: Collection[str]) -> tuple[float, 
         row.cost_usd
         for path in sorted(runs_dir.glob(f"*/{SPEND_FILE}"))
         for row in read_jsonl(path, SpendRecord)
-        if in_stage(row.commit_sha, stage_commits)
+        if row.kind != LEARNING and in_stage(row.commit_sha, stage_commits)
     )
     return runs, spend
 

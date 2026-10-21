@@ -203,7 +203,10 @@ anywhere else it doesn't have to.
 --cli-input-json file:///dev/stdin` to avoid that — it does not work.** Reproduced directly
 against `aws-cli` 2.36, with a dummy value and no real credentials: the command fails with
 "Invalid JSON received". The AWS CLI's `file://` form reads a real file on disk; a *piped*
-`/dev/stdin` is not read the same way, so the JSON never actually reaches the command. The
+`/dev/stdin` is not read the same way **for `--cli-input-json`**, so the JSON never actually
+reaches the command. *Note, 2026-10-11 (S4 Task 14): this was found for `--cli-input-json` only.
+`aws ssm put-parameter --value file:///dev/stdin` does read a pipe (checked with aws-cli
+2.36.44), and `docs/runbooks/live-cloud-nights.md` uses it.* The
 form below keeps the same property (the key never appears as a command-line argument, and
 never touches disk) a different way — it hands the key to Python's own `boto3` library on
 `stdin`, inside a one-off `uv run` environment, and lets `boto3` make the API call directly,

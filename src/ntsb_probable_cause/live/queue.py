@@ -14,7 +14,6 @@ from typing import Final
 from ntsb_probable_cause.store import Closure
 
 DECLARED_START: Final = date(2026, 9, 23)  # decision 0155
-DAILY_LIMIT: Final = 50  # decision 0157, raised from 10 by 0167
 
 
 @dataclass(frozen=True)
@@ -51,13 +50,6 @@ def build_queue(closures: Sequence[Closure], done: AbstractSet[str]) -> list[Que
         if date.fromisoformat(c.closed_on) >= DECLARED_START and c.ntsb_number not in done
     ]
     return sorted(queue, key=lambda q: (q.closure_run, q.mkey))
-
-
-def todays_take(
-    queue: Sequence[QueuedCase], coded_today: int, limit: int = DAILY_LIMIT
-) -> list[QueuedCase]:
-    """Return the head of the queue that still fits under today's limit."""
-    return list(queue[: max(0, limit - coded_today)])
 
 
 def closures_per_night(closures: Sequence[Closure]) -> dict[date, int]:

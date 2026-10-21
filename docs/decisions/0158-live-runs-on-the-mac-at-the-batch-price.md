@@ -65,3 +65,7 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 ## Superseded in part, 2026-10-08 (appended; nothing above is edited)
 
 - Items 2 and 3 (the batch price, and the batch-window timing) are superseded by [0165](0165-live-runs-at-the-standard-price.md): live runs use the standard price through the sync driver. Items 1 and 4 stand.
+
+## Superseded in part, 2026-10-12 (appended; nothing above is edited)
+
+- Item 1 (closure runs are made on Andy's Mac through `paid_run.sh`) is replaced by [0171](0171-live-nights-run-as-a-scheduled-fargate-task.md): live nights run as a scheduled Fargate task at 06:00 UTC from a pinned image, and the Mac is retired after the first good cloud night. Item 4 ("S4 chooses its own service") is answered by the same record. Items 2 and 3 were already superseded by 0165.

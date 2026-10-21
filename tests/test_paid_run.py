@@ -174,7 +174,7 @@ _FAKE_NTSB_KEY = "ntsb-test-not-a-key"
 
 
 def _run(
-    tmp_path: Path, branch: str = "s3-3-live-shadow", target: str = "s33-dry-run", **extra: str
+    tmp_path: Path, branch: str = "s3-3-live-shadow", target: str = "s33-continuity", **extra: str
 ) -> tuple[int, str, list[str]]:
     """Run the script against stand-in commands; return exit code, output, and the call log."""
     bin_dir = tmp_path / "bin"
@@ -216,9 +216,9 @@ def test_a_run_installs_locked_and_makes_with_uv_locked(tmp_path: Path) -> None:
     assert code == 0, output
     assert "uv sync --quiet --locked" in calls
     assert not any("--frozen" in call for call in calls)
-    assert "make s33-dry-run UV_LOCKED=1" in calls
+    assert "make s33-continuity UV_LOCKED=1" in calls
     assert calls.index("uv sync --quiet --locked") < calls.index("pass show api/openrouter")
-    assert calls.index("pass show api/openrouter") < calls.index("make s33-dry-run UV_LOCKED=1")
+    assert calls.index("pass show api/openrouter") < calls.index("make s33-continuity UV_LOCKED=1")
     assert _FAKE_KEY not in output
 
 
@@ -246,7 +246,7 @@ def test_an_s33_target_gets_the_ntsb_key_from_pass_and_it_is_never_printed(tmp_p
     assert code == 0, output
     assert "pass show api/ntsb" in calls
     assert "env NTSB_API_KEY=ntsb-test-not-a-key" in calls
-    assert calls.index("pass show api/ntsb") < calls.index("make s33-dry-run UV_LOCKED=1")
+    assert calls.index("pass show api/ntsb") < calls.index("make s33-continuity UV_LOCKED=1")
     assert _FAKE_NTSB_KEY not in output
     assert _FAKE_KEY not in output
 

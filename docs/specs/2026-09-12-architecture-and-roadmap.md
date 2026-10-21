@@ -423,7 +423,7 @@ to a file a stranger can open.
 ### S0. Foundation — done
 
 As built: see the stage specification's
-[As-built section](2026-09-13-s0-foundation-design.md#as-built).
+[As-built section](2026-09-13-s0-foundation-design.md#as-built-s4-2026-10-16).
 
 Specified in `docs/specs/2026-09-13-s0-foundation-design.md`, which supersedes this summary
 where they differ.
@@ -447,7 +447,7 @@ in the S0 specification, §13.
 ### S1. Scoring and the evaluation harness — done
 
 As built: see the stage specification's
-[As-built section](2026-09-14-s1-scoring-and-evaluation-design.md#as-built).
+[As-built section](2026-09-14-s1-scoring-and-evaluation-design.md#as-built-s4-2026-10-16).
 
 Code lookup tables, seeded from the spike's `decidability_form.build_code_lookups()`.
 The code-constrained output schema, including the lay explanation. Exact-match scoring
@@ -488,7 +488,7 @@ and a per-step scoring test passes on a scripted trail from the recording fake.
 ### S2. The docket tool — done
 
 As built: see the stage specification's
-[As-built section](2026-09-18-s2-docket-tool-design.md#as-built).
+[As-built section](2026-09-18-s2-docket-tool-design.md#as-built-s4-2026-10-16).
 
 Docket client, HTML table parser, document downloader, classification by characters of
 text per page, born-digital text extraction, caching, and offline fixtures built from
@@ -523,7 +523,7 @@ above stays as written.
 ### S2.4. The model switch — done
 
 As built: see the stage specification's
-[As-built section](2026-09-23-s24-model-switch-design.md#as-built).
+[As-built section](2026-09-23-s24-model-switch-design.md#as-built-s4-2026-10-16).
 
 
 *Added 2026-09-23 (0073).* Moves the agent's default model from GPT-5.6 Luna to GPT-6 Luna,
@@ -539,7 +539,7 @@ recorded in 0073 and held-out untouched.
 ### S2.5. The recorder — done
 
 As built: see the stage specification's
-[As-built section](2026-09-22-s25-recorder-design.md#as-built).
+[As-built section](2026-09-22-s25-recorder-design.md#as-built-s4-2026-10-16).
 
 Poll open investigations, diff each docket's document listing against the last
 observation, and stamp the time when a document first appears. The first tables in the
@@ -567,7 +567,7 @@ documents, structured-field snapshots and preliminary narratives.
 ### S2.6. The widened docket — done
 
 As built: see the stage specification's
-[As-built section](2026-09-23-s26-widened-docket-design.md#as-built).
+[As-built section](2026-09-23-s26-widened-docket-design.md#as-built-s4-2026-10-16).
 Held-out runs and the v3 probe were deferred (decisions
 [0089](../decisions/0089-s26-closes-after-the-v3-probe-held-out-deferred.md),
 [0090](../decisions/0090-s26-closes-on-its-development-results.md)).
@@ -595,7 +595,7 @@ stage, S2.4, specified separately.
 ### S2.7. Coding guidance — done
 
 As built: see the stage specification's
-[As-built section](2026-09-26-s27-coding-guidance-design.md#as-built).
+[As-built section](2026-09-26-s27-coding-guidance-design.md#as-built-s4-2026-10-16).
 
 *Added 2026-09-26 (0093–0100).* Arm B's misses are mostly coding convention — which code the
 NTSB flags as the defining event, and which phase — rather than reading. S2.7 measures the
@@ -688,7 +688,9 @@ Ellery version 1 coded the 47-case backfill and 13 fresh closures once each, at 
 as counts only (`docs/results/s33-live-shadow.txt`); live runs use the standard price (0165) and a
 read-only AWS key (0166). S3 is complete. S4, predictions and resolution, is next.
 
-### S4. Predictions and resolution
+### S4. Predictions and resolution — done
+
+As built: see the [S4 specification's As-built section](2026-10-10-s4-predictions-and-resolution-design.md#as-built-s4-2026-10-16).
 
 Predictions store with case, evidence fingerprint, timestamp, answer, cost and commit
 identifier. The resolution watcher that notices a case has closed and scores the
@@ -698,9 +700,16 @@ it.
 *Done means:* a case closing causes its standing prediction to be scored without anyone
 intervening.
 
+*Note, 2026-10-16 (S4 close-out, specification §20):* the live run is at closure (0154), so
+there is no standing prediction: each case the NTSB closes is coded on the next 06:00 UTC night
+and scored then, or later when its codes arrive (0174). The store is run folders in a private
+bucket and a nightly `board/1` export, and the predictions tables are not built (0172). The
+scheduled Fargate task is S4's (`NtsbLiveStack`, 0171). Four cloud nights coded the 62-case
+backfill and 11 fresh closures (`docs/results/s4-live.txt`). S5, the public site, is next.
+
 ### S5. Deployment and the public site
 
-CDK stack, scheduled Fargate task, S3 and CloudFront, the static site generator, and the
+CDK stack, S3 and CloudFront, the static site generator, and the
 five pages. The trajectory view presents the hypothesis trail; the Methods page shows the
 per-step scores, the three arms and the two availability conditions (0021, 0022). The live
 board opens every case's full trajectory and shows the decision statistics of the agency

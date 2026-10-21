@@ -4,10 +4,12 @@ Each has a local version in ``live.local``; the deployed one lives in ``apps/liv
 """
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from ntsb_probable_cause.live.records import Backfill, ClosureRecord
+from ntsb_probable_cause.live.state import NightState
 from ntsb_probable_cause.store import Store
 
 
@@ -23,11 +25,23 @@ class StoreSource(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class MonthSpend:
+    """The live key's spend this calendar month and the limit it is held to (decision 0170)."""
+
+    used_usd: float
+    limit_usd: float
+
+
 class SpendCounter(Protocol):
     """What the live runs have cost."""
 
-    def live_month_usd(self, now: datetime) -> float:
-        """Spend of live runs started in the calendar month of ``now``."""
+    def month(self, now: datetime) -> MonthSpend:
+        """This calendar month's live spend and the limit it is held to.
+
+        Raises:
+            LiveRefusal: kind ``"key-unreachable"`` when the spend or limit cannot be read.
+        """
         ...
 
 
@@ -36,10 +50,6 @@ class ResultSink(Protocol):
 
     def done_case_ids(self) -> frozenset[str]:
         """Case ids coded or not coded in any live run."""
-        ...
-
-    def coded_on(self, day: date) -> int:
-        """Cases in live runs started on that UTC day."""
         ...
 
     def unfinished_run(self) -> str | None:
@@ -54,4 +64,12 @@ class ResultSink(Protocol):
         self, run_id: str, records: Sequence[ClosureRecord], backfill: Backfill | None
     ) -> None:
         """Write the closures, then the backfill, then the manifest."""
+        ...
+
+    def night_state(self) -> NightState:
+        """The state the last night left; an empty one when there is none."""
+        ...
+
+    def write_night_state(self, state: NightState) -> None:
+        """Replace the carried state."""
         ...

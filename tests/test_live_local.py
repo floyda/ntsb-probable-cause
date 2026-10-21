@@ -21,6 +21,7 @@ from ntsb_probable_cause.live.records import (
     Backfill,
     verify_manifest,
 )
+from ntsb_probable_cause.live.state import Closed, NightState
 from ntsb_probable_cause.scoring.records import RunRecord, write_jsonl
 from ntsb_probable_cause.store import Store
 from ntsb_probable_cause.store.sync import Location
@@ -149,8 +150,8 @@ def test_spend_counts_live_records_of_the_month_only(tmp_path: Path) -> None:
     _live(tmp_path, "20260930-c", _run_record("c", started=datetime(2026, 9, 30, tzinfo=UTC)))
     _live(tmp_path, "20251007-d", _run_record("d", started=datetime(2025, 10, 7, tzinfo=UTC)))
     _live(tmp_path, "20261007-e", _run_record("e", "dev-400", cost=50.0))
-    assert LocalSpend(tmp_path).live_month_usd(NOW) == 5.0
-    assert LocalSpend(tmp_path / "missing").live_month_usd(NOW) == 0.0
+    assert LocalSpend(tmp_path).month(NOW).used_usd == 5.0
+    assert LocalSpend(tmp_path / "missing").month(NOW).used_usd == 0.0
 
 
 def test_spend_uses_the_billed_total_when_the_record_counts_it(tmp_path: Path) -> None:
@@ -158,19 +159,19 @@ def test_spend_uses_the_billed_total_when_the_record_counts_it(tmp_path: Path) -
 
     record = _run_record("a", cost=3.0, reported=1.0)
     _live(tmp_path, "20261007-a", record)
-    assert LocalSpend(tmp_path).live_month_usd(NOW) == spent_usd(record)
+    assert LocalSpend(tmp_path).month(NOW).used_usd == spent_usd(record)
 
 
 def test_spend_ignores_a_record_of_another_sample_in_a_live_folder(tmp_path: Path) -> None:
     _live(tmp_path, "20261007-a", _run_record("a", cost=2.0), _run_record("a-j", "judge", cost=9.0))
-    assert LocalSpend(tmp_path).live_month_usd(NOW) == 2.0
+    assert LocalSpend(tmp_path).month(NOW).used_usd == 2.0
 
 
 def test_spend_of_a_folder_with_only_a_spec_is_zero(tmp_path: Path) -> None:
     folder = tmp_path / "20261007-x"
     folder.mkdir()
     (folder / "spec.json").write_text(json.dumps({"sample": "live"}))
-    assert LocalSpend(tmp_path).live_month_usd(NOW) == 0.0
+    assert LocalSpend(tmp_path).month(NOW).used_usd == 0.0
 
 
 def test_a_live_run_is_recognised_by_its_record_not_its_name(tmp_path: Path) -> None:
@@ -190,14 +191,22 @@ def test_done_case_ids_spans_runs_and_ignores_non_case_rows(tmp_path: Path) -> N
     assert LocalFolderSink(tmp_path / "missing").done_case_ids() == frozenset()
 
 
-def test_coded_on_counts_cases_of_runs_starting_that_day(tmp_path: Path) -> None:
-    _live(tmp_path, "20261007-a", cases=("A1", "A2"))
-    _live(tmp_path, "20261007-b", cases=("B1",))
-    _live(tmp_path, "20261006-c", cases=("C1",))
-    sink = LocalFolderSink(tmp_path)
-    assert sink.coded_on(date(2026, 10, 7)) == 3
-    assert sink.coded_on(date(2026, 10, 6)) == 1
-    assert sink.coded_on(date(2026, 10, 5)) == 0
+def test_the_month_names_the_live_keys_limit() -> None:
+    assert LocalSpend(Path("missing")).month(NOW).limit_usd == 10.0
+
+
+def test_night_state_is_empty_until_written_then_round_trips(tmp_path: Path) -> None:
+    sink = LocalFolderSink(tmp_path / "runs")
+    assert sink.night_state() == NightState()
+    state = NightState(
+        failures={"A1": 2},
+        unreachable={
+            "B1": Closed(mkey=7, event_date=date(2026, 9, 1), closed_on=date(2026, 10, 5))
+        },
+    )
+    sink.write_night_state(state)
+    assert (tmp_path / "runs" / "live-state.json").is_file()
+    assert sink.night_state() == state
 
 
 def test_unfinished_run(tmp_path: Path) -> None:

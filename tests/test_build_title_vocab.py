@@ -90,7 +90,7 @@ def test_main_reports_a_missing_docket_cache(tmp_path: Path) -> None:
 
 
 def test_default_dictionary_is_the_vendored_file() -> None:
-    assert Path("tests/fixtures/words.txt") == VENDORED_DICTIONARY_PATH
+    assert VENDORED_DICTIONARY_PATH.parts[-3:] == ("docket", "vocab", "words.txt")
     words, found = known_title_words()
     assert found is True
     assert "examination" in words

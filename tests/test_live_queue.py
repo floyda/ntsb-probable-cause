@@ -2,13 +2,11 @@ import hashlib
 from datetime import date
 
 from ntsb_probable_cause.live.queue import (
-    DAILY_LIMIT,
     DECLARED_START,
     QueuedCase,
     backfill_digest,
     build_queue,
     closures_per_night,
-    todays_take,
     waited_days,
 )
 from ntsb_probable_cause.store import Closure
@@ -27,7 +25,6 @@ def _closure(mkey: int, closed_on: str = "2026-09-24", run: int = 5) -> Closure:
 
 def test_constants() -> None:
     assert date(2026, 9, 23) == DECLARED_START
-    assert DAILY_LIMIT == 50
 
 
 def test_build_queue_drops_early_and_done_and_orders_by_run_then_mkey() -> None:
@@ -52,17 +49,6 @@ def test_build_queue_drops_early_and_done_and_orders_by_run_then_mkey() -> None:
 def test_build_queue_is_independent_of_input_order() -> None:
     closures = [_closure(m) for m in (5, 1, 9, 3)]
     assert build_queue(closures, set()) == build_queue(closures[::-1], set())
-
-
-def test_todays_take_sixty_on_one_night() -> None:
-    queue = build_queue([_closure(m) for m in range(60, 0, -1)], set())
-    assert [q.mkey for q in todays_take(queue, 0)] == list(range(1, 51))
-    assert todays_take(queue, 50) == []
-    assert todays_take(queue, 52) == []
-    assert [q.mkey for q in todays_take(queue, 48)] == [1, 2]
-    # 2026-10-09: 10 coded under the old limit, then decision 0167 raised it
-    assert [q.mkey for q in todays_take(queue, 10)] == list(range(1, 41))
-    assert [q.mkey for q in todays_take(queue, 0, limit=3)] == [1, 2, 3]
 
 
 def test_closures_per_night_counts_by_closed_on() -> None:
