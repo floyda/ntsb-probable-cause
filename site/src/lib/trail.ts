@@ -97,6 +97,15 @@ const NOT_OFFERED: Record<
     over_size_limit: { decision: "not offered", detail: "over the size limit" },
 };
 
+/**
+ * A document's title as the site shows it (decision 0187): the exact sequence "A", U+FFFD, U+FFFD,
+ * where the NTSB's own docket page lost a dash, becomes an en dash. A guess at the lost
+ * character, made in the site so S4's export stays an exact copy; nothing else is changed.
+ */
+export function titleShown(title: string): string {
+    return title.replaceAll("A\uFFFD\uFFFD", "\u2013");
+}
+
 /** What happened to one docket document at a read choice, with its pages when known. */
 export function documentLine(d: DocumentChoice): { decision: string; detail: string | null } {
     let decision: string;

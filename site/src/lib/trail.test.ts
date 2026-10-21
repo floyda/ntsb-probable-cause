@@ -9,6 +9,7 @@ import {
     documentLine,
     lookupDetails,
     lookupName,
+    titleShown,
     trailSteps,
     verdictView,
 } from "./trail";
@@ -162,5 +163,20 @@ describe("review fixes (2026-10-14)", () => {
         const c = kase(1);
         const lookup = { tool: "occurrence_usage", cost_usd: 0, arguments: { codes: ["999999"] } };
         expect(lookupDetails(lookup, c).asked).toBe("about code 999999");
+    });
+});
+
+describe("a document's title as shown (decision 0187)", () => {
+    const LOST = "A��";
+    it("shows the dash the NTSB lost as an en dash", () => {
+        expect(titleShown(`MEMORANDUM FOR RECORD ${LOST} PILOT`)).toBe(
+            "MEMORANDUM FOR RECORD – PILOT",
+        );
+        expect(titleShown(`A ${LOST} B ${LOST} C`)).toBe("A – B – C");
+    });
+    it("changes nothing else, a lone replacement mark included", () => {
+        for (const title of ["PILOT'S STATEMENT", "A� B", "��", "MEMO - AIRPORT", "AA"]) {
+            expect(titleShown(title)).toBe(title);
+        }
     });
 });

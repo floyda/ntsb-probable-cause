@@ -8,6 +8,7 @@ import {
     documentLine,
     lookupDetails,
     lookupName,
+    titleShown,
     trailSteps,
     verdictView,
 } from "../lib/trail";
@@ -81,7 +82,7 @@ const verdict = verdictView(kase);
                                         const line = documentLine(doc);
                                         return (
                                             <tr>
-                                                <td>{doc.title}</td>
+                                                <td>{titleShown(doc.title)}</td>
                                                 <td>{line.decision}</td>
                                                 <td>{line.detail ?? "—"}</td>
                                                 <td>{doc.note ?? "—"}</td>
