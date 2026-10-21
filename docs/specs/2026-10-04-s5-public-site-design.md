@@ -193,6 +193,11 @@ so S2.4's 40 guard refusals in 400 held-out cases do not describe the loop.
 On a phone the board keeps Closed, Aircraft and Result. About eight rows are shown, so the
 opened case stays within reach.
 
+*Note, 2026-10-21 (Andy, step 6b preview):*
+- **The board is a fixed window onto its rows,** about eight rows tall on a wide screen and most of the screen on a phone. Older rows scroll inside it, and its column names stay in view.
+- **Each row ticks up into place as it comes into the window,** like a departures board updating: the rows in view when the board arrives, and older ones as the window is scrolled.
+- **Each row's motion runs once,** as §3.1 requires. Andy chose this over a board that keeps cycling (which §12 item 7's "no scrolling text" and WCAG 2.2.2 rule out without a pause control), and kept "once per visit" for every stop.
+
 A line under the board says that the NTSB's own coding is not fully consistent, and links to
 the Path page's question on it (§7). A reader must not read "different" as simply "wrong".
 

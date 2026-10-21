@@ -162,6 +162,14 @@ Decided here; each can change at the preview:
     - an arrival is finished within 1.2s;
     - reduced motion marks nothing;
     - with scripts off, nothing is hidden.
+- **Added at the preview (Andy, 2026-10-21):**
+  - **Each arrival stays once per visit (A).** Andy asked whether the effect should reset when moving around the page, and kept it once only, as §3.1 has it.
+  - **The board becomes a fixed window (A).** Andy asked for a fixed-height board whose rows shuffle like a departures board. He chose the once-only version over a cycling one.
+    - The frame is `min(34rem, 72vh)` tall and scrolls inside, with sticky column names. It is focusable, as it was.
+    - Each row ticks up and turns over as it comes into the window: those in view when the board arrives, older ones as the window is scrolled.
+    - Rows have their own trigger, with no bottom margin, so no row in view is left blank.
+    - A dated note in spec §4 records it, and a test scrolls the window and finds every row in view shown.
+  - **Decision 0187 amended:** inside a word the lost character is an apostrophe, elsewhere a dash (`8dcd2de`).
 
 ## Glossary
 

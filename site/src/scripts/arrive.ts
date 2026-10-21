@@ -23,21 +23,24 @@ if (!reduce.matches) {
         }
     }
 
-    const arrive = new IntersectionObserver(
-        (entries) => {
-            // Units arriving together are staggered in page order (used by the board's rows).
-            const now = entries
-                .filter((e) => e.isIntersecting)
-                .map((e) => e.target as HTMLElement)
-                .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-            for (const [j, unit] of now.entries()) {
-                unit.style.setProperty("--j", String(Math.min(j, 10)));
-                unit.setAttribute("data-arrive", "arrived");
-                arrive.unobserve(unit);
-            }
-        },
-        { rootMargin: "0px 0px -15% 0px" },
-    );
+    const onArrive = (entries: IntersectionObserverEntry[]): void => {
+        // Units arriving together are staggered in page order (used by the board's rows).
+        const now = entries
+            .filter((e) => e.isIntersecting)
+            .map((e) => e.target as HTMLElement)
+            .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+        for (const [j, unit] of now.entries()) {
+            unit.style.setProperty("--j", String(Math.min(j, 10)));
+            unit.setAttribute("data-arrive", "arrived");
+            arrive.unobserve(unit);
+            rows.unobserve(unit);
+        }
+    };
+    // A stop or figure arrives once it is well onto the screen.
+    const arrive = new IntersectionObserver(onArrive, { rootMargin: "0px 0px -15% 0px" });
+    // A board row arrives as soon as any of it shows, in the page or in the board's own window
+    // (the observer sees the window's clipping), so no row in view is left blank.
+    const rows = new IntersectionObserver(onArrive, { rootMargin: "0px" });
 
     // What arrives: each stop, and each figure within one, so a figure below the screen waits
     // even when its stop's heading is already in view.
@@ -51,9 +54,15 @@ if (!reduce.matches) {
         window.removeEventListener("scroll", first);
         if (reduce.matches) return;
         for (const unit of units) {
-            if (unit.getBoundingClientRect().top >= window.innerHeight) {
+            const row = unit.matches(".board tbody tr");
+            const frame = row ? unit.closest(".board-frame") : null;
+            const bottom = Math.min(
+                window.innerHeight,
+                frame?.getBoundingClientRect().bottom ?? window.innerHeight,
+            );
+            if (unit.getBoundingClientRect().top >= bottom) {
                 unit.setAttribute("data-arrive", "wait");
-                arrive.observe(unit);
+                (row ? rows : arrive).observe(unit);
             }
         }
     };

@@ -258,3 +258,37 @@ test.describe("the first page with scripts off", () => {
         expect(opacity).toBe(1);
     });
 });
+
+// The board is a fixed window onto its rows (Andy, 2026-10-21): older rows scroll inside it, and
+// each ticks into place as it comes into the window, so no row in view is left blank.
+test("the board is a window whose rows arrive as they scroll into it", async ({ page }) => {
+    await page.goto("/");
+    const frame = page.locator(".board-frame");
+    const max = await frame.evaluate((f) => getComputedStyle(f).maxHeight);
+    expect(max).not.toBe("none");
+    await page.mouse.wheel(0, 50);
+    await page.waitForTimeout(100);
+    await frame.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+    await frame.evaluate((f) => {
+        f.scrollTop = f.scrollHeight;
+    });
+    await page.waitForTimeout(900);
+    const states = await page.evaluate(() => {
+        const f = document.querySelector(".board-frame");
+        const box = f?.getBoundingClientRect();
+        return [...document.querySelectorAll(".board tbody tr")]
+            .filter((r) => {
+                const b = r.getBoundingClientRect();
+                return (
+                    box !== undefined &&
+                    b.bottom > box.top &&
+                    b.top < box.bottom &&
+                    b.top < innerHeight
+                );
+            })
+            .map((r) => Number(getComputedStyle(r).opacity));
+    });
+    expect(states.length).toBeGreaterThan(0);
+    expect(states.every((o) => o === 1)).toBe(true);
+});

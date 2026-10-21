@@ -25,11 +25,13 @@
         transition-delay: 0.18s;
     }
 
-    /* 2. The board's rows turn over as they reach the screen, one after another, as a terminal
-       display does. Each row is its own unit; rows that arrive together are staggered (--j). */
+    /* 2. The board's rows tick up into place one after another, as a departures board updates:
+       those in its window when the board arrives, and older ones as the window is scrolled.
+       Each row is its own unit; rows that arrive together are staggered (--j). */
     .board tbody tr[data-arrive="wait"] {
         opacity: 0;
-        transform: perspective(30rem) rotateX(-80deg);
+        /* Each row ticks up into its place from below, turning over as it comes. */
+        transform: translateY(1.25rem) perspective(30rem) rotateX(-70deg);
     }
     .board tbody tr[data-arrive="arrived"] {
         transform-origin: top center;

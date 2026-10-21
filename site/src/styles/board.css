@@ -16,6 +16,12 @@
     /* An edge, so the dark board stays distinct on the dark page (spec §21 note, 2026-10-16). */
     border: 1px solid var(--board-rule);
     padding: 0.75rem;
+    /* A fixed window onto the rows, like a departures board (Andy, 2026-10-21): about eight rows
+       on a wide screen, most of the screen on a phone; older rows scroll inside it, by hand
+       or keyboard (the frame is focusable). Every row stays in the table for screen readers. */
+    max-height: min(34rem, 72vh);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
 }
 
 .board table {
@@ -35,6 +41,11 @@
 }
 
 .board th {
+    /* The column names stay in view as the window scrolls. */
+    position: sticky;
+    top: -0.75rem;
+    z-index: 1;
+    background: var(--board-ground);
     color: var(--board-dim);
     font-weight: 700;
     text-align: left;
