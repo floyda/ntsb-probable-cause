@@ -68,7 +68,13 @@ test.describe("with scripts on: choosing a row (review, 2026-10-13)", () => {
         await second.click();
         await expect(page).toHaveURL(new RegExp(`/case/${n}/$`));
         await expect(page.locator(`article#opened[data-case="${n}"]`)).toBeFocused();
-        await expect(page.locator("table")).toBeVisible();
+        // The board's own table: the first page also holds the ladder's hidden one (step 6b).
+        await expect(page.locator(".board-frame table")).toBeVisible();
+        // Stop 4's strip follows the chosen case (step 6b): its trail, or a line saying none.
+        const strip = page.locator("#route-strip");
+        await expect(strip).toHaveCount(1);
+        const toTrail = strip.locator(`a[href="/case/${n}/trail/"]`);
+        if ((await toTrail.count()) === 0) await expect(strip).toHaveText(/no trail to show/);
         await page.evaluate(() => {
             (window as unknown as { marker: number }).marker = 1;
             window.location.hash = "somewhere";
@@ -147,7 +153,7 @@ test("the rail marks the place being read", async ({ page }) => {
 // Every place a rail names, reached by a link, shows its sign below the phone's strip, or on
 // screen on a wide one (S5 step 6a, Task 3; plan Review Focus 1; review, 2026-10-19: one padded
 // question could pass with no scroll margin at all, so every place is checked).
-for (const address of ["/path/", "/methods/"]) {
+for (const address of ["/", "/path/", "/methods/"]) {
     test(`every place on ${address} lands clear of the rail`, async ({ page }) => {
         await page.goto(address);
         const ids = await page

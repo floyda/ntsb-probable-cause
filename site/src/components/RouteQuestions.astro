@@ -1,0 +1,62 @@
+---
+// Stop 6, the path taken (spec §3.1): the eight Path questions, each with its one-line answer
+// (Andy, 2026-10-21) and a link to its full stop on the Path page.
+import { ROUTE_QUESTIONS } from "../lib/route";
+---
+
+<ol class="questions">
+    {ROUTE_QUESTIONS.map((q, i) => (
+        <li>
+            <a href={`/path/#${q.anchor}`}>
+                <span class="n" aria-hidden="true">
+                    {String(i + 1)}
+                </span>
+                <span class="text">
+                    <strong class="q">{q.question}</strong>
+                    <span class="a">{q.answer}</span>
+                </span>
+            </a>
+        </li>
+    ))}
+</ol>
+
+<style>
+    .questions {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        border-top: 1px solid var(--rule);
+    }
+    li {
+        border-bottom: 1px solid var(--rule);
+    }
+    a {
+        display: grid;
+        grid-template-columns: 2rem minmax(0, 1fr);
+        gap: 0.6rem;
+        padding-block: 0.75rem;
+        color: inherit;
+        text-decoration: none;
+    }
+    a:hover .q,
+    a:focus-visible .q {
+        text-decoration: underline;
+    }
+    a:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
+    }
+    .n {
+        font-family: var(--board);
+        font-weight: 700;
+        color: var(--ink-muted);
+    }
+    .text {
+        display: grid;
+        gap: 0.15rem;
+    }
+    .a {
+        color: var(--ink-muted);
+    }
+</style>

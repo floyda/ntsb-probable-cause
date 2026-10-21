@@ -18,6 +18,7 @@ describe("the Path page's claims", () => {
 
     it.each([
         ["q2.no_better_than_guessing", moved("ladder.no_docket.top1", { low: 18.0, high: 22.0 })],
+        ["q3.largest_gain", moved("ladder.fixed.top1", { value: 16.0 })],
         ["q4.not_shown_to_help", moved("q4.v2_gain", { low: 0.4 })],
         ["q7.loop_worse", moved("q7.loop_vs_fixed", { high: 0.5 })],
         ["q7.docket_mattered", moved("q7.no_docket_loss", { high: 1.0 })],

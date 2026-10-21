@@ -1,22 +1,35 @@
 ---
 import Board from "../components/Board.astro";
+import Ladder from "../components/Ladder.astro";
 import OpenedCase from "../components/OpenedCase.astro";
+import RouteQuestions from "../components/RouteQuestions.astro";
 import Sign from "../components/Sign.astro";
+import TrailStrip from "../components/TrailStrip.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 import { methodsLink } from "../lib/methods";
+import { assertPathClaims } from "../lib/claims";
 import { caseCount, oneIn } from "../lib/numbers";
+import { routeCase } from "../lib/route";
+
+// The six stops' one-line answers and the ladder's sentence make claims; each stops the build
+// when its figures no longer fit it (claims.ts).
+assertPathClaims();
 
 const { index, cases } = loadExport(exportDir());
 const newest = index.rows[0];
-const newestCase = newest === undefined ? undefined : cases.get(newest.case_number);
+// Stops 3 and 4 show the newest case with a trail; with none, the newest case without stop 4.
+const withTrail = routeCase(index, cases);
+const shownCase = withTrail ?? (newest === undefined ? undefined : cases.get(newest.case_number));
 
-// The first page's rail (spec §21 note, 2026-10-16): the three stops built so far; step 6b adds
-// its trail, the ladder and the path taken.
+// The first page's rail: the route's six stops (spec §3.1, §21 note of 2026-10-16).
 const places = [
     { id: "question", label: "1 · The question" },
     { id: "board", label: "2 · Closed cases" },
-    ...(newestCase === undefined ? [] : [{ id: "case", label: "3 · One case" }]),
+    ...(shownCase === undefined ? [] : [{ id: "case", label: "3 · One case" }]),
+    ...(withTrail === undefined ? [] : [{ id: "trail", label: "4 · Its trail" }]),
+    { id: "loop", label: "5 · Was a loop needed?" },
+    { id: "path", label: "6 · The path taken" },
 ];
 ---
 
@@ -48,13 +61,35 @@ const places = [
         <h2 id="board-heading">Recently closed cases</h2>
         <Board index={index} />
     </section>
-    {newestCase !== undefined && (
+    {shownCase !== undefined && (
         <section id="case" aria-labelledby="one-case">
             <Sign>3 · One case</Sign>
             <h2 id="one-case">One case, both codings</h2>
-            <OpenedCase kase={newestCase} />
+            <OpenedCase kase={shownCase} />
         </section>
     )}
+    {withTrail !== undefined && (
+        <section id="trail" aria-labelledby="trail-heading">
+            <Sign>4 · Its trail</Sign>
+            <h2 id="trail-heading">What it believed, and what it read</h2>
+            <TrailStrip kase={withTrail} />
+        </section>
+    )}
+    <section id="loop" aria-labelledby="loop-heading">
+        <Sign>5 · Was a loop needed?</Sign>
+        <h2 id="loop-heading">Was a loop needed?</h2>
+        <div class="panel">
+            <Ladder id="ladder-home" />
+        </div>
+    </section>
+    <section id="path" aria-labelledby="path-heading">
+        <Sign>6 · The path taken</Sign>
+        <h2 id="path-heading">The path taken</h2>
+        <RouteQuestions />
+        <p>
+            <a href="/path/">The whole path, with every figure</a>
+        </p>
+    </section>
 </Base>
 
 <script>

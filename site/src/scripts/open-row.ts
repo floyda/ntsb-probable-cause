@@ -14,6 +14,18 @@ function openCase(link: HTMLAnchorElement): void {
             if (next === null) throw new Error("no case on the page");
             const adopted = document.importNode(next, true);
             current.replaceWith(adopted);
+            // Stop 4's strip follows the chosen case (S5 step 6b); a case with no trail says so.
+            const strip = document.getElementById("route-strip");
+            if (strip !== null) {
+                const nextStrip = page.getElementById("route-strip");
+                if (nextStrip !== null) strip.replaceWith(document.importNode(nextStrip, true));
+                else {
+                    const none = document.createElement("p");
+                    none.id = "route-strip";
+                    none.textContent = "This case has no trail to show.";
+                    strip.replaceWith(none);
+                }
+            }
             adopted.tabIndex = -1;
             adopted.focus();
             history.pushState({ case: link.dataset["case"] }, "", link.href);

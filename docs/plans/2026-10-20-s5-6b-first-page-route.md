@@ -89,31 +89,31 @@ Decided here; each can change at the preview:
 
 ## Task 1: The case shown and the trail strip
 
-- [ ] **Step 1: Failing tests** in `route.test.ts`, over the sample export:
+- [x] **Step 1: Failing tests** in `route.test.ts`, over the sample export:
   - `routeCase(index, cases)` returns the newest case with a trail; with none, undefined;
   - `stripBlocks(kase)` returns four blocks, each with its event words and whether it matched the NTSB's first code;
   - the counts between the blocks: documents read of documents offered, and coding look-ups.
-- [ ] **Step 2: Implement** `lib/route.ts` from `lib/trail.ts`'s `trailSteps` and `verdictView`, adding no new reading of the export.
-- [ ] **Step 3: `TrailStrip.astro`.**
+- [x] **Step 2: Implement** `lib/route.ts` from `lib/trail.ts`'s `trailSteps` and `verdictView`, adding no new reading of the export.
+- [x] **Step 3: `TrailStrip.astro`.**
   - The four blocks in a row from 640px, stacked below that, each on a panel.
   - The "read" and "coded" counts between them.
   - "The full trail →" linking to `/case/<n>/trail/`.
   - The id `trail-strip`, so the rail can name it.
   - It sits at the end of `OpenedCase`'s article, so a swapped-in case brings its own strip.
-- [ ] **Step 4:** Run the tests and `make check`. Commit `S5 step 6b Task 1: the trail strip`.
+- [x] **Step 4:** Run the tests and `make check`. Commit `S5 step 6b Task 1: the trail strip`.
 
 ## Task 2: Stops 4 to 6 and the rail
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
   - `dist.test.ts`: the first page's rail names six places in order, each on the page;
   - `dist.test.ts`: stop 6 holds all eight questions, each linking to its Path anchor;
   - `dist.test.ts`: stop 5 holds the ladder and its sentence;
   - `claims.test.ts`: each guarded answer stops the build when its figure moves.
-- [ ] **Step 2: Implement.**
+- [x] **Step 2: Implement.**
   - Stop 4 is the strip, with its sign "4 · Its trail" and a heading.
   - Stop 5 is a section with "5 · Was a loop needed?", the ladder, its sentence and "How each step was measured".
   - Stop 6 is `RouteQuestions.astro`: the eight questions as one list, each the question in bold, its one-line answer and a link to `/path/#<anchor>`.
-- [ ] **Step 3:** Run the tests and `make check`. Commit `S5 step 6b Task 2: stops 4 to 6`.
+- [x] **Step 3:** Run the tests and `make check`. Commit `S5 step 6b Task 2: stops 4 to 6`.
 
 ## Task 3: The arrival motion
 
@@ -140,7 +140,17 @@ Decided here; each can change at the preview:
 
 ## Deviations
 
-(none yet)
+- **Andy's choice 1 (2026-10-21):** the eight one-line answers as drafted ("yes").
+- **Task 1 (2026-10-21):**
+  - **There is no "after coding" belief.** The trail records beliefs before reading, after each read choice that read something (h1, h2) and at the answer, and the coding look-ups lead straight to the answer. So the strip shows the beliefs a trail holds, two to four, not the plan's four fixed blocks. Between them it shows "read N of M documents offered" ("nothing on offer to read" when no document was), and "N coding look-ups".
+  - Each belief shows its first code's event words and, once the NTSB has published, whether it was the NTSB's first code. That is said in words, and a match is also marked by a solid bar.
+  - **The strip is its own stop, not part of the opened case's article.** Inside the article its heading would have been an `h3`, below the other stops' `h2`s. It is now a section of the first page, `#trail`, holding `#route-strip`. `scripts/open-row.ts` swaps that strip with the chosen case's, from the case page, which now shows the strip under "Its trail at a glance". A chosen case with no trail gets "This case has no trail to show."
+  - `routeCase` picks the newest closed case with a trail. Stop 3 shows it too, or the newest case when none has a trail, in which case stop 4 and its rail place are left out.
+- **Task 2 (2026-10-21):**
+  - Stops 5 and 6 are sections `#loop` and `#path`. Stop 5 holds the ladder on a panel, with its sentence and its per-step Methods links. Stop 6 holds the eight questions (`RouteQuestions.astro`), each linking to its Path stop, and a link to the whole Path.
+  - The answers are `ROUTE_QUESTIONS` in `lib/route.ts`. Question 6's "one case in three" is worded from `q6.twins` by `oneIn`. Question 3's "the largest gain on the ladder" gains a guard, `q3.largest_gain`: the rise from the case record alone to the fixed pipeline must be the largest between neighbouring steps. It is tested to fail. The first page now calls `assertPathClaims()`, so every guarded answer stops its build too.
+  - An older test checked that the page's "table" stays visible after a row opens. The first page now also holds the ladder's hidden table, so it checks the board's table. It also checks that stop 4's strip follows the chosen case.
+  - The "every place lands clear of the rail" test now includes the first page.
 
 ## Glossary
 

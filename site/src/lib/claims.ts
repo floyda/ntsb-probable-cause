@@ -38,6 +38,17 @@ export function pathClaims(get: (key: string) => Entry = entry): Claim[] {
             n("cases");
     return [
         {
+            // The first page's answer to question 3 (S5 step 6b): reading the docket is the
+            // largest rise between neighbouring steps of the ladder.
+            id: "q3.largest_gain",
+            says: "reading the docket is the largest gain on the ladder",
+            holds: ((): boolean => {
+                const v = (k: string): number => get(`ladder.${k}.top1`).value;
+                const gain = v("fixed") - v("no_docket");
+                return gain > v("no_docket") - v("baseline") && gain > v("loop") - v("fixed");
+            })(),
+        },
+        {
             id: "q2.no_better_than_guessing",
             says: "the case record alone did no better than guessing",
             holds: within(get("ladder.no_docket.top1"), get("ladder.baseline.top1").value),

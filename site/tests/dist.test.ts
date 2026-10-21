@@ -8,6 +8,7 @@ import { exportDir, loadExport } from "../src/lib/export";
 import { findingParts, findingRows } from "../src/lib/findings";
 import { LADDER } from "../src/lib/ladder";
 import { anchorFor, shown } from "../src/lib/methods";
+import { ROUTE_QUESTIONS } from "../src/lib/route";
 import { AUTHOR_URL, PAGES } from "../src/lib/site";
 import { count, countOf, numbers, pointsOn, usd, withInterval } from "../src/lib/numbers";
 import { costLabel } from "../src/lib/trail";
@@ -498,7 +499,7 @@ describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () =>
 
 describe.skipIf(!built)("the rail of places (S5 step 6a, Task 3)", () => {
     const RAILS: Record<string, number> = {
-        "index.html": 3,
+        "index.html": 6,
         "path/index.html": 10,
         "methods/index.html": 9,
     };
@@ -602,4 +603,31 @@ describe.skipIf(!built)("why it happened (S5 step 6a, Andy, 2026-10-19)", () => 
             expect(text).not.toMatch(/Personnel issuesTask/);
         },
     );
+});
+
+describe.skipIf(!built)("the first page as a route (S5 step 6b)", () => {
+    const home = (): string => readFileSync(join(DIST, "index.html"), "utf8");
+    it("ends with the path taken: eight questions, each with its answer and its Path stop", () => {
+        const html = home();
+        const stop = /<section[^>]*id="path"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+        const text = visibleText(stop);
+        for (const q of ROUTE_QUESTIONS) {
+            expect(stop).toContain(`href="/path/#${q.anchor}"`);
+            expect(text).toContain(q.question);
+            expect(text).toContain(q.answer);
+        }
+    });
+    it("asks whether a loop was needed, with the ladder and its sentence", () => {
+        const stop = /<section[^>]*id="loop"[\s\S]*?<\/section>/.exec(home())?.[0] ?? "";
+        expect(stop).toMatch(/<figure[^>]*class="ladder/);
+        expect(visibleText(stop)).toContain("A step up in machinery is not a step up in result");
+    });
+    it("shows the trail of the case it opens, with a link to the full trail", () => {
+        const html = home();
+        const opened = /<article[^>]*data-case="([^"]+)"/.exec(html)?.[1];
+        expect(opened).toBeDefined();
+        const strip = /<div[^>]*id="route-strip"[\s\S]*?<\/div>/.exec(html)?.[0] ?? "";
+        expect(strip).toContain(`href="/case/${opened ?? ""}/trail/"`);
+        expect(visibleText(strip)).toContain("Before reading");
+    });
 });

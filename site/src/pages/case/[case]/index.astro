@@ -3,6 +3,7 @@
 import type { GetStaticPaths } from "astro";
 import BackLinks from "../../../components/BackLinks.astro";
 import OpenedCase from "../../../components/OpenedCase.astro";
+import TrailStrip from "../../../components/TrailStrip.astro";
 import Base from "../../../layouts/Base.astro";
 import type { CaseFile } from "../../../lib/board-case-types";
 import { exportDir, loadExport } from "../../../lib/export";
@@ -32,4 +33,10 @@ const { kase } = Astro.props;
          (scripts/open-row.ts); this heading keeps the page's outline whole (review). -->
     <h2 class="vh">Both codings, side by side</h2>
     <OpenedCase kase={kase} />
+    {kase.trail !== null && (
+        <section aria-labelledby="strip-heading">
+            <h2 id="strip-heading">Its trail at a glance</h2>
+            <TrailStrip kase={kase} />
+        </section>
+    )}
 </Base>
