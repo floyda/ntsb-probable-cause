@@ -28,7 +28,13 @@ function openCase(link: HTMLAnchorElement): void {
             }
             adopted.tabIndex = -1;
             adopted.focus();
-            history.pushState({ case: link.dataset["case"] }, "", link.href);
+            // The address follows the case so it can be shared. A frame that forbids it (a
+            // sandboxed preview) still shows the case; only a failed fetch opens the case's page.
+            try {
+                history.pushState({ case: link.dataset["case"] }, "", link.href);
+            } catch {
+                // The case is shown; the address stays as it was.
+            }
             shownPath = window.location.pathname;
         })
         .catch(() => {

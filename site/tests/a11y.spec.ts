@@ -292,3 +292,21 @@ test("the board is a window whose rows arrive as they scroll into it", async ({ 
     expect(states.length).toBeGreaterThan(0);
     expect(states.every((o) => o === 1)).toBe(true);
 });
+
+// A frame that forbids changing the address (a sandboxed preview) still opens the chosen case
+// beneath the board, instead of leaving the page (Andy, 2026-10-21).
+test("a chosen row still opens its case when the address cannot change", async ({ page }) => {
+    await page.addInitScript(() => {
+        history.pushState = () => {
+            throw new DOMException("blocked", "SecurityError");
+        };
+    });
+    await page.goto("/");
+    const second = page.locator("a[data-case]").nth(1);
+    const n = (await second.getAttribute("data-case")) ?? "";
+    await second.click();
+    await expect(page.locator(`article#opened[data-case="${n}"]`)).toBeVisible();
+    // Still the first page: the board is here, and the address did not move.
+    expect(new URL(page.url()).pathname).toBe("/");
+    await expect(page.locator(".board-frame table")).toBeVisible();
+});
