@@ -179,6 +179,7 @@ Decided here; each can change at the preview:
     - On a phone a trail's documents are stacked rows, named by ARIA roles, so the detail and note are never cut off.
     - The facts line names the state, the kind of flight and the injuries in words ("Hawaii", "instructional flight", "minor injuries") and the docket's count ("read 6 of the docket's 8 documents").
     - The board region is named apart from its stop ("newest first"); "Took" never wraps; the phone board fits 375px; a short page keeps its footer at the foot of the screen; Methods carries the name line (§12 item 15); the glossary explains the code names' short forms; Path question 3 says S2.4 left failed cases out.
+    - The board first shows its newest rows, 20 in the wide window and 5 on a phone, which has no window; a button shows the rest (Andy, 2026-10-22; spec §4 note). The phone keeps its three columns (Andy).
     - Not changed: question 1's example keeps the NTSB's labels word for word, separators included; the slashed zero is the reading face's own (Atkinson Hyperlegible, chosen for legibility).
 
 ## Glossary

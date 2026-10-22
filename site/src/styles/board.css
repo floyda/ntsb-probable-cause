@@ -110,8 +110,49 @@
     margin: 0;
 }
 
+/* With the script, the board first shows its newest rows, and a button shows the rest (Andy,
+   2026-10-22; scripts/open-row.ts): 20 in the wider window, 5 on a phone, where the rows sit in
+   the page with no window of their own, so a swipe over the board scrolls the page. Without the
+   script every row shows and the button does not. Board.astro holds the same two numbers. */
+.board[data-capped] tbody tr:nth-child(n + 21) {
+    display: none;
+}
+
+.board:not([data-capped]) .board-more {
+    display: none;
+}
+
+.board-more {
+    justify-self: start;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.board-more:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+}
+
+@media (min-width: 641px) {
+    .board-more.few {
+        display: none;
+    }
+}
+
 /* The phone keeps Closed, Aircraft and Result (spec §4). */
 @media (max-width: 640px) {
+    .board-frame {
+        max-height: none;
+    }
+    .board[data-capped] tbody tr:nth-child(n + 6) {
+        display: none;
+    }
     .board .wide {
         display: none;
     }

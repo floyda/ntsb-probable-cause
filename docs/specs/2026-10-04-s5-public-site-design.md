@@ -198,6 +198,12 @@ opened case stays within reach.
 - **Each row ticks up into place as it comes into the window,** like a departures board updating: the rows in view when the board arrives, and older ones as the window is scrolled.
 - **Each row's motion runs once,** as §3.1 requires. Andy chose this over a board that keeps cycling (which §12 item 7's "no scrolling text" and WCAG 2.2.2 rule out without a pause control), and kept "once per visit" for every stop.
 
+*Note, 2026-10-22 (Andy, after the step 6b review):*
+- **The board first shows its newest rows:** 20 in the window on a wide screen, 5 on a phone. A button under it, "Show all 85 closed cases" (the count from the export), shows the rest and moves focus to the first row it showed. The totals line still counts every case.
+- **A phone has no window.** Its five rows sit in the page, so a swipe over the board scrolls the page. The review found the window caught the swipe on a touch screen and left most rows blank after a fast flick.
+- **With scripts off,** every row shows and the button does not.
+- **The phone keeps Closed, Aircraft and Result.** Andy kept these over the two first codes, which the review proposed.
+
 A line under the board says that the NTSB's own coding is not fully consistent, and links to
 the Path page's question on it (§7). A reader must not read "different" as simply "wrong".
 

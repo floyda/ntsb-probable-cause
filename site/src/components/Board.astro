@@ -23,6 +23,11 @@ interface Props {
 const { index } = Astro.props;
 const anyBackfilled = index.rows.some((r) => r.backfilled === true);
 const launched = index.stamp.launched_on;
+// With the script, the board first shows its newest rows: 5 on a phone, 20 in the wider window;
+// a button shows the rest (Andy, 2026-10-22). board.css holds the same two numbers.
+const PHONE_ROWS = 5;
+const WIDE_ROWS = 20;
+const total = index.rows.length;
 
 function agentCell(row: BoardRow): string {
     if (row.grade === "abstained") return "No answer";
@@ -64,7 +69,7 @@ function ntsbCell(row: BoardRow): string {
                     <th scope="col">Result</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="board-rows">
                 {index.rows.map((row) => (
                     <tr>
                         <td>
@@ -98,6 +103,15 @@ function ntsbCell(row: BoardRow): string {
             </tbody>
         </table>
     </div>
+    {total > PHONE_ROWS && (
+        <button
+            type="button"
+            class:list={["board-more", { few: total <= WIDE_ROWS }]}
+            aria-controls="board-rows"
+        >
+            Show all {total} closed cases
+        </button>
+    )}
     <figcaption>
         <p class="stamp">{stampLine(index)}</p>
         <p>{totalsLine(index.rows)}</p>

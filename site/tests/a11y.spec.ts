@@ -261,7 +261,9 @@ test.describe("the first page with scripts off", () => {
 
 // The board is a fixed window onto its rows (Andy, 2026-10-21): older rows scroll inside it, and
 // each ticks into place as it comes into the window, so no row in view is left blank.
-test("the board is a window whose rows arrive as they scroll into it", async ({ page }) => {
+test("the board is a window whose rows arrive as they scroll into it", async ({ page }, info) => {
+    // A phone has no window: its rows sit in the page (Andy, 2026-10-22).
+    test.skip(info.project.name === "phone", "no window on a phone");
     await page.goto("/");
     const frame = page.locator(".board-frame");
     const max = await frame.evaluate((f) => getComputedStyle(f).maxHeight);
@@ -334,4 +336,41 @@ test("a trail's document rows fit the screen", async ({ page }) => {
         .locator(".frame")
         .evaluateAll((frames) => frames.filter((f) => f.scrollWidth > f.clientWidth + 1).length);
     expect(clipped).toBe(0);
+});
+
+// The board first shows its newest rows, five on a phone with no window of their own; a button
+// shows the rest and moves focus to the first row it showed (Andy, 2026-10-22). With scripts
+// off every row shows and the button does not.
+test("a phone shows the five newest rows, and the button shows the rest", async ({
+    page,
+}, info) => {
+    test.skip(info.project.name !== "phone", "the phone's cap");
+    await page.goto("/");
+    const rows = page.locator(".board tbody tr");
+    const total = await rows.count();
+    test.skip(total <= 5, "too few rows to cap");
+    await expect(rows.nth(4)).toBeVisible();
+    await expect(rows.nth(5)).toBeHidden();
+    const frame = page.locator(".board-frame");
+    expect(await frame.evaluate((f) => getComputedStyle(f).maxHeight)).toBe("none");
+    const more = page.getByRole("button", { name: `Show all ${String(total)} closed cases` });
+    await more.click();
+    await expect(rows.nth(total - 1)).toBeAttached();
+    expect(
+        await rows.evaluateAll((all) => all.filter((r) => r.getClientRects().length === 0).length),
+    ).toBe(0);
+    await expect(rows.nth(5).locator("a[data-case]")).toBeFocused();
+    await expect(more).toBeHidden();
+});
+
+test.describe("the capped board with scripts off", () => {
+    test.use({ javaScriptEnabled: false });
+    test("shows every row and no button", async ({ page }) => {
+        await page.goto("/");
+        const hidden = await page
+            .locator(".board tbody tr")
+            .evaluateAll((all) => all.filter((r) => r.getClientRects().length === 0).length);
+        expect(hidden).toBe(0);
+        await expect(page.locator(".board-more")).toBeHidden();
+    });
 });

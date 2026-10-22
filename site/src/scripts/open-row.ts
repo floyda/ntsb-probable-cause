@@ -57,8 +57,20 @@ function rowLink(target: Element): HTMLAnchorElement | null {
     return row?.querySelector<HTMLAnchorElement>("a[data-case]") ?? null;
 }
 
+// The board first shows its newest rows (5 on a phone, 20 in the wider window; board.css); the
+// button shows the rest and moves focus to the first row it showed (Andy, 2026-10-22).
+const PHONE = window.matchMedia("(max-width: 640px)");
+
 for (const board of document.querySelectorAll<HTMLElement>(".board")) {
     board.dataset["rowsOpen"] = "";
+    const more = board.querySelector<HTMLButtonElement>(".board-more");
+    if (more === null) continue;
+    board.dataset["capped"] = "";
+    more.addEventListener("click", () => {
+        const shown = PHONE.matches ? 5 : 20;
+        delete board.dataset["capped"];
+        board.querySelectorAll<HTMLAnchorElement>("tbody a[data-case]")[shown]?.focus();
+    });
 }
 
 document.addEventListener("click", (event) => {
