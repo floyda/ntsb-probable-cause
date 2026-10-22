@@ -347,15 +347,19 @@ test("a phone shows the five newest rows, and the button shows the rest", async 
     test.skip(info.project.name !== "phone", "the phone's cap");
     await page.goto("/");
     const rows = page.locator(".board tbody tr");
-    const total = await rows.count();
-    test.skip(total <= 5, "too few rows to cap");
-    await expect(rows.nth(4)).toBeVisible();
-    await expect(rows.nth(5)).toBeHidden();
+    const more = page.locator(".board-more");
+    test.skip((await more.count()) === 0, "too few rows to cap");
+    const total = Number(/\d+/.exec((await more.textContent()) ?? "")?.[0]);
+    await expect(rows).toHaveCount(5);
     const frame = page.locator(".board-frame");
     expect(await frame.evaluate((f) => getComputedStyle(f).maxHeight)).toBe("none");
-    const more = page.getByRole("button", { name: `Show all ${String(total)} closed cases` });
+    // Nothing to scroll inside the board: no space is kept for the rows not shown.
+    expect(await frame.evaluate((f) => f.scrollHeight - f.clientHeight)).toBeLessThanOrEqual(1);
+    await expect(
+        page.getByRole("button", { name: `Show all ${String(total)} closed cases` }),
+    ).toBeVisible();
     await more.click();
-    await expect(rows.nth(total - 1)).toBeAttached();
+    await expect(rows).toHaveCount(total);
     expect(
         await rows.evaluateAll((all) => all.filter((r) => r.getClientRects().length === 0).length),
     ).toBe(0);

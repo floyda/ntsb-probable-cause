@@ -111,13 +111,10 @@
 }
 
 /* With the script, the board first shows its newest rows, and a button shows the rest (Andy,
-   2026-10-22; scripts/open-row.ts): 20 in the wider window, 5 on a phone, where the rows sit in
-   the page with no window of their own, so a swipe over the board scrolls the page. Without the
-   script every row shows and the button does not. Board.astro holds the same two numbers. */
-.board[data-capped] tbody tr:nth-child(n + 21) {
-    display: none;
-}
-
+   2026-10-22; scripts/open-row.ts takes the older rows out of the table): 20 in the wider
+   window, 5 on a phone, where the rows sit in the page with no window of their own, so a swipe
+   over the board scrolls the page. Without the script every row shows and the button does not.
+   Board.astro holds the same two numbers. */
 .board:not([data-capped]) .board-more {
     display: none;
 }
@@ -149,9 +146,7 @@
 @media (max-width: 640px) {
     .board-frame {
         max-height: none;
-    }
-    .board[data-capped] tbody tr:nth-child(n + 6) {
-        display: none;
+        overscroll-behavior: auto;
     }
     .board .wide {
         display: none;

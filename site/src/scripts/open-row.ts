@@ -57,19 +57,37 @@ function rowLink(target: Element): HTMLAnchorElement | null {
     return row?.querySelector<HTMLAnchorElement>("a[data-case]") ?? null;
 }
 
-// The board first shows its newest rows (5 on a phone, 20 in the wider window; board.css); the
-// button shows the rest and moves focus to the first row it showed (Andy, 2026-10-22).
+// The board first shows its newest rows (5 on a phone, 20 in the wider window); the button shows
+// the rest and moves focus to the first row it showed (Andy, 2026-10-22). The older rows are
+// taken out of the table, not hidden by a style: Safari kept the space of hidden rows, so the
+// phone's board scrolled over empty space (Andy, 2026-10-22).
 const PHONE = window.matchMedia("(max-width: 640px)");
+const shownFirst = (): number => (PHONE.matches ? 5 : 20);
 
 for (const board of document.querySelectorAll<HTMLElement>(".board")) {
     board.dataset["rowsOpen"] = "";
     const more = board.querySelector<HTMLButtonElement>(".board-more");
-    if (more === null) continue;
+    const body = board.querySelector("tbody");
+    if (more === null || body === null) continue;
+    const rows = [...body.rows];
+    // The newest rows stay; the rest wait outside the table, in order.
+    const cap = (): void => {
+        const n = shownFirst();
+        for (const [i, row] of rows.entries()) {
+            if (i < n) {
+                if (!row.isConnected) body.append(row);
+            } else row.remove();
+        }
+    };
+    cap();
     board.dataset["capped"] = "";
+    PHONE.addEventListener("change", cap);
     more.addEventListener("click", () => {
-        const shown = PHONE.matches ? 5 : 20;
+        const n = shownFirst();
+        PHONE.removeEventListener("change", cap);
+        for (const row of rows) if (!row.isConnected) body.append(row);
         delete board.dataset["capped"];
-        board.querySelectorAll<HTMLAnchorElement>("tbody a[data-case]")[shown]?.focus();
+        rows[n]?.querySelector<HTMLAnchorElement>("a[data-case]")?.focus();
     });
 }
 
