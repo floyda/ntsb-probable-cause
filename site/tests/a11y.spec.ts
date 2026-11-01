@@ -21,7 +21,13 @@ function pages(root: string, prefix: string): string[] {
     return found.sort();
 }
 
-const addresses = [...pages("dist", "/"), ...pages("holding", "/_holding/")];
+// A Path question's forwarding page leaves at once, so axe reads it with its refresh taken out
+// (S5 step 6c, Task 3), below; the general check would read the Path page instead.
+const FORWARD = /^\/path\/[a-z-]+\/$/;
+const addresses = [...pages("dist", "/"), ...pages("holding", "/_holding/")].filter(
+    (a) => !FORWARD.test(a),
+);
+const forwards = pages("dist", "/").filter((a) => FORWARD.test(a));
 
 test("there is at least one page to check", () => {
     expect(addresses.length).toBeGreaterThan(0);
@@ -41,6 +47,36 @@ for (const address of addresses) {
             const name = address.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "home";
             await page.screenshot({ path: `test-results/phone/${name}.png`, fullPage: true });
         }
+    });
+}
+
+test("there are eight forwarding pages", () => {
+    expect(forwards).toHaveLength(8);
+});
+
+for (const address of forwards) {
+    test(`${address} sends the reader to its question`, async ({ page }) => {
+        await page.goto(address);
+        const anchor = address.split("/")[2] ?? "";
+        await expect(page).toHaveURL(new RegExp(`/path/#${anchor}$`));
+        await expect(page.locator(`section#${anchor} h2`)).toBeInViewport();
+    });
+
+    test(`WCAG 2.2 AA: ${address}, with its refresh taken out`, async ({ page }) => {
+        await page.route(`**${address}`, async (route) => {
+            const response = await route.fetch();
+            const body = (await response.text()).replace(
+                /<meta[^>]*http-equiv="refresh"[^>]*>/,
+                "",
+            );
+            await route.fulfill({ response, body });
+        });
+        await page.goto(address);
+        await expect(page).toHaveURL(new RegExp(`${address}$`));
+        const results = await new AxeBuilder({ page })
+            .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+            .analyze();
+        expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
     });
 }
 

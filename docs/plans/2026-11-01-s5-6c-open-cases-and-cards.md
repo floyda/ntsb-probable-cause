@@ -117,17 +117,17 @@ Decided here; each can change at the preview:
 
 ## Task 3: The preview tags and the forwarding pages
 
-- [ ] **Step 1: Failing tests** in `dist.test.ts`:
+- [x] **Step 1: Failing tests** in `dist.test.ts`:
   - every built page has each preview tag once, with an absolute `og:image` under `/cards/` that exists in `dist/` (Review Focus 1);
   - the first page, Path, Methods, Open cases and every case and trail page use the site card;
   - `/path/<anchor>/` exists for each of the eight anchors. It carries that question's card, a zero-second refresh and a plain link to `/path/#<anchor>`, and a canonical link to `/path/` (Review Focus 4);
   - each Path question has a "Link to this question" pointing to its forwarding page.
-- [ ] **Step 2: Implement:**
+- [x] **Step 2: Implement:**
   - `Base.astro` gains an optional `card` prop (the site card by default) and writes the tags;
   - `pages/path/[anchor].astro` builds the eight forwarding pages from `ROUTE_QUESTIONS`;
   - `path.astro` gains the eight links.
-- [ ] **Step 3:** Add an axe check of one forwarding page in `a11y.spec.ts`, with the refresh stopped so axe can read it.
-- [ ] **Step 4:** Run the tests and `make check`. Commit `S5 step 6c Task 3: preview tags and forwarding pages`.
+- [x] **Step 3:** Add an axe check of one forwarding page in `a11y.spec.ts`, with the refresh stopped so axe can read it.
+- [x] **Step 4:** Run the tests and `make check`. Commit `S5 step 6c Task 3: preview tags and forwarding pages`.
 
 ## Task 4: Preview (Controller)
 
@@ -150,6 +150,12 @@ Decided here; each can change at the preview:
   - Each card ends with a small foot line: "ellery.demo.floyda.dev", and on a question's card "ellery.demo.floyda.dev · The path". It says where the card leads.
   - The script refuses to save a card whose words run past its foot.
   - The site card's question is 46px and its line 30px. A question card's question is 58px and its answer 40px. The nine cards are 38–70 KB each.
+- **Task 3 (2026-11-01):**
+  - **"Link to this question" sits at the end of each question's sources line,** after "How this was measured", not directly under its heading. Under the heading it came between the question and its answer. Andy can move it at the preview.
+  - **A forwarding page is a whole page in the site's layout,** with the top bar, the footer, the question, its answer and a link to the question's stop. A reader whose browser does not follow the refresh still has a way on.
+  - A question card's `og:title` is its question. Every other page's `og:title` is its own title. The tags also give the image's width and height, so a service can lay the card out before fetching it.
+  - **Axe reads each forwarding page with its refresh taken out.** With the refresh in place, the page leaves before axe reads it. A separate browser test checks that each page lands on its question's stop. The general accessibility loop skips the eight pages.
+  - The forwarding pages get their question through `getStaticPaths`' props, as the case pages do.
 
 ---
 

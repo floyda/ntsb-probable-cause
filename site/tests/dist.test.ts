@@ -8,6 +8,7 @@ import { exportDir, loadExport } from "../src/lib/export";
 import { findingParts, findingRows } from "../src/lib/findings";
 import { LADDER } from "../src/lib/ladder";
 import { anchorFor, shown } from "../src/lib/methods";
+import { cardFor } from "../src/lib/cards";
 import { closureNights, openLines } from "../src/lib/open";
 import { ROUTE_QUESTIONS } from "../src/lib/route";
 import { AUTHOR_URL, PAGES } from "../src/lib/site";
@@ -654,5 +655,86 @@ describe.skipIf(!built)("the first page as a route (S5 step 6b)", () => {
         const strip = /<div[^>]*id="route-strip"[\s\S]*?<\/div>/.exec(html)?.[0] ?? "";
         expect(strip).toContain(`href="/case/${opened ?? ""}/trail/"`);
         expect(visibleText(strip)).toContain("Before reading");
+    });
+});
+
+describe.skipIf(!built)("the link-preview tags (S5 step 6c, Task 3; plan Review Focus 1)", () => {
+    const SITE = "https://ellery.demo.floyda.dev";
+    const all = htmlFiles()
+        .filter((p) => !p.endsWith("404.html"))
+        .map((p) => relative(DIST, p).split(sep).join("/"));
+    const forwards = ROUTE_QUESTIONS.map((q) => `path/${q.anchor}/index.html`);
+    const meta = (html: string, key: string): string[] =>
+        [...html.matchAll(new RegExp(`<meta[^>]*(?:property|name)="${key}"[^>]*>`, "g"))].map(
+            (m) => /content="([^"]*)"/.exec(m[0])?.[1] ?? "",
+        );
+    const read = (page: string): string => readFileSync(join(DIST, page), "utf8");
+    const decode = (s: string): string =>
+        s
+            .replace(/&#39;|&#x27;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, "&");
+
+    it.each(all)("%s has each preview tag once, its image built", (page) => {
+        const html = read(page);
+        for (const key of [
+            "og:title",
+            "og:description",
+            "og:url",
+            "og:image",
+            "og:image:alt",
+            "og:type",
+            "twitter:card",
+        ]) {
+            expect(meta(html, key), key).toHaveLength(1);
+        }
+        expect(meta(html, "twitter:card")).toEqual(["summary_large_image"]);
+        const image = meta(html, "og:image")[0] ?? "";
+        expect(image).toMatch(new RegExp(`^${SITE}/cards/[a-z-]+\\.png$`));
+        expect(existsSync(join(DIST, image.slice(SITE.length)))).toBe(true);
+        expect(meta(html, "og:url")[0]).toBe(`${SITE}/${page.replace(/index\.html$/, "")}`);
+    });
+
+    it.each(all.filter((p) => !forwards.includes(p)))("%s uses the site card", (page) => {
+        const html = read(page);
+        expect(meta(html, "og:image")).toEqual([`${SITE}/cards/site.png`]);
+        expect(decode(meta(html, "og:image:alt")[0] ?? "")).toBe(cardFor().alt);
+    });
+
+    it.each(ROUTE_QUESTIONS.map((q) => q.anchor))(
+        "/path/%s/ carries its question's card and forwards to its stop",
+        (anchor) => {
+            const html = read(`path/${anchor}/index.html`);
+            const card = cardFor(`q-${anchor}`);
+            expect(meta(html, "og:image")).toEqual([`${SITE}/cards/q-${anchor}.png`]);
+            expect(decode(meta(html, "og:image:alt")[0] ?? "")).toBe(card.alt);
+            expect(decode(meta(html, "og:title")[0] ?? "")).toBe(card.question);
+            expect(decode(meta(html, "og:description")[0] ?? "")).toBe(card.line);
+            expect(html).toMatch(
+                new RegExp(
+                    `<meta[^>]*http-equiv="refresh"[^>]*content="0;\\s*url=/path/#${anchor}"`,
+                ),
+            );
+            expect(html).toContain(`<link rel="canonical" href="${SITE}/path/">`);
+            expect(html).toMatch(
+                new RegExp(`<main[\\s\\S]*href="/path/#${anchor}"[\\s\\S]*</main>`),
+            );
+        },
+    );
+
+    it("links each Path question to its forwarding page", () => {
+        const html = read("path/index.html");
+        for (const q of ROUTE_QUESTIONS) {
+            const stop = new RegExp(
+                `<section[^>]*id="${q.anchor}"[\\s\\S]*?href="/path/${q.anchor}/"[^>]*>Link to this question<`,
+            );
+            expect(html, q.anchor).toMatch(stop);
+        }
+    });
+
+    it("refreshes no page but the forwarding pages", () => {
+        for (const page of all.filter((p) => !forwards.includes(p))) {
+            expect(read(page), page).not.toContain('http-equiv="refresh"');
+        }
     });
 });

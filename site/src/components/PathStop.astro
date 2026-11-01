@@ -56,6 +56,9 @@ const sources = [
             </>
         ))}
         <a href={measured}>How this was measured</a>
+        {" · "}
+        {/* Its forwarding page, whose preview card shows this question (S5 step 6c). */}
+        <a href={`/path/${id}/`}>Link to this question</a>
     </p>
 </section>
 
