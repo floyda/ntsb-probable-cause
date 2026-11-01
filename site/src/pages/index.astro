@@ -12,6 +12,7 @@ import { methodsLink } from "../lib/methods";
 import { assertPathClaims } from "../lib/claims";
 import { caseCount, oneIn } from "../lib/numbers";
 import { routeCase } from "../lib/route";
+import { SITE_LINE, SITE_QUESTION } from "../lib/site";
 
 // The six stops' one-line answers and the ladder's sentence make claims; each stops the build
 // when its figures no longer fit it (claims.ts).
@@ -34,20 +35,12 @@ const places = [
 ];
 ---
 
-<Base
-    title="Ellery"
-    description="An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's."
-    current="home"
-    places={places}
->
+<Base title="Ellery" description={SITE_LINE} current="home" places={places}>
     {/* Stop 1 (spec §2, §3.1): the question, two sentences on the task, then the caveat. */}
     <section id="question" class="caveat" aria-labelledby="question-heading">
         <h1>Ellery</h1>
         <Sign>1 · The question</Sign>
-        <h2 id="question-heading">
-            Can an agent read an accident docket and code the cause as the investigator did, and
-            does it need to be an agent to do so?
-        </h2>
+        <h2 id="question-heading">{SITE_QUESTION}</h2>
         <p>
             When the NTSB closes a US aviation accident case, it publishes a probable cause and
             codes what happened and why, from fixed lists. Ellery reads the evidence the

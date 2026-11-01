@@ -11,6 +11,14 @@ export const PAGES = [
 /** A page the top bar can mark as current; case and trail pages are none of these. */
 export type PageId = "home" | (typeof PAGES)[number]["id"];
 
+/** The site's question (spec §2): the first page's heading and the site card's words. */
+export const SITE_QUESTION =
+    "Can an agent read an accident docket and code the cause as the investigator did, and does it need to be an agent to do so?";
+
+/** The first page's description, which is also the site card's line (Andy, 2026-11-01). */
+export const SITE_LINE =
+    "An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's.";
+
 /** "Built by Andy Floyd" links here (Andy, 2026-10-16). */
 export const AUTHOR_URL = "https://floyda.dev";
 

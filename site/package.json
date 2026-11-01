@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "ASTRO_TELEMETRY_DISABLED=1 astro build",
+    "cards": "playwright test -c playwright.cards.config.ts",
     "check": "ASTRO_TELEMETRY_DISABLED=1 astro check --minimumSeverity warning",
     "lint": "eslint . --max-warnings 0",
     "format:check": "prettier --check .",

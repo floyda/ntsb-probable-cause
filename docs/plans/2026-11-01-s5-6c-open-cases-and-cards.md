@@ -103,17 +103,17 @@ Decided here; each can change at the preview:
 
 ## Task 2: The cards and the script that draws them
 
-- [ ] **Step 1: Failing tests** in `cards.test.ts`:
+- [x] **Step 1: Failing tests** in `cards.test.ts`:
   - `cardWords()` returns the site card and one card per `ROUTE_QUESTIONS` anchor, each with its title, question and line;
   - `public/cards/cards.json` matches `cardWords()` exactly (Review Focus 2);
   - every card named in `cards.json` has a PNG of 1200×630 beside it (read from the PNG header, with no image library).
-- [ ] **Step 2: `lib/cards.ts`.** It returns the words for each card from `route.ts` and `site.ts`, plus the one wording change for question 8. It reads nothing from the export, so no case can reach a card.
-- [ ] **Step 3: `scripts/make-cards.mjs`.**
+- [x] **Step 2: `lib/cards.ts`.** It returns the words for each card from `route.ts` and `site.ts`, plus the one wording change for question 8. It reads nothing from the export, so no case can reach a card.
+- [x] **Step 3: `scripts/make-cards.mjs`.**
   - It builds each card as an HTML page with the site's colours and fonts, from `@fontsource`'s files.
   - It draws each card at 1200×630 in Playwright's Chromium and saves `public/cards/<name>.png`.
   - It writes `cards.json`.
   - It is run by hand (`pnpm cards`), never by the build.
-- [ ] **Step 4:** Run the script and commit the cards. Run the tests and `make check`. Commit `S5 step 6c Task 2: the preview cards`.
+- [x] **Step 4:** Run the script and commit the cards. Run the tests and `make check`. Commit `S5 step 6c Task 2: the preview cards`.
 
 ## Task 3: The preview tags and the forwarding pages
 
@@ -144,6 +144,12 @@ Decided here; each can change at the preview:
   - The page adds one line the plan did not name: "Cases that have closed are on the board", linking to the first page.
   - **The test sample needed no change.** `tests/fixtures/board` and `docs/schemas/board-1.schema.json` are identical to `main`'s (`142b026`). Every case file holds `mkey`, the index holds `launched_on`, and the sample uses all five `not_offered_reason` values the schema allows.
   - The step 6a test that no page linked to `/open/` is replaced by tests that every top bar and footer does.
+- **Task 2 (2026-11-01):**
+  - **The drawing script is `scripts/make-cards.spec.ts`, run by Playwright's test runner** with its own config, `playwright.cards.config.ts`, not a plain `make-cards.mjs`. The runner loads the site's TypeScript as it is, so the cards take their words straight from `lib/cards.ts`, with no copy and no new dependency. `pnpm cards` runs it. The site's accessibility run does not pick it up, because its `testDir` is `tests/`.
+  - **The site's question and line now live in `lib/site.ts`** (`SITE_QUESTION`, `SITE_LINE`). The first page reads its heading and description from there, so a change to either fails the card test until the cards are redrawn.
+  - Each card ends with a small foot line: "ellery.demo.floyda.dev", and on a question's card "ellery.demo.floyda.dev · The path". It says where the card leads.
+  - The script refuses to save a card whose words run past its foot.
+  - The site card's question is 46px and its line 30px. A question card's question is 58px and its answer 40px. The nine cards are 38–70 KB each.
 
 ---
 
