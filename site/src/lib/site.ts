@@ -1,10 +1,11 @@
 // The site's own navigation (spec §21 note, 2026-10-16): the top bar's pages and the footer's
 // links. Every page draws them from here through the layout, so none can leave them out.
 
-/** The top bar's pages, after ELLERY (the first page). Open cases joins in step 6c. */
+/** The top bar's pages, after ELLERY (the first page). */
 export const PAGES = [
     { id: "path", label: "The path", href: "/path/" },
     { id: "methods", label: "Methods", href: "/methods/" },
+    { id: "open", label: "Open cases", href: "/open/" },
 ] as const;
 
 /** A page the top bar can mark as current; case and trail pages are none of these. */

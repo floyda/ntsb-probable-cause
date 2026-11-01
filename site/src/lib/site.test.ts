@@ -7,8 +7,8 @@ describe("the top bar's pages (S5 step 6a, Task 2)", () => {
         expect(new Set(hrefs).size).toBe(hrefs.length);
         for (const href of hrefs) expect(href).toMatch(/^\/[a-z-]+\/$/);
     });
-    it("does not link to a page not yet built", () => {
-        expect(PAGES.map((p) => p.href)).not.toContain("/open/");
+    it("ends with Open cases (S5 step 6c)", () => {
+        expect(PAGES.at(-1)).toEqual({ id: "open", label: "Open cases", href: "/open/" });
     });
     it("links the author's line to an https address", () => {
         expect(AUTHOR_URL).toMatch(/^https:\/\//);

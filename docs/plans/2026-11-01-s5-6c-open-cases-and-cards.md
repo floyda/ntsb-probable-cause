@@ -89,17 +89,17 @@ Decided here; each can change at the preview:
 
 ## Task 1: The Open cases page and its links
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
   - `site.test.ts`: `PAGES` ends with Open cases at `/open/`;
   - `dist.test.ts`: `/open/` shows `open_watched`, `open_with_docket` and one table row per night in `closures_per_night`, newest first;
   - `dist.test.ts`: `/open/` holds no case number from the export and no link to `/case/` (Review Focus 3);
   - `dist.test.ts`: every page's top bar and footer link to `/open/`, and the bar marks it current on its own page.
-- [ ] **Step 2: Implement** `pages/open.astro`, and add the page to `PAGES` and `SiteFooter.astro`. Remove the two "joins in step 6c" comments.
-- [ ] **Step 3: Check the test sample against S4.**
+- [x] **Step 2: Implement** `pages/open.astro`, and add the page to `PAGES` and `SiteFooter.astro`. Remove the two "joins in step 6c" comments.
+- [x] **Step 3: Check the test sample against S4.**
   - Compare `tests/fixtures/board` with `main`'s copy.
   - Confirm that it holds S4's later additions (`5c16e0d`, `65a5244`): `mkey`, `launched_on` and every `not_offered_reason`.
   - Record what was found in Deviations. Change the sample only if a field is missing.
-- [ ] **Step 4:** Run `pnpm test`, `pnpm check`, `pnpm test:a11y`, then `make check`. Commit `S5 step 6c Task 1: the Open cases page`.
+- [x] **Step 4:** Run `pnpm test`, `pnpm check`, `pnpm test:a11y`, then `make check`. Commit `S5 step 6c Task 1: the Open cases page`.
 
 ## Task 2: The cards and the script that draws them
 
@@ -138,6 +138,12 @@ Decided here; each can change at the preview:
 ---
 
 ## Deviations
+
+- **Task 1 (2026-11-01):**
+  - **The line "Most open cases have no docket to read until then" appears only while fewer than half the open cases have one.** S4's invented sample has 187 of 212 with a docket, so the line would be false on it. The live export has 2 of 923. The check is in `lib/open.ts` rather than `lib/claims.ts`, because it rests on the export, not the numbers file. A unit test covers both sides.
+  - The page adds one line the plan did not name: "Cases that have closed are on the board", linking to the first page.
+  - **The test sample needed no change.** `tests/fixtures/board` and `docs/schemas/board-1.schema.json` are identical to `main`'s (`142b026`). Every case file holds `mkey`, the index holds `launched_on`, and the sample uses all five `not_offered_reason` values the schema allows.
+  - The step 6a test that no page linked to `/open/` is replaced by tests that every top bar and footer does.
 
 ---
 

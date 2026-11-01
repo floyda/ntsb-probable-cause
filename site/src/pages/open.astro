@@ -1,0 +1,80 @@
+---
+// The Open cases page (spec §8; S5 step 6c): counts only, from the export's `counts`, never a list
+// of open cases (Andy, 2026-10-11). An open case enters the site only as a number (decision
+// 0024). One screen long, so it has no rail.
+import Panel from "../components/Panel.astro";
+import Sign from "../components/Sign.astro";
+import Base from "../layouts/Base.astro";
+import { exportDir, loadExport } from "../lib/export";
+import { closureNights, openLines } from "../lib/open";
+import { BOARD_START, closedLong } from "../lib/words";
+
+const { index } = loadExport(exportDir());
+const lines = openLines(index.counts);
+const nights = closureNights(index.counts);
+---
+
+<Base
+    title="Open cases · Ellery"
+    description="How many open cases are watched, how many have a docket so far, and how many closed each night."
+    current="open"
+>
+    <Sign>Open cases</Sign>
+    <h1>Cases still under investigation</h1>
+    {lines.map((line) => (
+        <p>{line}</p>
+    ))}
+    <p>
+        Cases that have closed are on <a href="/">the board</a>.
+    </p>
+
+    <Panel>
+        <table>
+            <caption>Cases closed each night since{closedLong(BOARD_START)}</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Night</th>
+                    <th scope="col">Cases closed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {nights.map((n) => (
+                    <tr>
+                        <td>{n.label}</td>
+                        <td>{n.count}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+        {nights.length === 0 && <p>No case has closed yet.</p>}
+    </Panel>
+</Base>
+
+<style>
+    h1 {
+        margin-top: 0.5rem;
+    }
+    p {
+        margin-block: 0 0.75rem;
+    }
+    table {
+        border-collapse: collapse;
+    }
+    caption {
+        text-align: left;
+        font-weight: 700;
+        padding-bottom: 0.5rem;
+    }
+    th,
+    td {
+        text-align: left;
+        padding: 0.35rem 1.5rem 0.35rem 0;
+        border-bottom: 1px solid var(--rule);
+    }
+    td:last-child,
+    th:last-child {
+        text-align: right;
+        padding-right: 0;
+        font-variant-numeric: tabular-nums;
+    }
+</style>

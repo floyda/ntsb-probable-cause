@@ -8,6 +8,7 @@ import { exportDir, loadExport } from "../src/lib/export";
 import { findingParts, findingRows } from "../src/lib/findings";
 import { LADDER } from "../src/lib/ladder";
 import { anchorFor, shown } from "../src/lib/methods";
+import { closureNights, openLines } from "../src/lib/open";
 import { ROUTE_QUESTIONS } from "../src/lib/route";
 import { AUTHOR_URL, PAGES } from "../src/lib/site";
 import { count, countOf, numbers, pointsOn, usd, withInterval } from "../src/lib/numbers";
@@ -461,6 +462,7 @@ describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () =>
         "index.html": "/",
         "path/index.html": "/path/",
         "methods/index.html": "/methods/",
+        "open/index.html": "/open/",
     };
     const read = (page: string): string => readFileSync(join(DIST, page), "utf8");
 
@@ -490,10 +492,33 @@ describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () =>
         expect(visibleText(foot)).toContain("Built by Andy Floyd");
         expect(foot).toContain('href="https://github.com/floyda/ntsb-probable-cause"');
         expect(foot).toContain('href="/methods/"');
+        expect(foot).toContain('href="/open/"');
+    });
+});
+
+describe.skipIf(!built)("the Open cases page (S5 step 6c, Task 1)", () => {
+    const { index, cases } = loadExport(exportDir());
+    const html = built ? readFileSync(join(DIST, "open", "index.html"), "utf8") : "";
+    const text = visibleText(html);
+
+    it("states the open cases watched and those with a docket", () => {
+        for (const line of openLines(index.counts)) expect(text).toContain(line);
     });
 
-    it("links no page to Open cases, which step 6c builds", () => {
-        for (const page of all) expect(read(page), page).not.toContain('href="/open/"');
+    it("gives each night's closures a row, newest first", () => {
+        const table = /<table[\s\S]*?<\/table>/.exec(html)?.[0] ?? "";
+        const rows = /<tbody[\s\S]*?<\/tbody>/.exec(table)?.[0] ?? "";
+        const cells = [...rows.matchAll(/<tr[\s\S]*?<\/tr>/g)].map((m) => visibleText(m[0]).trim());
+        expect(cells).toEqual(
+            closureNights(index.counts).map((n) => `${n.label} ${String(n.count)}`),
+        );
+    });
+
+    it("names no case and links to no case page (decision 0024)", () => {
+        expect(html).not.toContain('href="/case/');
+        for (const n of [...cases.keys(), ...index.rows.map((r) => r.case_number)]) {
+            expect(html, n).not.toContain(n);
+        }
     });
 });
 
