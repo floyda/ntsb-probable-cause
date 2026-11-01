@@ -674,6 +674,17 @@ says whether it is settled.
       beat reading everything? No.", because the findings are what readers should share.
       No card ever shows a case's details: individual accidents, often fatal, are kept out of
       social feeds (§11).
+
+    *Note, 2026-11-01 (Andy, step 6c):*
+    - **The site card shows "ELLERY" in dot letters and the question in the reading font.**
+      The question is too long for the dot font: it would run to about four lines, and be hard
+      to read at the size LinkedIn shows a card. Its one line is the first page's description.
+    - **Each Path question's card sits on a forwarding page, `/path/<anchor>/`,** which sends
+      the reader to `/path/#<anchor>`. Link-preview services ignore the `#` part of an address,
+      so a link straight to the anchor would show the site card.
+    - **The cards are PNG files made once by a script and committed.** A test fails the build
+      when a card's words no longer match the site's. Plan:
+      `docs/plans/2026-11-01-s5-6c-open-cases-and-cards.md`.
 15. **The name.** Settled (Andy, 2026-10-06): the agent and the site are both **Ellery**, at
     **`ellery.demo.floyda.dev`**. On the site the agent is "Ellery, version 1", and later
     versions keep the name with a new number. The site calls Ellery "it". The name comes from
