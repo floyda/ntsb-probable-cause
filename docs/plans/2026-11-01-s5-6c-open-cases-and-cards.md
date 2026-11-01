@@ -156,6 +156,9 @@ Decided here; each can change at the preview:
   - A question card's `og:title` is its question. Every other page's `og:title` is its own title. The tags also give the image's width and height, so a service can lay the card out before fetching it.
   - **Axe reads each forwarding page with its refresh taken out.** With the refresh in place, the page leaves before axe reads it. A separate browser test checks that each page lands on its question's stop. The general accessibility loop skips the eight pages.
   - The forwarding pages get their question through `getStaticPaths`' props, as the case pages do.
+- **Task 4 (2026-11-01), before Andy's review:**
+  - **The Open cases page opens like the Path and Methods,** with the plain heading "Open cases" and a lede. The sign and the heading "Cases still under investigation" are gone: the sign sat outside the text column, and no other page's top has one. The two counts share the lede. The two sentences on coding at closure share a paragraph with the link to the board.
+  - The table's caption read "since23 Sep 2026": the formatter drops a space before an expression in running text. The caption is now built as one string.
 
 ---
 

@@ -3,7 +3,6 @@
 // of open cases (Andy, 2026-10-11). An open case enters the site only as a number (decision
 // 0024). One screen long, so it has no rail.
 import Panel from "../components/Panel.astro";
-import Sign from "../components/Sign.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
 import { closureNights, openLines } from "../lib/open";
@@ -12,6 +11,8 @@ import { BOARD_START, closedLong } from "../lib/words";
 const { index } = loadExport(exportDir());
 const lines = openLines(index.counts);
 const nights = closureNights(index.counts);
+// Written as one string: the formatter drops a space before an expression in running text.
+const caption = `Cases closed each night since ${closedLong(BOARD_START)}`;
 ---
 
 <Base
@@ -19,18 +20,16 @@ const nights = closureNights(index.counts);
     description="How many open cases are watched, how many have a docket so far, and how many closed each night."
     current="open"
 >
-    <Sign>Open cases</Sign>
-    <h1>Cases still under investigation</h1>
-    {lines.map((line) => (
-        <p>{line}</p>
-    ))}
+    {/* Opens like the Path and Methods: a plain heading, then the counts (spec §8). */}
+    <h1>Open cases</h1>
+    <p class="lede">{lines.slice(0, 2).join(" ")}</p>
     <p>
-        Cases that have closed are on <a href="/">the board</a>.
+        {lines.slice(2).join(" ")} Cases that have closed are on <a href="/">the board</a>.
     </p>
 
     <Panel>
         <table>
-            <caption>Cases closed each night since{closedLong(BOARD_START)}</caption>
+            <caption>{caption}</caption>
             <thead>
                 <tr>
                     <th scope="col">Night</th>
@@ -51,8 +50,8 @@ const nights = closureNights(index.counts);
 </Base>
 
 <style>
-    h1 {
-        margin-top: 0.5rem;
+    .lede {
+        font-size: 1.1rem;
     }
     p {
         margin-block: 0 0.75rem;
