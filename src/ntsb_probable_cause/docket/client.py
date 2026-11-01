@@ -13,11 +13,14 @@ from typing import Self
 import httpx
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.errors import DocketError
+from ntsb_probable_cause.errors import ConfigurationError, DocketError
 
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 LISTING_FILE = "listing.html"
 FETCH_FILE = "fetch.json"
+# A document streams to disk this many bytes at a time, so none is ever held whole in memory: a
+# 1.1 GB scan once killed every live night on a 1 GB task (decision 0217).
+_PIECE_BYTES = 1 << 20
 
 # The two ``DocketError`` message shapes ``_get`` raises below: a non-retried status,
 # ``f"{url} returned {status}"`` (excluded from ``_RETRY_STATUSES``, most likely a 404 for a
@@ -94,6 +97,31 @@ def _read_verified(cache: Path, mkey: int, name: str, entry: dict[str, object]) 
     return content
 
 
+def _verified_path(cache: Path, mkey: int, name: str, entry: dict[str, object]) -> Path | None:
+    """The cached file's path, or ``None`` if missing or its hash disagrees with the manifest.
+
+    ``_read_verified``'s check, hashed a piece at a time so a large file is never read whole.
+    """
+    path = cache / str(mkey) / name
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for piece in iter(lambda: handle.read(_PIECE_BYTES), b""):
+            digest.update(piece)
+    return path if entry.get("sha256") == digest.hexdigest() else None
+
+
+def _stream_to(response: httpx.Response, path: Path) -> str:
+    """Write the response body to ``path`` a piece at a time; return its SHA-256."""
+    digest = hashlib.sha256()
+    with path.open("wb") as out:
+        for piece in response.iter_bytes(_PIECE_BYTES):
+            out.write(piece)
+            digest.update(piece)
+    return digest.hexdigest()
+
+
 def _write_atomic(path: Path, data: bytes) -> None:
     """Write ``data`` to ``path`` so a reader never observes a partial file.
 
@@ -167,30 +195,60 @@ class DocketClient:
         self._store(mkey, LISTING_FILE, content, {"listing": self._entry(content)})
         return content.decode("utf-8", "replace")
 
+    @property
+    def caches(self) -> bool:
+        """Whether fetches are kept on disk (``document_file`` needs it)."""
+        return self._cache is not None
+
     def document(self, mkey: int, index: int, href: str) -> bytes:
         """One document's bytes, from the cache or one polite fetch.
 
-        A cached entry whose recorded ``href`` disagrees with the one asked for is treated as
-        a miss and re-fetched: a docket gains documents over time, the listing order can
-        shift, and an index alone does not identify a document (fix round 1, Finding 2).
+        With a cache this is ``document_file``'s file, read back; without one (decision 0040)
+        the bytes are fetched into memory and discarded with the caller's copy.
         """
-        name = f"{index}.bin"
+        if self._cache is not None:
+            return self.document_file(mkey, index, href).read_bytes()
+        return self._get(sources.docket_document_url(href))
+
+    def document_file(self, mkey: int, index: int, href: str) -> Path:
+        """One document as a file in the cache, from the cache or one polite fetch.
+
+        The fetch streams to disk (decision 0217): a ``.partial`` file renamed into place once
+        complete, so a large document never sits whole in memory and a kill mid-write leaves
+        nothing at the final name. A cached entry whose recorded ``href`` disagrees with the
+        one asked for is treated as a miss and re-fetched: a docket gains documents over time,
+        the listing order can shift, and an index alone does not identify a document (fix
+        round 1, Finding 2).
+
+        Raises:
+            ConfigurationError: the client has no cache; a read-and-discard client writes
+                nothing (decision 0040), so it has no file to give.
+            DocketError: the fetch failed, as ``_get`` says.
+        """
         cache = self._cache
-        if cache is not None:
-            documents = _load_manifest(cache, mkey).get("documents")
-            entry = documents.get(str(index)) if isinstance(documents, dict) else None
-            if isinstance(entry, dict) and entry.get("href") == href:
-                cached = _read_verified(cache, mkey, name, entry)
-                if cached is not None:
-                    return cached
-        content = self._get(sources.docket_document_url(href))
-        self._store(
-            mkey,
-            name,
-            content,
-            {"documents": {str(index): {**self._entry(content), "href": href}}},
-        )
-        return content
+        if cache is None:
+            raise ConfigurationError("document_file needs a cache; this client writes nothing")
+        name = f"{index}.bin"
+        documents = _load_manifest(cache, mkey).get("documents")
+        entry = documents.get(str(index)) if isinstance(documents, dict) else None
+        if isinstance(entry, dict) and entry.get("href") == href:
+            cached = _verified_path(cache, mkey, name, entry)
+            if cached is not None:
+                return cached
+        folder = cache / str(mkey)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / name
+        partial = path.with_name(f"{name}.partial")
+        try:
+            sha = self._request(
+                sources.docket_document_url(href), lambda response: _stream_to(response, partial)
+            )
+            partial.replace(path)
+        finally:
+            partial.unlink(missing_ok=True)
+        update = {"time": self._now().isoformat(), "sha256": sha, "href": href}
+        self._record(cache, mkey, {"documents": {str(index): update}})
+        return path
 
     def _entry(self, content: bytes) -> dict[str, str]:
         return {"time": self._now().isoformat(), "sha256": hashlib.sha256(content).hexdigest()}
@@ -201,7 +259,13 @@ class DocketClient:
         folder = self._cache / str(mkey)
         folder.mkdir(parents=True, exist_ok=True)
         _write_atomic(folder / name, content)
-        fetch = _load_manifest(self._cache, mkey)
+        self._record(self._cache, mkey, fetch_update)
+
+    @staticmethod
+    def _record(cache: Path, mkey: int, fetch_update: dict[str, object]) -> None:
+        """Merge ``fetch_update`` into the case's ``fetch.json``."""
+        folder = cache / str(mkey)
+        fetch = _load_manifest(cache, mkey)
         documents = fetch.get("documents")
         update = fetch_update.get("documents")
         if isinstance(documents, dict) and isinstance(update, dict):
@@ -211,7 +275,14 @@ class DocketClient:
         _write_atomic(folder / FETCH_FILE, json.dumps(fetch, indent=1, sort_keys=True).encode())
 
     def _get(self, url: str) -> bytes:
+        """One GET's whole body, through ``_request``."""
+        return self._request(url, lambda response: response.read())
+
+    def _request[T](self, url: str, receive: Callable[[httpx.Response], T]) -> T:
         """One GET with the polite gap, retried with backoff on transport errors and 5xx.
+
+        ``receive`` reads a successful response's body; a transport error while it reads (a
+        dropped connection mid-document) is retried like one before the response arrived.
 
         The gap is net of any backoff already slept -- the rule ``openrouter.py``'s
         ``request_json`` uses. A backoff of ``b`` seconds has already spaced the requests
@@ -227,14 +298,14 @@ class DocketClient:
             self._requested = True
             self._last_backoff_slept = 0.0
             try:
-                response = self._http.get(url)
+                with self._http.stream("GET", url) as response:
+                    if response.is_success:
+                        return receive(response)
+                    status = response.status_code
             except httpx.TransportError as error:
                 status = type(error).__name__
             else:
-                if response.is_success:
-                    return response.content
-                status = response.status_code
-                if response.status_code not in _RETRY_STATUSES:
+                if status not in _RETRY_STATUSES:
                     raise DocketError(f"{url} returned {status}")
             if attempt < self._max_attempts:
                 backoff = self._backoff * 2 ** (attempt - 1)

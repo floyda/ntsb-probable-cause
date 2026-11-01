@@ -129,7 +129,7 @@ def test_cluster_log_group_and_task_definition(tpl: Template) -> None:
         {
             "Family": "ntsb-live",
             "Cpu": "512",
-            "Memory": "1024",
+            "Memory": "4096",  # decision 0217: a 1.1 GB scan outgrew 1 GB
             "RuntimePlatform": {"CpuArchitecture": "X86_64", "OperatingSystemFamily": "LINUX"},
         },
     )
@@ -177,7 +177,13 @@ def test_missing_digest_is_refused_without_the_placeholder() -> None:
 def test_container_environment_and_secrets(tpl: Template) -> None:
     container = _container(tpl)
     env = {e["Name"]: e["Value"] for e in container["Environment"]}
-    assert set(env) == {"NTSB_LIVE_BUCKET", "NTSB_LIVE_ALERT_TOPIC_ARN", "NTSB_STORE"}
+    assert set(env) == {
+        "NTSB_LIVE_BUCKET",
+        "NTSB_LIVE_ALERT_TOPIC_ARN",
+        "NTSB_STORE",
+        "PYTHONUNBUFFERED",
+    }
+    assert env["PYTHONUNBUFFERED"] == "1"  # a killed night still leaves its lines (0217)
     assert env["NTSB_STORE"] == "s3://recorder-bucket-example/recorder.sqlite"
     assert {s["Name"] for s in container["Secrets"]} == {"NTSB_API_KEY", "OPENROUTER_API_KEY"}
     secrets = str(container["Secrets"])
