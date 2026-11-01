@@ -8,7 +8,7 @@ import { exportDir, loadExport } from "../src/lib/export";
 import { findingParts, findingRows } from "../src/lib/findings";
 import { LADDER } from "../src/lib/ladder";
 import { anchorFor, shown } from "../src/lib/methods";
-import { cardFor } from "../src/lib/cards";
+import { cardFor, cardVersion } from "../src/lib/cards";
 import { closureNights, openLines } from "../src/lib/open";
 import { ROUTE_QUESTIONS } from "../src/lib/route";
 import { AUTHOR_URL, PAGES } from "../src/lib/site";
@@ -690,14 +690,38 @@ describe.skipIf(!built)("the link-preview tags (S5 step 6c, Task 3; plan Review 
         }
         expect(meta(html, "twitter:card")).toEqual(["summary_large_image"]);
         const image = meta(html, "og:image")[0] ?? "";
-        expect(image).toMatch(new RegExp(`^${SITE}/cards/[a-z-]+\\.png$`));
-        expect(existsSync(join(DIST, image.slice(SITE.length)))).toBe(true);
+        expect(image).toMatch(new RegExp(`^${SITE}/cards/[a-z-]+\\.png\\?v=[0-9a-f]{8}$`));
+        expect(existsSync(join(DIST, image.slice(SITE.length).split("?")[0] ?? ""))).toBe(true);
         expect(meta(html, "og:url")[0]).toBe(`${SITE}/${page.replace(/index\.html$/, "")}`);
+    });
+
+    it("gives the 404 page every tag but an address, which it does not have", () => {
+        const html = read("404.html");
+        expect(meta(html, "og:url")).toEqual([]);
+        expect(meta(html, "og:image")).toHaveLength(1);
+    });
+
+    // og:url is the shared address itself, already posted by whoever shares it; every other tag
+    // is what the preview adds, and none names the case.
+    it("keeps every case's number out of what a shared link shows (spec §11)", () => {
+        const { cases } = loadExport(exportDir());
+        const casePages = all.filter((p) => p.startsWith("case/"));
+        expect(casePages.length).toBeGreaterThan(0);
+        for (const page of casePages) {
+            const head = /<head>[\s\S]*?<\/head>/.exec(read(page))?.[0] ?? "";
+            const shared = [...head.matchAll(/<meta[^>]*(?:property="og:|name="twitter:)[^>]*>/g)]
+                .map((m) => m[0])
+                .filter((tag) => !tag.includes('property="og:url"'))
+                .join(" ");
+            for (const n of cases.keys()) expect(shared, page).not.toContain(n);
+        }
     });
 
     it.each(all.filter((p) => !forwards.includes(p)))("%s uses the site card", (page) => {
         const html = read(page);
-        expect(meta(html, "og:image")).toEqual([`${SITE}/cards/site.png`]);
+        expect(meta(html, "og:image")).toEqual([
+            `${SITE}/cards/site.png?v=${cardVersion(cardFor())}`,
+        ]);
         expect(decode(meta(html, "og:image:alt")[0] ?? "")).toBe(cardFor().alt);
     });
 
@@ -706,7 +730,9 @@ describe.skipIf(!built)("the link-preview tags (S5 step 6c, Task 3; plan Review 
         (anchor) => {
             const html = read(`path/${anchor}/index.html`);
             const card = cardFor(`q-${anchor}`);
-            expect(meta(html, "og:image")).toEqual([`${SITE}/cards/q-${anchor}.png`]);
+            expect(meta(html, "og:image")).toEqual([
+                `${SITE}/cards/q-${anchor}.png?v=${cardVersion(card)}`,
+            ]);
             expect(decode(meta(html, "og:image:alt")[0] ?? "")).toBe(card.alt);
             expect(decode(meta(html, "og:title")[0] ?? "")).toBe(card.question);
             expect(decode(meta(html, "og:description")[0] ?? "")).toBe(card.line);

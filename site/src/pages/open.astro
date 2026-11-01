@@ -1,18 +1,21 @@
 ---
 // The Open cases page (spec §8; S5 step 6c): counts only, from the export's `counts`, never a list
 // of open cases (Andy, 2026-10-11). An open case enters the site only as a number (decision
-// 0024). One screen long, so it has no rail.
+// 0024). Short, so it has no rail.
 import Panel from "../components/Panel.astro";
 import Base from "../layouts/Base.astro";
 import { exportDir, loadExport } from "../lib/export";
-import { closureNights, openLines } from "../lib/open";
+import { checkCounts, closureNights, openLines } from "../lib/open";
 import { BOARD_START, closedLong } from "../lib/words";
 
 const { index } = loadExport(exportDir());
+checkCounts(index.counts, index.rows.length);
 const lines = openLines(index.counts);
 const nights = closureNights(index.counts);
-// Written as one string: the formatter drops a space before an expression in running text.
-const caption = `Cases closed each night since ${closedLong(BOARD_START)}`;
+// Written as strings: the formatter drops a space before an expression in running text.
+const since = closedLong(BOARD_START);
+const caption = `Cases closed each night since ${since}`;
+const onBoard = `Cases closed since ${since} are on`;
 ---
 
 <Base
@@ -24,7 +27,7 @@ const caption = `Cases closed each night since ${closedLong(BOARD_START)}`;
     <h1>Open cases</h1>
     <p class="lede">{lines.slice(0, 2).join(" ")}</p>
     <p>
-        {lines.slice(2).join(" ")} Cases that have closed are on <a href="/">the board</a>.
+        {lines.slice(2).join(" ")} {onBoard} <a href="/">the board</a>.
     </p>
 
     <Panel>

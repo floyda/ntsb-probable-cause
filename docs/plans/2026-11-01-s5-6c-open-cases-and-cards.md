@@ -131,9 +131,9 @@ Decided here; each can change at the preview:
 
 ## Task 4: Preview (Controller)
 
-- [ ] **Step 1:** Rebuild the local live preview from this branch, with the live export. Send Andy the site card and two question cards as images.
-- [ ] **Step 2:** Andy reviews the Open cases page and the cards. Record his answers.
-- [ ] **Step 3:** Run one fresh review (Opus) and its fix pass; push.
+- [x] **Step 1:** Rebuild the local live preview from this branch, with the live export. Send Andy the site card and two question cards as images.
+- [x] **Step 2:** Andy reviews the Open cases page and the cards. Record his answers.
+- [x] **Step 3:** Run one fresh review (Opus) and its fix pass; push.
 
 ---
 
@@ -159,6 +159,18 @@ Decided here; each can change at the preview:
 - **Task 4 (2026-11-01), before Andy's review:**
   - **The Open cases page opens like the Path and Methods,** with the plain heading "Open cases" and a lede. The sign and the heading "Cases still under investigation" are gone: the sign sat outside the text column, and no other page's top has one. The two counts share the lede. The two sentences on coding at closure share a paragraph with the link to the board.
   - The table's caption read "since23 Sep 2026": the formatter drops a space before an expression in running text. The caption is now built as one string.
+- **Andy's review (2026-11-01):** the site card, two question cards and the Open cases page, from the 20 October live export: "Looks good". No change asked.
+- **The fresh review (Opus, 2026-11-01)** found no serious defect. Fixed:
+  - **Question 8's card could not fail the drift test.** Its reworded line was fixed in `lib/cards.ts`, so a new answer to question 8 left the old card in place. The rewording now names the answer it replaces, and the build stops when that answer changes. A test proves it stops.
+  - **Case and trail pages named their case in `og:title`** (for example "XXX26XX001 · Ellery"), which put one accident's number into social feeds against §11. Their shared title is now "One closed case · Ellery" or "One closed case: Ellery's trail · Ellery". A test finds no case number in any preview tag but `og:url`, which is the shared address itself. The browser tab's title is unchanged.
+  - **The 404 page's `og:url` named `/404/`,** an address that does not exist. It has no `og:url` now (`shareable={false}`), and a test checks this.
+  - **An export written without the recorder's store has zero counts** (S4's `board.py`), which the page would have stated as fact. `checkCounts` stops the build when the board has rows but no open case is watched, or when more open cases have a docket than are watched.
+  - **Card images now carry a version mark** (`?v=` and 8 hex characters of a hash of the card's words). Link-preview services keep a picture for weeks by its address, so a redrawn card gets a new address. The file name in S3 is unchanged.
+  - **Two sentences on the Open cases page were more than the counts support.** "Ellery codes each case once" becomes "Ellery runs once on each case", since some runs end not coded. "Cases that have closed are on the board" becomes "Cases closed since 23 Sep 2026 are on the board".
+- **Not changed, from the same review:**
+  - **Whether a link-preview service follows the zero-second refresh** cannot be checked before the site is public. If one did, it would show the site card for a question. This becomes a launch-day check: one forwarding address in LinkedIn's Post Inspector and Facebook's Sharing Debugger.
+  - **The PNG files are not tied to `cards.json` by a hash.** The script writes the JSON only after every card is drawn, and refuses a card whose words overflow. A hand edit of the JSON alone is the remaining gap, and it is accepted.
+  - **The table of closures each night grows by one row per night with a closure.** Grouping by week or month can come once it is long. The page's comment no longer says it is one screen long.
 
 ---
 

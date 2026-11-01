@@ -17,11 +17,27 @@ export interface Card {
 /** Where the committed cards live, under the site's public files. */
 export const CARD_DIR = "cards";
 
-/** Lines that read wrongly away from the first page, reworded for a card alone. */
-const AWAY: Record<string, string> = {
+/**
+ * Lines that read wrongly away from the first page, reworded for a card alone. Each names the
+ * line it replaces, so a change to that answer stops the build until the card is reworded too
+ * (review, 2026-11-01).
+ */
+export const AWAY: Record<string, { from: string; to: string }> = {
     // "The board above" has nothing above it on a card.
-    "newly-closed": "The live board answers this in public.",
+    "newly-closed": {
+        from: "The board above answers this in public.",
+        to: "The live board answers this in public.",
+    },
 };
+
+function lineFor(anchor: string, answer: string): string {
+    const away = AWAY[anchor];
+    if (away === undefined) return answer;
+    if (away.from !== answer) {
+        throw new Error(`cards: question ${anchor}'s answer changed; reword its card`);
+    }
+    return away.to;
+}
 
 function card(name: string, question: string, line: string): Card {
     return { name, question, line, alt: `Ellery. ${question} ${line}` };
@@ -32,9 +48,20 @@ export function cardWords(): Card[] {
     return [
         card("site", SITE_QUESTION, SITE_LINE),
         ...ROUTE_QUESTIONS.map((q) =>
-            card(`q-${q.anchor}`, q.question, AWAY[q.anchor] ?? q.answer),
+            card(`q-${q.anchor}`, q.question, lineFor(q.anchor, q.answer)),
         ),
     ];
+}
+
+/** A short mark of a card's words, added to its image's address so that link-preview services,
+ * which keep a picture for weeks, fetch a redrawn card afresh (review, 2026-11-01). */
+export function cardVersion(c: Card): string {
+    let h = 0x811c9dc5;
+    for (const ch of `${c.question}\n${c.line}`) {
+        h ^= ch.codePointAt(0) ?? 0;
+        h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, "0");
 }
 
 /** A card by name; the site card when none is given. */

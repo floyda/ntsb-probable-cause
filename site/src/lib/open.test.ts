@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Counts } from "./board-index-types";
-import { closureNights, openLines } from "./open";
+import { checkCounts, closureNights, openLines } from "./open";
 
 const counts = (over: Partial<Counts>): Counts => ({
     awaiting_ntsb: 0,
@@ -35,7 +35,7 @@ describe("the Open cases page's lines (S5 step 6c, Task 1)", () => {
     });
     it("always says when Ellery codes a case", () => {
         expect(openLines(counts({}))).toContain(
-            "Ellery codes each case once, when the NTSB closes it.",
+            "Ellery runs once on each case, when the NTSB closes it.",
         );
     });
 });
@@ -53,5 +53,26 @@ describe("the closures each night (S5 step 6c, Task 1)", () => {
     });
     it("is empty before the first closure", () => {
         expect(closureNights(counts({}))).toEqual([]);
+    });
+});
+
+describe("counts that cannot be true (review, 2026-11-01)", () => {
+    it("stops an export with closed cases but no open case watched", () => {
+        expect(() => {
+            checkCounts(counts({ open_watched: 0, open_with_docket: 0 }), 3);
+        }).toThrow(/watches no open case/);
+    });
+    it("stops more open cases with a docket than open cases", () => {
+        expect(() => {
+            checkCounts(counts({ open_watched: 2, open_with_docket: 3 }), 0);
+        }).toThrow(/more open cases with a docket/);
+    });
+    it("lets real counts through, and an empty board with nothing watched", () => {
+        expect(() => {
+            checkCounts(counts({}), 85);
+        }).not.toThrow();
+        expect(() => {
+            checkCounts(counts({ open_watched: 0, open_with_docket: 0 }), 0);
+        }).not.toThrow();
     });
 });

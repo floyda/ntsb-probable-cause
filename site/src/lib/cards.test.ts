@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cardFor, cardWords, CARD_DIR } from "./cards";
+import { AWAY, cardFor, cardVersion, cardWords, CARD_DIR } from "./cards";
 import { ROUTE_QUESTIONS } from "./route";
 import { SITE_LINE, SITE_QUESTION } from "./site";
 
@@ -40,6 +40,24 @@ describe("the cards' words (S5 step 6c, Task 2)", () => {
             expect(c.alt).toContain(c.question);
             expect(c.alt).toContain(c.line);
         }
+    });
+    it("stops when an answer a card rewords has changed", () => {
+        const away = AWAY["newly-closed"];
+        expect(away?.from).toBe(ROUTE_QUESTIONS.find((q) => q.anchor === "newly-closed")?.answer);
+        if (away === undefined) return;
+        const was = away.from;
+        away.from = "Something else.";
+        try {
+            expect(() => cardWords()).toThrow(/answer changed/);
+        } finally {
+            away.from = was;
+        }
+    });
+    it("marks each card's words with a version that changes with them", () => {
+        const c = cardFor();
+        expect(cardVersion(c)).toMatch(/^[0-9a-f]{8}$/);
+        expect(cardVersion({ ...c, line: `${c.line}!` })).not.toBe(cardVersion(c));
+        expect(new Set(cardWords().map(cardVersion)).size).toBe(cardWords().length);
     });
     it("refuses a card that does not exist", () => {
         expect(() => cardFor("q-nowhere")).toThrow(/no card named/);

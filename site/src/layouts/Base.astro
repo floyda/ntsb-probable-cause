@@ -6,7 +6,7 @@ import "../styles/tokens.css";
 import SiteFooter from "../components/SiteFooter.astro";
 import Rail from "../components/Rail.astro";
 import SiteHeader from "../components/SiteHeader.astro";
-import { cardFor, CARD_DIR } from "../lib/cards";
+import { cardFor, cardVersion, CARD_DIR } from "../lib/cards";
 import type { PageId, Place } from "../lib/site";
 
 interface Props {
@@ -20,16 +20,31 @@ interface Props {
     card?: string;
     /** Where a forwarding page sends the reader at once (S5 step 6c): a Path question's stop. */
     forward?: string;
+    /** The title a shared link shows, when it must differ from the page's own: a case page's
+     * names its accident, which stays out of social feeds (§11; review, 2026-11-01). */
+    shareTitle?: string;
+    /** False on a page with no address of its own to share, such as the 404 page. */
+    shareable?: boolean;
 }
 
-const { title, description, current, places, card = "site", forward } = Astro.props;
+const {
+    title,
+    description,
+    current,
+    places,
+    card = "site",
+    forward,
+    shareTitle,
+    shareable = true,
+} = Astro.props;
 // The preview tags (S5 step 6c, Task 3). Link-preview services need absolute addresses, from
 // the site's own address in astro.config.mjs. A question's card is titled with its question.
 const site = Astro.site ?? new URL("https://ellery.demo.floyda.dev");
 const shared = cardFor(card);
-const sharedTitle = card === "site" ? title : shared.question;
+const sharedTitle = card === "site" ? (shareTitle ?? title) : shared.question;
 const pageUrl = new URL(Astro.url.pathname, site).href;
-const imageUrl = new URL(`/${CARD_DIR}/${shared.name}.png`, site).href;
+// The version mark changes with the card's words, so a redrawn card is fetched afresh.
+const imageUrl = new URL(`/${CARD_DIR}/${shared.name}.png?v=${cardVersion(shared)}`, site).href;
 ---
 
 <!doctype html>
@@ -48,7 +63,7 @@ const imageUrl = new URL(`/${CARD_DIR}/${shared.name}.png`, site).href;
         <meta property="og:type" content="website" />
         <meta property="og:title" content={sharedTitle} />
         <meta property="og:description" content={description} />
-        <meta property="og:url" content={pageUrl} />
+        {shareable && <meta property="og:url" content={pageUrl} />}
         <meta property="og:image" content={imageUrl} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
