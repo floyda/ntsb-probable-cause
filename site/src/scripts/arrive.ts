@@ -60,7 +60,9 @@ if (!reduce.matches) {
                 window.innerHeight,
                 frame?.getBoundingClientRect().bottom ?? window.innerHeight,
             );
-            if (unit.getBoundingClientRect().top >= bottom) {
+            // A row out of the table (open-row.ts holds the older ones until the button shows
+            // them) waits too, so it ticks into place when it is shown and scrolled to.
+            if (!unit.isConnected || unit.getBoundingClientRect().top >= bottom) {
                 unit.setAttribute("data-arrive", "wait");
                 (row ? rows : arrive).observe(unit);
             }

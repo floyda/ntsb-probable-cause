@@ -70,24 +70,29 @@ for (const board of document.querySelectorAll<HTMLElement>(".board")) {
     const body = board.querySelector("tbody");
     if (more === null || body === null) continue;
     const rows = [...body.rows];
-    // The newest rows stay; the rest wait outside the table, in order.
-    const cap = (): void => {
-        const n = shownFirst();
-        for (const [i, row] of rows.entries()) {
-            if (i < n) {
-                if (!row.isConnected) body.append(row);
-            } else row.remove();
+    // The newest rows stay; the rest wait outside the table, in order, so the rows on show are
+    // always the first ones. Once every row is on show there is nothing for the button to do.
+    const show = (n: number): void => {
+        for (const row of rows.slice(0, n)) if (!row.isConnected) body.append(row);
+        if (body.rows.length === rows.length) {
+            delete board.dataset["capped"];
+            PHONE.removeEventListener("change", widen);
         }
     };
-    cap();
+    // A change of width only ever adds rows: narrowing after load (a turned tablet, a zoom to
+    // 200%) would otherwise take away the rows being read, and the focus with them (review,
+    // 2026-10-30).
+    const widen = (): void => {
+        show(shownFirst());
+    };
+    for (const row of rows.slice(shownFirst())) row.remove();
     board.dataset["capped"] = "";
-    PHONE.addEventListener("change", cap);
+    PHONE.addEventListener("change", widen);
+    show(shownFirst());
     more.addEventListener("click", () => {
-        const n = shownFirst();
-        PHONE.removeEventListener("change", cap);
-        for (const row of rows) if (!row.isConnected) body.append(row);
-        delete board.dataset["capped"];
-        rows[n]?.querySelector<HTMLAnchorElement>("a[data-case]")?.focus();
+        const first = body.rows.length;
+        show(rows.length);
+        rows[first]?.querySelector<HTMLAnchorElement>("a[data-case]")?.focus();
     });
 }
 

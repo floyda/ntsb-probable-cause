@@ -105,8 +105,9 @@ const places = [
 </Base>
 
 <script>
-    import "../scripts/open-row.ts";
+    // arrive.ts first: it must see every board row before open-row.ts takes the older ones out.
     import "../scripts/arrive.ts";
+    import "../scripts/open-row.ts";
 </script>
 
 <style>

@@ -24,9 +24,9 @@ const { index } = Astro.props;
 const anyBackfilled = index.rows.some((r) => r.backfilled === true);
 const launched = index.stamp.launched_on;
 // With the script, the board first shows its newest rows: 5 on a phone, 20 in the wider window;
-// a button shows the rest (Andy, 2026-10-22). board.css holds the same two numbers.
+// a button shows the rest (Andy, 2026-10-22). scripts/open-row.ts holds the same two numbers and
+// takes the button away when every row is on show.
 const PHONE_ROWS = 5;
-const WIDE_ROWS = 20;
 const total = index.rows.length;
 
 function agentCell(row: BoardRow): string {
@@ -104,11 +104,7 @@ function ntsbCell(row: BoardRow): string {
         </table>
     </div>
     {total > PHONE_ROWS && (
-        <button
-            type="button"
-            class:list={["board-more", { few: total <= WIDE_ROWS }]}
-            aria-controls="board-rows"
-        >
+        <button type="button" class="board-more" aria-controls="board-rows">
             Show all {total} closed cases
         </button>
     )}

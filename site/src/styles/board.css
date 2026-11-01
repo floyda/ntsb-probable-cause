@@ -114,7 +114,7 @@
    2026-10-22; scripts/open-row.ts takes the older rows out of the table): 20 in the wider
    window, 5 on a phone, where the rows sit in the page with no window of their own, so a swipe
    over the board scrolls the page. Without the script every row shows and the button does not.
-   Board.astro holds the same two numbers. */
+   The script takes the button away once every row is on show. */
 .board:not([data-capped]) .board-more {
     display: none;
 }
@@ -134,12 +134,6 @@
 .board-more:focus-visible {
     outline: 2px solid var(--ink);
     outline-offset: 2px;
-}
-
-@media (min-width: 641px) {
-    .board-more.few {
-        display: none;
-    }
 }
 
 /* The phone keeps Closed, Aircraft and Result (spec §4). */

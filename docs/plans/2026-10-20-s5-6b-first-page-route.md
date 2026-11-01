@@ -132,9 +132,9 @@ Decided here; each can change at the preview:
 
 ## Task 4: Preview (Controller)
 
-- [ ] **Step 1:** Rebuild the local live preview and the private phone link from this branch, with the live export.
-- [ ] **Step 2:** Andy reviews on his phone. Record his answers.
-- [ ] **Step 3:** Run one fresh review (Opus) and its fix pass; push.
+- [x] **Step 1:** Rebuild the local live preview and the private phone link from this branch, with the live export.
+- [x] **Step 2:** Andy reviews on his phone. Record his answers.
+- [x] **Step 3:** Run one fresh review (Opus) and its fix pass; push.
 
 ---
 
@@ -181,6 +181,15 @@ Decided here; each can change at the preview:
     - The board region is named apart from its stop ("newest first"); "Took" never wraps; the phone board fits 375px; a short page keeps its footer at the foot of the screen; Methods carries the name line (§12 item 15); the glossary explains the code names' short forms; Path question 3 says S2.4 left failed cases out.
     - The board first shows its newest rows, 20 in the wide window and 5 on a phone, which has no window; a button shows the rest (Andy, 2026-10-22; spec §4 note). The phone keeps its three columns (Andy).
     - Not changed: question 1's example keeps the NTSB's labels word for word, separators included; the slashed zero is the reading face's own (Atkinson Hyperlegible, chosen for legibility).
+  - **The board takes its older rows out of the table, not hides them (Andy, 2026-10-22, `5edb2b5`).** Safari kept the space of rows hidden by a style, so the phone's board scrolled over empty space below its five rows.
+- **Task 4 (2026-10-30):**
+  - **Steps 1 and 2 were done during the preview of 21 and 22 October,** recorded above. The phone link (updated 22 October) uses the same scripts and styles as this branch at `5edb2b5` built from the live export, checked file by file.
+  - **The fresh review of step 3 was Fable's, on 21 October** (above), not Opus's. The two commits after it (`52548b7`, `5edb2b5`) had one more fresh review (Opus, 2026-10-30), which found no bug in normal use and three edge cases, all fixed:
+    - A page narrowing to a phone's width after load (a turned tablet, a zoom to 200%) took rows 6 to 20 out of the table, with the reader's focus. A change of width now only adds rows.
+    - Rows the button showed never ticked into place: `open-row.ts` took them out before `arrive.ts` listed its rows. `arrive.ts` now runs first, and a row out of the table waits until it is shown and scrolled to.
+    - At a fractional width between the two breakpoints (640.5px under zoom), a board of 6 to 20 cases showed a button with nothing to show. The script now takes the button away once every row is on show, so the `.few` class and its breakpoint are gone.
+    - Two Playwright tests cover the first two; the third has no test, because a test browser's width is a whole number.
+  - The phone link is not rebuilt for these fixes: the live export it uses dates from 20 October, and the fixes touch only edge cases; the next preview rebuilds it.
 
 ## Glossary
 

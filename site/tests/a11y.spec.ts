@@ -367,6 +367,41 @@ test("a phone shows the five newest rows, and the button shows the rest", async 
     await expect(more).toBeHidden();
 });
 
+// A board that narrows to a phone's width after load (a turned tablet, or a zoom to 200%) keeps
+// the rows it shows and the reader's focus; a change of width only ever adds rows (review,
+// 2026-10-30).
+test("narrowing the page takes no row away and keeps focus", async ({ page }, info) => {
+    test.skip(info.project.name === "phone", "starts wide");
+    await page.goto("/");
+    const rows = page.locator(".board tbody tr");
+    const shown = await rows.count();
+    test.skip(shown <= 5, "too few rows to cap");
+    const last = rows.last().locator("a[data-case]");
+    await last.focus();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(rows).toHaveCount(shown);
+    await expect(last).toBeFocused();
+    // Every row is on show, so there is nothing for the button to show.
+    await expect(page.locator(".board-more")).toBeHidden();
+});
+
+// Rows the button shows tick into place like the rest, once the reader has scrolled (review,
+// 2026-10-30): arrive.ts sees every row before open-row.ts takes the older ones out.
+test("rows shown by the button arrive like the others", async ({ page }, info) => {
+    test.skip(info.project.name !== "phone", "the phone's cap");
+    await page.goto("/");
+    const more = page.locator(".board-more");
+    test.skip((await more.count()) === 0, "too few rows to cap");
+    await page.mouse.wheel(0, 50);
+    await page.waitForTimeout(100);
+    await more.click();
+    const rows = page.locator(".board tbody tr");
+    const last = rows.last();
+    await last.scrollIntoViewIfNeeded();
+    await expect(last).toHaveAttribute("data-arrive", "arrived");
+    await expect(rows.nth(5)).toHaveAttribute("data-arrive", "arrived");
+});
+
 test.describe("the capped board with scripts off", () => {
     test.use({ javaScriptEnabled: false });
     test("shows every row and no button", async ({ page }) => {

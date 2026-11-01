@@ -202,6 +202,7 @@ opened case stays within reach.
 - **The board first shows its newest rows:** 20 in the window on a wide screen, 5 on a phone. A button under it, "Show all 85 closed cases" (the count from the export), shows the rest and moves focus to the first row it showed. The totals line still counts every case.
 - **A phone has no window.** Its five rows sit in the page, so a swipe over the board scrolls the page. The review found the window caught the swipe on a touch screen and left most rows blank after a fast flick.
 - **With scripts off,** every row shows and the button does not.
+- **A change of width only adds rows** (review, 2026-10-30). A page that narrows after load, such as a turned tablet or a zoom to 200%, keeps the rows on show and the reader's focus. The button goes once every row is on show, and rows it shows tick into place like the rest.
 - **The phone keeps Closed, Aircraft and Result.** Andy kept these over the two first codes, which the review proposed.
 
 A line under the board says that the NTSB's own coding is not fully consistent, and links to
