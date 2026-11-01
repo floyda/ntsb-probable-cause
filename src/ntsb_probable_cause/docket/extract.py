@@ -2,6 +2,8 @@
 
 import io
 from collections.abc import Mapping
+from pathlib import Path
+from typing import BinaryIO
 
 from pydantic import BaseModel, ConfigDict
 from pypdf import PdfReader
@@ -28,17 +30,29 @@ class ExtractedDocument(BaseModel):
 
 
 def extract_pdf(
-    data: bytes, *, readings: Mapping[int, Transcription] | None = None
+    data: bytes | Path, *, readings: Mapping[int, Transcription] | None = None
 ) -> ExtractedDocument:
     """Extract every page; a page that fails counts 0 characters; a non-PDF raises.
+
+    ``data`` is the document's bytes or a file holding them; the result is the same either way.
+    A file is read through an open handle, which pypdf reads as it goes: handed a path or the
+    bytes, it holds the whole document in memory, which a 1.1 GB scan did not fit (decision
+    0217).
 
     With ``readings`` (evidence version v2, by 1-based page number): an image-only page reads
     as its transcription under ``TRANSCRIBED_MARKER``; a mixed page keeps its text layer and
     adds the words in its images under ``IMAGE_WORDS_HEADING``; a failed or empty reading
     leaves the page as S2 read it. With ``readings=None`` the output is S2's, byte for byte.
     """
+    if isinstance(data, Path):
+        with data.open("rb") as handle:
+            return _extract(handle, readings)
+    return _extract(io.BytesIO(data), readings)
+
+
+def _extract(stream: BinaryIO, readings: Mapping[int, Transcription] | None) -> ExtractedDocument:
     try:
-        reader = PdfReader(io.BytesIO(data))
+        reader = PdfReader(stream)
         pages = list(reader.pages)
     except Exception as error:  # a readable PDF or not: no exception escapes this boundary
         raise DocketError(f"not a PDF: {error}") from error

@@ -2,6 +2,7 @@
 
 import io
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
 import pytest
@@ -154,3 +155,19 @@ def test_a_reading_with_no_words_leaves_the_page_as_s2_read_it() -> None:
     assert result.text == extract_pdf(DOC).text
     assert result.transcribed_pages == 0
     assert result.transcription_failed == 0
+
+
+def test_a_file_extracts_exactly_as_its_bytes_do(tmp_path: Path) -> None:
+    """Decision 0217: reading from an open file changes the memory used, never the text."""
+    path = tmp_path / "doc.bin"
+    path.write_bytes(DOC)
+    assert extract_pdf(path) == extract_pdf(DOC)
+    readings = {2: _reading(2, "Engine sputtered at 800 ft.")}
+    assert extract_pdf(path, readings=readings) == extract_pdf(DOC, readings=readings)
+
+
+def test_a_file_that_is_not_a_pdf_raises(tmp_path: Path) -> None:
+    path = tmp_path / "page.bin"
+    path.write_bytes(b"<html>not a pdf</html>")
+    with pytest.raises(DocketError, match="not a PDF"):
+        extract_pdf(path)
