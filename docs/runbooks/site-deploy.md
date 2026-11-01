@@ -2,8 +2,8 @@
 
 *Read this before you start.* It takes the three stacks in `infra/site_stacks.py` (S5 step 1,
 spec §18) from nothing to `https://ellery.demo.floyda.dev` showing the holding line, rebuilt by
-**CodeBuild**. Until you decide to launch (spec §20), the only thing the build can publish is
-the holding line: `site/scripts/publish.sh` refuses every other mode.
+**CodeBuild**. Until you decide to launch (spec §20), the only thing the build publishes is
+the holding line. Stage 8 is the launch: one deploy with `-c site_mode=site`, which only you run.
 
 Every term in **bold** the first time it appears is in the glossary at the end. A picture of every part and how they connect is in [`site-aws-map.html`](site-aws-map.html)
 (open it in a browser). Commands use
@@ -129,7 +129,9 @@ uv run cdk deploy NtsbSiteStack \
 
 - **Pass the same `-c` values on every deploy of `NtsbSiteStack`.** A deploy without
   `alert_email` removes the email subscription; one without `live_bucket_name` removes the rule
-  on S4's export; one without `github_connection_arn` removes the push webhook. The zone and certificate stacks do not depend on them.
+  on S4's export; one without `github_connection_arn` removes the push webhook. After the
+  launch (Stage 8), one without `site_mode=site` puts the holding line back at the next build.
+  The zone and certificate stacks do not depend on them.
 - After S5 merges, use `-c site_source_branch=main`.
 - After S4's live stack is deployed, add `-c live_bucket_name=<S4's LiveBucketName output>`.
   Without it the stack has no rule on S4's bucket and no access to it.
@@ -158,6 +160,58 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://ellery.demo.floyda.dev/nothing
 
 The first shows `HTTP/2 200` with `strict-transport-security` and `content-security-policy`
 lines; the second prints `404`.
+
+## Stage 8 — Launch (your decision)
+
+Launch is yours to decide (spec §20). Claude reports when its conditions are met: S4's nights are
+running, every check passes, and you have made your phone and screen-reader pass. This stage
+changes nothing until you run it.
+
+The switch is the build's `SITE_MODE`, set only by a deploy. In `site` mode each build:
+
+1. copies `export/board-1/` from S4's bucket;
+2. stops unless the export is whole: the finished mark's `built_at` must equal `index.json`'s;
+3. installs the site's packages from the lockfile and builds the site from that export, which
+   stops on any fault in the export, the counts or the claims;
+4. checks the built pages: respect, links, preview tags;
+5. only then publishes, in the same order as the holding line.
+
+If any step fails, nothing is published, yesterday's page stays, and you get the failure email.
+A build takes about 2 to 3 minutes (estimate; on the Mac the build and the page checks take
+about 5 seconds, so most of it is CodeBuild starting and installing packages).
+
+```bash
+uv run cdk deploy NtsbSiteStack \
+  -c alert_email=<your address> \
+  -c site_source_branch=main \
+  -c github_connection_arn=<the ARN from Stage 5> \
+  -c live_bucket_name=<S4's LiveBucketName output> \
+  -c site_mode=site \
+  --profile ntsb
+```
+
+`site_mode=site` without `live_bucket_name` is refused before anything is deployed. Then start
+a build as in Stage 7 rather than waiting for the next morning's export, and check from the Mac:
+
+```bash
+curl -sS https://ellery.demo.floyda.dev/ | grep -c 'Coming soon'
+curl -sSI https://ellery.demo.floyda.dev/open/ | head -1
+curl -sS -o /dev/null -w '%{http_code}\n' https://ellery.demo.floyda.dev/cards/site.png
+```
+
+The first prints `0`, the second `HTTP/2 200`, the third `200`. Then on your phone: the board,
+one case, its trail, the Path, Methods and Open cases.
+
+**Preview cards.** Paste `https://ellery.demo.floyda.dev/` and one question's address, such as
+`https://ellery.demo.floyda.dev/path/choosing/`, into
+[LinkedIn's Post Inspector](https://www.linkedin.com/post-inspector/) and the
+[Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/). Each should show its
+own card: the site card for the first, the question's card for the second. If the question shows
+the site card, the service followed the page's instant redirect; say so in the session.
+
+**Going back to the holding line.** Deploy again without `-c site_mode=site` (or with
+`-c site_mode=holding`), then start a build. The site's files are replaced by the holding page;
+the bucket keeps the old versions for 30 days.
 
 ## What it costs
 
@@ -194,9 +248,13 @@ Newest first. The bucket is kept on delete (`RETAIN`); empty and delete it by ha
   `site/scripts/publish.sh`, and copies the result to the site's bucket.
 - **Flat-rate Free plan**: a CloudFront pricing plan at $0 a month with a usage allowance and no
   overage charges. It needs a web ACL on the distribution.
+- **Finished mark**: `export/board-1/_finished.json`, which S4 writes last each night, so a
+  build can tell a whole export from one cut short.
 - **Holding line**: the one-line page the address shows until you decide to launch.
 - **Name server (NS) record**: the record in `floyda.dev` that hands the `demo` subdomain to
   the zone in the project account.
+- **Site mode**: the build's `SITE_MODE`, `holding` or `site`, set only by a `cdk deploy`
+  (`-c site_mode=…`); a push to the repository cannot change it.
 - **Personal account**: your AWS account that holds `floyda.dev`, separate from the project
   account.
 - **Web ACL**: an AWS WAF rule set attached to the distribution. Here it allows everything except

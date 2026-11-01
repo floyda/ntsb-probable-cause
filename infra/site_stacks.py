@@ -46,6 +46,7 @@ ZONE_NAME = "demo.floyda.dev"
 SITE_DOMAIN = "ellery.demo.floyda.dev"
 EXPORT_PREFIX = "export/board-1/"
 FINISHED_KEY = "export/board-1/_finished.json"
+SITE_MODES = ("holding", "site")
 
 # Requests one address may make in 5 minutes before WAF blocks it. A visit is roughly 10 to 20
 # requests (estimate, spec §18.3), so 600 is about 30 visits in 5 minutes. Blocked requests never
@@ -144,8 +145,15 @@ class NtsbSiteStack(Stack):
         alert_email: str | None,
         live_bucket_name: str | None,
         github_connection_arn: str | None = None,
+        site_mode: str = "holding",
     ) -> None:
         super().__init__(scope, construct_id, env=env, cross_region_references=True)
+        # What the build publishes (publish.sh): the holding line until Andy's own deploy says
+        # `site` (spec §20). The site is built from S4's export, so `site` needs its bucket.
+        if site_mode not in SITE_MODES:
+            raise ValueError(f"site_mode must be one of {', '.join(SITE_MODES)}, not {site_mode!r}")
+        if site_mode == "site" and live_bucket_name is None:
+            raise ValueError("site_mode 'site' needs live_bucket_name: the site is built from it")
 
         # The site's files: private, versioned. A few megabytes, inside the flat-rate plan's
         # 5 GB S3 credit: about $0.
@@ -286,10 +294,15 @@ class NtsbSiteStack(Stack):
                 build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
                 compute_type=codebuild.ComputeType.SMALL,
                 environment_variables={
-                    "SITE_MODE": codebuild.BuildEnvironmentVariable(value="holding"),
+                    "SITE_MODE": codebuild.BuildEnvironmentVariable(value=site_mode),
                     "SITE_BUCKET": codebuild.BuildEnvironmentVariable(value=bucket.bucket_name),
                     "DISTRIBUTION_ID": codebuild.BuildEnvironmentVariable(
                         value=distribution.distribution_id
+                    ),
+                    **(
+                        {"LIVE_BUCKET": codebuild.BuildEnvironmentVariable(value=live_bucket_name)}
+                        if live_bucket_name is not None
+                        else {}
                     ),
                 },
             ),
@@ -297,7 +310,19 @@ class NtsbSiteStack(Stack):
             build_spec=codebuild.BuildSpec.from_object(
                 {
                     "version": "0.2",
-                    "phases": {"build": {"commands": ["bash site/scripts/publish.sh"]}},
+                    "phases": {
+                        # Node 24, as site/.node-version names (CodeBuild's runtime list, read
+                        # 2026-11-01: standard:7.0 offers 22, 24 and 26), and the exact pnpm that
+                        # site/package.json's packageManager names.
+                        "install": {
+                            "runtime-versions": {"nodejs": 24},
+                            "commands": [
+                                "npm install --global --ignore-scripts "
+                                '"$(node -p "require(\'./site/package.json\').packageManager")"'
+                            ],
+                        },
+                        "build": {"commands": ["bash site/scripts/publish.sh"]},
+                    },
                 }
             ),
         )

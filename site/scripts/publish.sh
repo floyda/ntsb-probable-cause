@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Publishes the site to its bucket and clears CloudFront's copies (S5 spec §18.1, §19.1).
-# Run by CodeBuild from the repository root. Step 1 has one mode, `holding`, which publishes
-# site/holding/ only: launch is Andy's decision (spec §20), and a later plan adds the site
-# mode behind a switch only his deploy can turn.
+# Run by CodeBuild from the repository root. The mode is the build's SITE_MODE, which only a
+# `cdk deploy` sets (`site_mode` in infra/app.py), because launch is Andy's decision (spec §20):
+# - `holding` publishes site/holding/, the holding line;
+# - `site` copies S4's export, checks it is whole, builds the site from it, checks the built
+#   pages, and publishes site/dist/.
+# Any failure stops the script before the first upload, so yesterday's site stays.
 set -euo pipefail
 
 : "${SITE_BUCKET:?SITE_BUCKET is not set}"
@@ -10,8 +13,29 @@ set -euo pipefail
 
 case "${SITE_MODE:-}" in
   holding) out="site/holding" ;;
+  site)
+    : "${LIVE_BUCKET:?LIVE_BUCKET is not set}"
+    export_dir="$(mktemp -d)/board-1"
+    # The night's export, into a fresh folder (spec §22). Case files S4 could not delete come
+    # too; the build reads only those index.json lists.
+    aws s3 sync "s3://${LIVE_BUCKET}/export/board-1/" "$export_dir" --only-show-errors
+    (
+      cd site
+      # Whole only when the finished mark's built_at equals index.json's (spec §22).
+      node scripts/check-finished.ts "$export_dir"
+      # From the lockfile, under the supply-chain settings in pnpm-workspace.yaml (spec §17.2).
+      pnpm install --frozen-lockfile
+      rm -rf dist
+      # The build checks the export against board/1, the counts and the claims, and stops on
+      # any fault; the page checks then cover respect (§11), links and the preview tags. The
+      # browser checks run on every pull request, not here (plan 2026-11-01, choice 1).
+      BOARD_EXPORT_DIR="$export_dir" pnpm run build
+      BOARD_EXPORT_DIR="$export_dir" pnpm exec vitest run tests/dist.test.ts
+    )
+    out="site/dist"
+    ;;
   *)
-    echo "publish.sh: mode '${SITE_MODE:-}' is not allowed in step 1; only 'holding'" >&2
+    echo "publish.sh: mode '${SITE_MODE:-}' is not allowed; only 'holding' or 'site'" >&2
     exit 2
     ;;
 esac

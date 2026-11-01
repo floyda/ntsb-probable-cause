@@ -15,9 +15,17 @@ export class ExportError extends Error {}
 const REPO = resolve(process.cwd(), "..");
 const SCHEMA_PATH = join(REPO, "docs/schemas/board-1.schema.json");
 
+const SAMPLE = join(REPO, "tests/fixtures/board");
+
 /** The export to build from: `BOARD_EXPORT_DIR`, else S4's invented sample. */
 export function exportDir(): string {
-    return resolve(process.env["BOARD_EXPORT_DIR"] ?? join(REPO, "tests/fixtures/board"));
+    return resolve(process.env["BOARD_EXPORT_DIR"] ?? SAMPLE);
+}
+
+/** True when the build reads S4's invented sample, which tests may name cases from; false on a
+ * real export, which the morning build checks with the same tests (publish mode, Task 2). */
+export function onSample(): boolean {
+    return exportDir() === resolve(SAMPLE);
 }
 
 type Json = Record<string, unknown>;

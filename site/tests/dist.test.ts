@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { exampleCase } from "../src/lib/example-case";
-import { exportDir, loadExport } from "../src/lib/export";
+import { exportDir, loadExport, onSample } from "../src/lib/export";
 import { findingParts, findingRows } from "../src/lib/findings";
 import { LADDER } from "../src/lib/ladder";
 import { anchorFor, shown } from "../src/lib/methods";
@@ -62,7 +62,10 @@ function builtFileFor(href: string): string {
     return last.includes(".") ? join(DIST, path) : join(DIST, path, "index.html");
 }
 
-describe.skipIf(!built)("the opened case says only what is known (review, 2026-10-13)", () => {
+// These name cases of the sample, so a real export skips them (the morning build, publish mode).
+const onSampleOnly = describe.skipIf(!built || !onSample());
+
+onSampleOnly("the opened case says only what is known (review, 2026-10-13)", () => {
     const { cases } = loadExport(exportDir());
     const page = (n: string): string =>
         visibleText(readFileSync(join(DIST, "case", n, "index.html"), "utf8"));

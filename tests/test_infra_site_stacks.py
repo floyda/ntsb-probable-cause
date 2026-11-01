@@ -44,6 +44,7 @@ def _templates(
     live_bucket_name: str | None,
     alert_email: str | None = "alerts@example.invalid",
     github_connection_arn: str | None = _CONNECTION,
+    site_mode: str = "holding",
 ) -> dict[str, Template]:
     app = cdk.App()
     edge_env = cdk.Environment(account=_ACCOUNT, region="us-east-1")
@@ -60,6 +61,7 @@ def _templates(
         alert_email=alert_email,
         live_bucket_name=live_bucket_name,
         github_connection_arn=github_connection_arn,
+        site_mode=site_mode,
     )
     return {
         "dns": Template.from_stack(dns),
@@ -214,6 +216,56 @@ def test_build_runs_publish_in_holding_mode_from_the_given_branch(
     variables = {v["Name"]: v["Value"] for v in props["Environment"]["EnvironmentVariables"]}
     assert variables["SITE_MODE"] == "holding"
     assert "bash site/scripts/publish.sh" in props["Source"]["BuildSpec"]
+
+
+def _build_variables(tpl: Template) -> dict[str, str]:
+    project = next(iter(tpl.find_resources("AWS::CodeBuild::Project").values()))
+    return {
+        v["Name"]: v["Value"] for v in project["Properties"]["Environment"]["EnvironmentVariables"]
+    }
+
+
+def test_site_mode_is_turned_only_by_the_deploy_and_names_s4s_bucket() -> None:
+    # Plan 2026-11-01, Task 4: launch is Andy's decision (spec §20), so only his deploy's
+    # `-c site_mode=site` turns it; a push changes the code, never the project's variables.
+    variables = _build_variables(
+        _templates(live_bucket_name=_LIVE_BUCKET, site_mode="site")["site"]
+    )
+    assert variables["SITE_MODE"] == "site"
+    assert variables["LIVE_BUCKET"] == _LIVE_BUCKET
+
+
+def test_holding_is_the_default_and_names_no_bucket_without_one(
+    stacks_without_export: dict[str, Template],
+) -> None:
+    assert "LIVE_BUCKET" not in _build_variables(stacks_without_export["site"])
+    assert _app_site_variables({})["SITE_MODE"] == "holding"
+    assert (
+        _app_site_variables({"site_mode": "site", "live_bucket_name": "b"})["SITE_MODE"] == "site"
+    )
+
+
+def test_site_mode_without_s4s_bucket_is_refused() -> None:
+    with pytest.raises(ValueError, match="needs live_bucket_name"):
+        _templates(live_bucket_name=None, site_mode="site")
+
+
+@pytest.mark.parametrize("mode", ["launch", "Site", ""])
+def test_an_unknown_site_mode_is_refused(mode: str) -> None:
+    with pytest.raises(ValueError, match="site_mode must be one of"):
+        _templates(live_bucket_name=_LIVE_BUCKET, site_mode=mode)
+
+
+def test_build_has_node_24_and_the_pinned_pnpm(stacks: dict[str, Template]) -> None:
+    project = next(iter(stacks["site"].find_resources("AWS::CodeBuild::Project").values()))
+    spec = json.loads(project["Properties"]["Source"]["BuildSpec"])
+    install = spec["phases"]["install"]
+    node_version = (_INFRA.parent / "site/.node-version").read_text().strip()
+    assert install["runtime-versions"] == {"nodejs": int(node_version)}
+    (command,) = install["commands"]
+    # The version is site/package.json's packageManager, read at build time, never a copy.
+    assert "require('./site/package.json').packageManager" in command
+    assert "--ignore-scripts" in command
 
 
 def test_merge_to_the_branch_starts_a_build(stacks: dict[str, Template]) -> None:
@@ -449,6 +501,14 @@ def _app_stacks(context: dict[str, str]) -> dict[str, Mapping[str, Any]]:
         stack.stack_name: Template.from_stack(stack).to_json()
         for stack in app.node.children
         if isinstance(stack, cdk.Stack)
+    }
+
+
+def _app_site_variables(context: dict[str, str]) -> dict[str, str]:
+    site = _app_stacks(context)["NtsbSiteStack"]
+    (project,) = [r for r in site["Resources"].values() if r["Type"] == "AWS::CodeBuild::Project"]
+    return {
+        v["Name"]: v["Value"] for v in project["Properties"]["Environment"]["EnvironmentVariables"]
     }
 
 

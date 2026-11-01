@@ -60,9 +60,10 @@ def add_site_stacks(app: cdk.App) -> None:
     stacks are always built, whatever context is given, so each keeps one shape: a stack that
     appeared only with `alert_email` once changed what the us-east-1 stacks export (review,
     2026-10-12). Context, never committed: `alert_email` (the build-failure email; without it
-    the topic has no subscription), `site_source_branch` (default `main`) and
-    `live_bucket_name` (S4's bucket; without it nothing reads S4's export) and
-    `github_connection_arn` (runbook Stage 5; without it a push starts no build).
+    the topic has no subscription), `site_source_branch` (default `main`),
+    `live_bucket_name` (S4's bucket; without it nothing reads S4's export),
+    `github_connection_arn` (runbook Stage 5; without it a push starts no build) and
+    `site_mode` (`holding` unless Andy's launch deploy passes `site`, spec §20; runbook Stage 8).
     """
     edge_env = cdk.Environment(region="us-east-1")
     dns = NtsbSiteDnsStack(app, "NtsbSiteDnsStack", env=edge_env)
@@ -78,6 +79,7 @@ def add_site_stacks(app: cdk.App) -> None:
         alert_email=app.node.try_get_context("alert_email"),
         live_bucket_name=app.node.try_get_context("live_bucket_name"),
         github_connection_arn=app.node.try_get_context("github_connection_arn"),
+        site_mode=app.node.try_get_context("site_mode") or "holding",
     )
 
 
