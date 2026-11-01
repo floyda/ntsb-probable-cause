@@ -48,8 +48,9 @@ finished mark).
    dark and phone, 645 tests) took 1.8 minutes on about 4.7 cores; 637 passed, 2 failed on a test
    written for the sample's size, 6 skipped. On CodeBuild's smallest machine (2 cores) that is
    perhaps 5 to 7 minutes, plus downloading a browser each morning. A month of mornings would pass
-   CodeBuild's 100 free minutes (§18.3), and the browser download is a third-party fetch on every
-   publish. The browser checks test the site's code, which changes only through a pull request,
+   CodeBuild's 100 free minutes (§18.3). (The packages are fetched from the npm registry on every
+   build either way, from the lockfile; a browser would add a second download, from Playwright's
+   own servers.) The browser checks test the site's code, which changes only through a pull request,
    where CI runs them. What changes each morning is the data, and the page checks cover what data
    can break: the respect scan (§11), links, every case page belonging to a board row, and the
    preview tags. Spec §19.2 already lists the browser checks under "on every pull request".
@@ -97,7 +98,7 @@ finished mark).
 
 - [x] `make check`, the site's checks, a dry run of site mode against the 20 October export with
   a fake `aws` that only records the upload.
-- [ ] A fresh review; its points fixed or logged here.
+- [x] A fresh review; its points fixed or logged here.
 
 ## Deviations
 
@@ -118,3 +119,37 @@ finished mark).
   exit 0, page checks 2,246 passed and 5 skipped, the upload in holding mode's order. The same
   with the finished mark set a night earlier: exit 1 after the copy, nothing installed, built
   or published.
+- **Fresh review (Opus, 2026-11-01): no path found that publishes a half-built or unchecked
+  site.** Fixed:
+  - *The check could pass by checking nothing.* `check-finished.ts` runs only when Node sees it
+    as the script it started, and a symlinked path makes the two differ: it then exits 0 having
+    done nothing (reproduced by the reviewer). `publish.sh` now requires the line "the export is
+    whole" (tested).
+  - *An older build could publish last.* Two builds can overlap (a push and the night's mark),
+    and the slower one would finish last. Just before publishing, the script fetches the mark
+    again; if it has changed, a newer night has landed, and the script exits 0 without
+    publishing, leaving that to the newer night's build (tested). This also stops a build whose
+    copy caught S4 mid-upload, once S4's new mark has landed. *Ruled out:* CodeBuild's project
+    limit of one build at a time. Its API reference says a build over the limit is "throttled
+    and not run" without saying whether it waits; if it is dropped, a night's board would be
+    lost with no email.
+  - *The page checks pass if nothing was built*, since every block skips without
+    `dist/index.html`. The script now requires that page (tested).
+  - *Wording.* The runbook's glossary said a push "cannot change" the mode; a push can change
+    what each mode does. It now says so, and warns that `cdk deploy --all` without
+    `site_mode=site` takes the site down. One stack test was renamed to what it shows; the
+    check's tests gained a broken-mark case and remove their folders.
+- **Left as they are, with reasons:**
+  - *A copy caught mid-upload, when S4's upload then fails.* S4 writes the cases, then
+    `index.json`, then the mark. If a build copies during that window and S4's upload then
+    fails, the mark never changes, and the build can publish last night's index with some of
+    tonight's case files. Each file still passes the schema; the board would be inconsistent
+    until the next whole night. It needs a build started by a push in the minutes of S4's upload,
+    and a failed upload, which S4 already alerts on. Closing it needs a stamp in every case
+    file, an S4 change.
+  - *`npm install --global pnpm` and a pnpm already on the image.* The image's Dockerfile
+    (`aws/aws-codebuild-docker-images`, `ubuntu/standard/7.0`, `master`, read 2026-11-01) installs
+    no pnpm and runs no `corepack enable`, so there is nothing to clash with.
+  - *Keeping `site_mode` in the committed `cdk.json` after launch,* so a deploy without it cannot
+    take the site down. A pull request still could not deploy. Left to Andy: it would put the
+    switch in the repository, which the step-1 design kept out of it.

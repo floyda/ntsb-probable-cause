@@ -1,14 +1,20 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { checkFinished, NotFinished } from "../scripts/check-finished";
 
 const BUILT = "2026-10-20T06:01:28.272470Z";
 
+const made: string[] = [];
+afterAll(() => {
+    for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
+
 function exportWith(mark: unknown, built: unknown = BUILT): string {
     const dir = mkdtempSync(join(tmpdir(), "finished-"));
+    made.push(dir);
     if (mark !== undefined) writeFileSync(join(dir, "_finished.json"), JSON.stringify(mark));
     writeFileSync(join(dir, "index.json"), JSON.stringify({ stamp: { built_at: built } }));
     return dir;
@@ -37,6 +43,16 @@ describe("the finished mark (S5 spec §22; publish mode, Task 1)", () => {
         expect(() => {
             checkFinished(exportWith({ ...whole, format: "board-finished/2" }));
         }).toThrow(NotFinished);
+    });
+    it("stops a mark that is not JSON, or not an object", () => {
+        const dir = exportWith(whole);
+        writeFileSync(join(dir, "_finished.json"), "{half");
+        expect(() => {
+            checkFinished(dir);
+        }).toThrow(/not JSON/);
+        expect(() => {
+            checkFinished(exportWith([whole]));
+        }).toThrow(/not a JSON object/);
     });
     it("stops when either side has no built_at", () => {
         expect(() => {

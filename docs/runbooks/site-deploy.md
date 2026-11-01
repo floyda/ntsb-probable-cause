@@ -130,7 +130,9 @@ uv run cdk deploy NtsbSiteStack \
 - **Pass the same `-c` values on every deploy of `NtsbSiteStack`.** A deploy without
   `alert_email` removes the email subscription; one without `live_bucket_name` removes the rule
   on S4's export; one without `github_connection_arn` removes the push webhook. After the
-  launch (Stage 8), one without `site_mode=site` puts the holding line back at the next build.
+  launch (Stage 8), one without `site_mode=site` puts the holding line back at the next build
+  and removes the site's pages. That includes `cdk deploy --all`, or any deploy of this stack
+  run for another reason. Keep the full command in one place and copy it each time.
   The zone and certificate stacks do not depend on them.
 - After S5 merges, use `-c site_source_branch=main`.
 - After S4's live stack is deployed, add `-c live_bucket_name=<S4's LiveBucketName output>`.
@@ -254,7 +256,8 @@ Newest first. The bucket is kept on delete (`RETAIN`); empty and delete it by ha
 - **Name server (NS) record**: the record in `floyda.dev` that hands the `demo` subdomain to
   the zone in the project account.
 - **Site mode**: the build's `SITE_MODE`, `holding` or `site`, set only by a `cdk deploy`
-  (`-c site_mode=…`); a push to the repository cannot change it.
+  (`-c site_mode=…`). A push cannot change the setting, but it can change `publish.sh`, which
+  decides what each mode does, so the switch is only as strong as review on `main`.
 - **Personal account**: your AWS account that holds `floyda.dev`, separate from the project
   account.
 - **Web ACL**: an AWS WAF rule set attached to the distribution. Here it allows everything except

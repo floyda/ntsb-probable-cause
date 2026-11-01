@@ -225,9 +225,9 @@ def _build_variables(tpl: Template) -> dict[str, str]:
     }
 
 
-def test_site_mode_is_turned_only_by_the_deploy_and_names_s4s_bucket() -> None:
-    # Plan 2026-11-01, Task 4: launch is Andy's decision (spec §20), so only his deploy's
-    # `-c site_mode=site` turns it; a push changes the code, never the project's variables.
+def test_site_mode_reaches_the_build_with_s4s_bucket() -> None:
+    # Plan 2026-11-01, Task 4: launch is Andy's decision (spec §20). The mode is a variable on
+    # the build project, which only a deploy changes; a push changes the code, not the variable.
     variables = _build_variables(
         _templates(live_bucket_name=_LIVE_BUCKET, site_mode="site")["site"]
     )

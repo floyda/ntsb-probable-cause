@@ -21,8 +21,10 @@ case "${SITE_MODE:-}" in
     aws s3 sync "s3://${LIVE_BUCKET}/export/board-1/" "$export_dir" --only-show-errors
     (
       cd site
-      # Whole only when the finished mark's built_at equals index.json's (spec §22).
-      node scripts/check-finished.ts "$export_dir"
+      # Whole only when the finished mark's built_at equals index.json's (spec §22). The line it
+      # prints is required, so a script that loads but checks nothing cannot pass (review,
+      # 2026-11-01).
+      node scripts/check-finished.ts "$export_dir" | grep -qx "check-finished: the export is whole"
       # From the lockfile, under the supply-chain settings in pnpm-workspace.yaml (spec §17.2).
       pnpm install --frozen-lockfile
       rm -rf dist
@@ -30,8 +32,19 @@ case "${SITE_MODE:-}" in
       # any fault; the page checks then cover respect (§11), links and the preview tags. The
       # browser checks run on every pull request, not here (plan 2026-11-01, choice 1).
       BOARD_EXPORT_DIR="$export_dir" pnpm run build
+      # The page checks skip when nothing was built, so the build's first page must exist.
+      test -f dist/index.html
       BOARD_EXPORT_DIR="$export_dir" pnpm exec vitest run tests/dist.test.ts
     )
+    # A newer night may have landed while this build ran, and its own build publishes it. Two
+    # builds can overlap, so an older one must never publish last over a newer one; nor one
+    # whose copy caught S4 mid-upload, when the mark changes too (review, 2026-11-01).
+    aws s3 cp "s3://${LIVE_BUCKET}/export/board-1/_finished.json" "${export_dir}.mark-now" \
+      --only-show-errors
+    if ! cmp -s "${export_dir}/_finished.json" "${export_dir}.mark-now"; then
+      echo "publish.sh: a newer export arrived during this build; its own build publishes it"
+      exit 0
+    fi
     out="site/dist"
     ;;
   *)
