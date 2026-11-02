@@ -8,6 +8,7 @@ import pytest
 from pypdf import PdfWriter
 from tests.pdf_builder import PageSpec, build_pdf
 
+from ntsb_probable_cause.docket import extract
 from ntsb_probable_cause.docket.extract import (
     IMAGE_WORDS_HEADING,
     PAGE_MARKER,
@@ -47,32 +48,26 @@ def test_not_a_pdf_raises() -> None:
         extract_pdf(b"<html>not a pdf</html>")
 
 
-def _malformed_encrypted_pdf() -> bytes:
-    """An encrypted, empty-password PDF whose ``/Pages`` dict is missing ``/Count``.
+class _BrokenReader:
+    """Stands in for ``PdfReader`` on a damaged file: raises a bare ``KeyError``.
 
-    ``pypdf``'s encrypted-file page-count path reads ``self.root_object["/Pages"]["/Count"]``
-    directly, which raises a bare ``KeyError`` when the key is absent -- not one of
-    ``PyPdfError``, ``ValueError`` or ``TypeError``. A real, decades-old public docket file can
-    be exactly this damaged; ``extract_pdf`` must turn it into ``DocketError`` too, not let it
-    escape (fix round 1, Finding 1).
+    ``pypdf`` before 6.21 raised ``KeyError`` on an encrypted, empty-password PDF whose
+    ``/Pages`` dict is missing ``/Count`` -- not one of ``PyPdfError``, ``ValueError`` or
+    ``TypeError``. A real, decades-old public docket file can be that damaged; ``extract_pdf``
+    must turn it into ``DocketError``, not let it escape (fix round 1, Finding 1). From 6.21
+    ``pypdf`` reads that file, so the error is raised here instead of built from a file.
     """
-    writer = PdfWriter()
-    writer.add_blank_page(width=200, height=200)
-    writer.encrypt(user_password="", owner_password="", algorithm="RC4-40")
-    buffer = io.BytesIO()
-    writer.write(buffer)
-    data = buffer.getvalue()
-    start = data.find(b"/Count")
-    assert start != -1, "expected /Count in the encrypted test PDF"
-    end = start + len(b"/Count")
-    while data[end : end + 1].isdigit() or data[end : end + 1] == b" ":
-        end += 1
-    return data[:start] + data[end:]
+
+    def __init__(self, stream: io.BytesIO) -> None:
+        raise KeyError("/Count")
 
 
-def test_malformed_pdf_raises_docket_error_not_a_bare_keyerror() -> None:
+def test_malformed_pdf_raises_docket_error_not_a_bare_keyerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(extract, "PdfReader", _BrokenReader)
     with pytest.raises(DocketError, match="not a PDF"):
-        extract_pdf(_malformed_encrypted_pdf())
+        extract_pdf(b"%PDF-1.7")
 
 
 def _reading(
