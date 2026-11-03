@@ -230,6 +230,13 @@ backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, versio
 
 ## Eval bars to beat (held-out split)
 
+**Every docket-reading result below read pypdf 6.19.0's text (decision 0218).** pypdf moved to
+6.21.4 on 2026-11-02; on `dev-400` it lays out the text of 561 documents differently, changes
+the characters of 2 and reads 3 it could not, and the guard, the case marks and the classifier
+decide as before (`docs/results/pypdf-text-dev.txt`). The results stand as recorded. A comparison
+between a run before the change and one after it names 0218. Arm A, the ceiling and the baseline
+read no docket.
+
 **S1 measured the bars; they live in `docs/results/s1-bars.txt`, with the scoring targets
 fixed by decision 0025 and the samples and ledger by 0026.** The spike's 57% / 65% one-shot
 figures are gone from this section: they were measured on free-text output through the

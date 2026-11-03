@@ -20,7 +20,9 @@ dependencies = [
     # 11.4 GB of the 24.1 GB total allocation came from that fallback, and resident growth per case
     # fell from 17.9 MB to 9.2 MB once it was installed. Not an optional speed-up -- the pure-Python
     # path is what made a 400-case run get killed for memory.
-    "pypdf[crypto]>=6.19.0",
+    # Decision 0218: 6.21.4 clears 18 advisories and lays some text out differently from 6.19.0,
+    # the version every result before 2026-11-02 read; the floor keeps the lock from going back.
+    "pypdf[crypto]>=6.21.4",
     # Decision 0075: pages are drawn with PDFium (the engine in Chrome), installed from the lock
     # file as a ready-built package -- not a system program, so 0047's reproducibility test holds.
     # Pillow writes the drawn page as JPEG.

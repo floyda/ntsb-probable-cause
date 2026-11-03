@@ -964,7 +964,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "pydantic", specifier = ">=2.13.5" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },
-    { name = "pypdf", extras = ["crypto"], specifier = ">=6.19.0" },
+    { name = "pypdf", extras = ["crypto"], specifier = ">=6.21.4" },
     { name = "pypdfium2", specifier = ">=5.13.0" },
 ]
 provides-extras = ["aws"]

@@ -319,3 +319,31 @@ def test_a_read_record_always_has_at_least_one_readable_page() -> None:
         if classify_pages(chars_by_page) == "scan":
             continue
         assert readable_pages(chars_by_page) >= 1, chars_by_page
+
+
+def test_a_caching_client_reads_documents_from_disk_with_the_same_result(
+    tmp_path: Path, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Decision 0217: with a cache, no document is held whole in memory, and nothing else moves."""
+    folder, mkey = _first_fixture()
+    page = (folder / "listing.html").read_text()
+    listing = parse_listing(page, mkey=mkey)
+    born_digital = next(e for e in listing.entries if e.is_pdf() and not e.is_photo_only())
+    respx_mock.get(sources.docket_url(mkey)).mock(return_value=httpx.Response(200, text=page))
+    for entry in listing.entries:
+        if entry.href:
+            content = _text_pdf([b"C" * 300]) if entry.index == born_digital.index else _blank_pdf()
+            respx_mock.get(sources.docket_document_url(entry.href)).mock(
+                return_value=httpx.Response(200, content=content)
+            )
+    with DocketClient(None, sleep=lambda _s: None) as client:
+        in_memory = read_docket(client, mkey)
+
+    def whole(*_args: object) -> bytes:
+        raise AssertionError("a caching client must not read a document into memory")
+
+    monkeypatch.setattr(DocketClient, "document", whole)
+    with DocketClient(tmp_path, sleep=lambda _s: None) as client:
+        from_disk = read_docket(client, mkey)
+    assert from_disk == in_memory
+    assert from_disk.record(born_digital.index).status == "read"
