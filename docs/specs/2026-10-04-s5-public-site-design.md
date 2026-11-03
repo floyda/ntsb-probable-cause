@@ -1112,6 +1112,16 @@ they never trigger it:
 On launch day the holding line is replaced by the site, and the real address's certificate,
 redirects and preview cards are checked.
 
+*Note, 2026-11-03 (Andy):* **launch comes before S5 closes.** The site goes live from the S5
+branch, and the As-built record is written afterwards, so it records the first site build on AWS
+and the launch-day checks rather than predicting them, and a launch fault is fixed inside the
+stage (as S3.3's As-built followed its live runs). After the merge the build moves to `main`
+(runbook `site-deploy.md`, Stage 9). *Cost:* until then every push to the S5 branch rebuilds the
+public site before a pull request has reviewed it, so that branch takes only launch fixes and
+the close-out. *Ruled out:* **closing first and launching from `main`**, which leaves the stage's
+record silent on whether the site ever ran and turns a launch fault into a pull request outside
+the stage.
+
 ## 21. Order of work
 
 Each step ends in a private preview.

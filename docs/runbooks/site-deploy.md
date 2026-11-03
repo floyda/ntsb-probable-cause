@@ -3,7 +3,8 @@
 *Read this before you start.* It takes the three stacks in `infra/site_stacks.py` (S5 step 1,
 spec §18) from nothing to `https://ellery.demo.floyda.dev` showing the holding line, rebuilt by
 **CodeBuild**. Until you decide to launch (spec §20), the only thing the build publishes is
-the holding line. Stage 8 is the launch: one deploy with `-c site_mode=site`, which only you run.
+the holding line. Stage 8 is the launch: one deploy with `-c site_mode=site`, which only you run,
+from the S5 branch before S5 merges. Stage 9 moves the build to `main` after the merge.
 
 Every term in **bold** the first time it appears is in the glossary at the end. A picture of every part and how they connect is in [`site-aws-map.html`](site-aws-map.html)
 (open it in a browser). Commands use
@@ -134,7 +135,7 @@ uv run cdk deploy NtsbSiteStack \
   and removes the site's pages. That includes `cdk deploy --all`, or any deploy of this stack
   run for another reason. Keep the full command in one place and copy it each time.
   The zone and certificate stacks do not depend on them.
-- After S5 merges, use `-c site_source_branch=main`.
+- After S5 merges, use `-c site_source_branch=main` (Stage 9).
 - After S4's live stack is deployed, add `-c live_bucket_name=<S4's LiveBucketName output>`.
   Without it the stack has no rule on S4's bucket and no access to it.
 - AWS emails a subscription request to the address: **confirm it**, or build failures reach no
@@ -169,6 +170,16 @@ Launch is yours to decide (spec §20). Claude reports when its conditions are me
 running, every check passes, and you have made your phone and screen-reader pass. This stage
 changes nothing until you run it.
 
+**Launch comes before S5 closes** (spec §20, note of 2026-11-03). The site goes live from the
+S5 branch, `s5-public-site`, and S5's As-built record is written afterwards, so it records the
+first site build on AWS and the launch-day checks rather than predicting them. Launch problems
+are fixed on the S5 branch, inside the stage.
+
+**While the site follows the S5 branch, push only launch fixes and the close-out.** Every push
+to `s5-public-site` rebuilds the public site from that branch. The build's checks still run
+before anything is published, but a change to the site's code goes live before a pull request
+has reviewed it. The window ends at Stage 9.
+
 The switch is the build's `SITE_MODE`, set only by a deploy. In `site` mode each build:
 
 1. copies `export/board-1/` from S4's bucket;
@@ -185,7 +196,7 @@ about 5 seconds, so most of it is CodeBuild starting and installing packages).
 ```bash
 uv run cdk deploy NtsbSiteStack \
   -c alert_email=<your address> \
-  -c site_source_branch=main \
+  -c site_source_branch=s5-public-site \
   -c github_connection_arn=<the ARN from Stage 5> \
   -c live_bucket_name=<S4's LiveBucketName output> \
   -c site_mode=site \
@@ -193,7 +204,9 @@ uv run cdk deploy NtsbSiteStack \
 ```
 
 `site_mode=site` without `live_bucket_name` is refused before anything is deployed. Then start
-a build as in Stage 7 rather than waiting for the next morning's export, and check from the Mac:
+a build as in Stage 7 rather than waiting for the next morning's export. This build is the first
+time Node 24 and the site build run on CodeBuild; if it fails, nothing is published, the holding
+line stays, and the failure email names the build. Check from the Mac:
 
 ```bash
 curl -sS https://ellery.demo.floyda.dev/ | grep -c 'Coming soon'
@@ -211,9 +224,47 @@ one case, its trail, the Path, Methods and Open cases.
 own card: the site card for the first, the question's card for the second. If the question shows
 the site card, the service followed the page's instant redirect; say so in the session.
 
+**For the As-built record**, say in the session: the launch date, whether the first site build
+passed (and its build number from the CodeBuild console), the three `curl` results, the phone
+check and the two preview-card results. Claude then writes the As-built record and opens S5's
+pull request.
+
 **Going back to the holding line.** Deploy again without `-c site_mode=site` (or with
 `-c site_mode=holding`), then start a build. The site's files are replaced by the holding page;
 the bucket keeps the old versions for 30 days.
+
+## Stage 9 — After S5 merges: build from `main`
+
+Do this soon after the merge. Until then the build still follows `s5-public-site`: the nightly
+export keeps the site current, but a push to `main` starts no build. The repository does not
+delete a branch on merge, so the S5 branch stays in place meanwhile; delete it only after this
+stage.
+
+Run it from a checkout of `main`, up to date and with a clean tree, in its `infra` folder. Change
+only `site_source_branch`; **keep `-c site_mode=site`**, or the next build puts the holding line
+back:
+
+```bash
+uv run cdk deploy NtsbSiteStack \
+  -c alert_email=<your address> \
+  -c site_source_branch=main \
+  -c github_connection_arn=<the ARN from Stage 5> \
+  -c live_bucket_name=<S4's LiveBucketName output> \
+  -c site_mode=site \
+  --profile ntsb
+```
+
+Check that the build now follows `main` (prints `main`), then start a build as in Stage 7 and
+repeat Stage 8's `curl` checks:
+
+```bash
+aws codebuild batch-get-projects --profile ntsb --region eu-west-2 \
+  --names "$(aws cloudformation describe-stacks --stack-name NtsbSiteStack --region eu-west-2 --profile ntsb --query 'Stacks[0].Outputs[?OutputKey==`BuildProjectName`].OutputValue' --output text)" \
+  --query 'projects[0].sourceVersion' --output text
+```
+
+From here, only a merge to `main` changes the site's code, and the copy of this command you keep
+is the Stage 9 one.
 
 ## What it costs
 
@@ -257,7 +308,8 @@ Newest first. The bucket is kept on delete (`RETAIN`); empty and delete it by ha
   the zone in the project account.
 - **Site mode**: the build's `SITE_MODE`, `holding` or `site`, set only by a `cdk deploy`
   (`-c site_mode=…`). A push cannot change the setting, but it can change `publish.sh`, which
-  decides what each mode does, so the switch is only as strong as review on `main`.
+  decides what each mode does, so the switch is only as strong as review on the branch the build
+  follows: `s5-public-site` from launch until Stage 9, `main` after.
 - **Personal account**: your AWS account that holds `floyda.dev`, separate from the project
   account.
 - **Web ACL**: an AWS WAF rule set attached to the distribution. Here it allows everything except
