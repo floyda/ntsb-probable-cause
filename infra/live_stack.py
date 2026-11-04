@@ -202,7 +202,10 @@ class NtsbLiveStack(Stack):
             "TaskDefinition",
             family=_FAMILY,
             cpu=512,
-            memory_limit_mib=1024,
+            # 4 GB, the most Fargate allows at 0.5 vCPU: one 1.1 GB scan still needs about
+            # 1.2 GB to read from disk, and on 1 GB it killed every night from 2026-10-22
+            # (decision 0217).
+            memory_limit_mib=4096,
             runtime_platform=ecs.RuntimePlatform(
                 cpu_architecture=ecs.CpuArchitecture.X86_64,
                 operating_system_family=ecs.OperatingSystemFamily.LINUX,
@@ -258,6 +261,9 @@ class NtsbLiveStack(Stack):
                 "NTSB_LIVE_BUCKET": bucket.bucket_name,
                 "NTSB_LIVE_ALERT_TOPIC_ARN": topic.topic_arn,
                 "NTSB_STORE": f"s3://{recorder_bucket}/recorder.sqlite",
+                # Unbuffered, so a night killed mid-way still leaves its lines in the log; an
+                # out-of-memory kill once left every stream empty (decision 0217).
+                "PYTHONUNBUFFERED": "1",
             },
             secrets={
                 "NTSB_API_KEY": secret("NtsbKeyParameter", _NTSB_KEY_PARAMETER),

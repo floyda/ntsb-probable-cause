@@ -1,5 +1,6 @@
 """The per-case manifest: what was read, what could not be, and why (spec §5.3)."""
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -97,6 +98,19 @@ def _record(  # noqa: PLR0913 -- one outcome field per status; see the Interface
     )
 
 
+def _fetch(
+    client: DocketClient, mkey: int, entry: ListingEntry, *, keyed_by_bytes: bool
+) -> bytes | Path:
+    """A document as a file when the client caches, so none is held whole in memory (0217).
+
+    A read-and-discard client (decision 0040) has no file to give, and v2's transcriptions are
+    keyed by the document's bytes (``ReadingLookup.for_document``): both read bytes, as before.
+    """
+    if client.caches and not keyed_by_bytes:
+        return client.document_file(mkey, entry.index, entry.href)
+    return client.document(mkey, entry.index, entry.href)
+
+
 def read_docket(
     client: DocketClient, mkey: int, *, readings: ReadingLookup | None = None
 ) -> Docket:
@@ -123,11 +137,15 @@ def read_docket(
             records.append(_record(entry, category, "unreadable: not a pdf"))
         else:
             try:
-                content = client.document(mkey, entry.index, entry.href)
+                content = _fetch(client, mkey, entry, keyed_by_bytes=readings is not None)
             except DocketError:
                 records.append(_record(entry, category, "fetch failed"))
                 continue
-            document_readings = readings.for_document(content) if readings is not None else None
+            document_readings = (
+                readings.for_document(content)
+                if readings is not None and isinstance(content, bytes)
+                else None
+            )
             if document_readings:
                 readings_by_document[entry.index] = document_readings
             try:
