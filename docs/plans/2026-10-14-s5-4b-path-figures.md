@@ -91,10 +91,12 @@ Each is set out with its trade-off. I will take them one at a time in the chat. 
 
 Built to choice 4's answer. The first option is described here; the second adds a decision record and an exploratory script, and is planned in Deviations if chosen.
 
-- [ ] **Step 1:** Entries from `s32-heldout-diagnosis.txt`: `q7.h0_right` (43 of 394), `q7.answer_right` (94 of 394), `q7.h0_answer.fixes` (60), `q7.h0_answer.breaks` (9), `q7.coding.fixes` (20), `q7.coding.breaks` (7), with tests.
-- [ ] **Step 2: A guard** in `claims.ts`: before-reading right + fixes − breaks = answer right. It is tested to fail when a count moves.
-- [ ] **Step 3: `BeliefPath.astro`.** Two columns, "before reading" and "the answer", each split into cases that matched the NTSB's first code and cases that did not. The fixed and broken cases are drawn between them, with the coding step's share named. The same counts are in a table. Its sentence states the counts, with no claim beyond them.
-- [ ] **Step 4:** Commit `S5 step 4b Task 4: question 7's figure from the committed diagnosis`.
+*Not built: Andy chose option B, so these four steps were replaced by "Task 4, rewritten for choice 4 B" in Deviations, where every step is ticked (noted at close-out, 2026-11-04).*
+
+- *(replaced)* **Step 1:** Entries from `s32-heldout-diagnosis.txt`: `q7.h0_right` (43 of 394), `q7.answer_right` (94 of 394), `q7.h0_answer.fixes` (60), `q7.h0_answer.breaks` (9), `q7.coding.fixes` (20), `q7.coding.breaks` (7), with tests.
+- *(replaced)* **Step 2: A guard** in `claims.ts`: before-reading right + fixes − breaks = answer right. It is tested to fail when a count moves.
+- *(replaced)* **Step 3: `BeliefPath.astro`.** Two columns, "before reading" and "the answer", each split into cases that matched the NTSB's first code and cases that did not. The fixed and broken cases are drawn between them, with the coding step's share named. The same counts are in a table. Its sentence states the counts, with no claim beyond them.
+- *(replaced)* **Step 4:** Commit `S5 step 4b Task 4: question 7's figure from the committed diagnosis`.
 
 ## Task 5: The stops and checks
 
