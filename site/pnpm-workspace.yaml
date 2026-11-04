@@ -21,3 +21,12 @@ allowBuilds:
 # again. Needed by @astrojs/check. Read from the registry with `npm view` on 2026-10-12.
 trustPolicyExclude:
   - chokidar@4.0.3
+# Audit exemptions, each one advisory by its GitHub ID, reviewed and approved by Andy.
+# GHSA-g3hv-75wg-m249 (Andy, 2026-11-04): minimatch below 11.0.1 can be made slow by a glob
+# pattern an attacker writes. minimatch reaches the site only through ESLint, which matches the
+# project's own fixed patterns on Andy's Mac and in CI; nothing of it is published. Its only fix
+# is minimatch 11, and ESLint 10.14.0 (the latest, read 2026-11-04) requires ^10.2.6. Remove
+# this exemption once ESLint accepts minimatch 11.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-g3hv-75wg-m249

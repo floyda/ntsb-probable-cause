@@ -36,6 +36,15 @@ def test_trust_exemptions_name_exact_versions_only() -> None:
         assert re.fullmatch(r"(@[a-z0-9._-]+/)?[a-z0-9._-]+@\d+\.\d+\.\d+", entry), entry
 
 
+def test_audit_exemptions_name_reviewed_advisories_only() -> None:
+    # An exemption covers one advisory by its GitHub ID, never a severity or a package (Andy,
+    # 2026-11-04, for minimatch under ESLint). A new one is added here and in the workspace file.
+    ignored = _workspace().get("auditConfig", {}).get("ignoreGhsas", [])
+    assert all(re.fullmatch(r"GHSA(-[23456789cfghjmpqrvwx]{4}){3}", entry) for entry in ignored)
+    assert set(ignored) <= {"GHSA-g3hv-75wg-m249"}
+    assert set(_workspace().get("auditConfig", {})) <= {"ignoreGhsas"}
+
+
 def test_unreviewed_build_scripts_fail_the_install() -> None:
     assert _workspace()["strictDepBuilds"] is True
 
