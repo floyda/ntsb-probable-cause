@@ -114,9 +114,12 @@ stack's webhook failed with "Access token not found".
 
 Read the app's install screen before accepting: the AWS Connector for GitHub asks for access to
 the repository's code, commit statuses and webhooks, including write access. CodeBuild uses it to
-read the repository and to create one webhook, so pushes start a build. The build itself writes
-nothing back: the stack turns off commit-status reporting (`report_build_status=False`). Limit
-the installation to this one repository.
+read the repository and to create one webhook, so pushes start a build. A build started by a push
+posts its pass or fail as a status on the pushed commit, which shows on the pull request: AWS
+always reports a push build's status and gives no way to turn that off. Builds started by S4's
+finished mark or by hand post nothing (the stack sets `report_build_status=False`). Neither
+changes what the app may do: GitHub grants its permissions whole, at install. Limit the
+installation to this one repository.
 
 ## Stage 6 — The site stack
 

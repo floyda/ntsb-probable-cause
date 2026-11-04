@@ -529,8 +529,10 @@ def test_without_an_email_there_is_no_subscription(
     stacks_without_email["site"].resource_count_is("AWS::SNS::Subscription", 0)
 
 
-def test_build_does_not_write_statuses_to_github(stacks: dict[str, Template]) -> None:
-    # Review finding (2026-10-12): CodeBuild reports build status to GitHub by default, a write.
+def test_only_push_builds_report_status_to_github(stacks: dict[str, Template]) -> None:
+    # Review finding (2026-10-12): CodeBuild reports build status to GitHub by default. The flag
+    # stops it for builds started by S4's mark or by hand; AWS always reports a push build's
+    # status, whatever the flag says (found at launch, 2026-11-04).
     project = next(iter(stacks["site"].find_resources("AWS::CodeBuild::Project").values()))
     assert project["Properties"]["Source"]["ReportBuildStatus"] is False
 

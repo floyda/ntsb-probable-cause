@@ -276,7 +276,10 @@ class NtsbSiteStack(Stack):
                 branch_or_ref=source_branch,
                 # A push starts a build only through the named connection (below).
                 webhook=github_connection_arn is not None,
-                # No commit statuses written back to GitHub (review, 2026-10-12).
+                # Off for builds not started by a push (S4's finished mark, a manual start). A push
+                # build still posts its pass or fail to the commit: AWS always reports a webhook
+                # build's status and gives no way to turn that off (found at launch, 2026-11-04).
+                # The GitHub app holds that write access either way (runbook Stage 5).
                 report_build_status=False,
                 # Anchored: `and_branch_is` writes an unanchored pattern, which would also match
                 # a push to, say, `<branch>-old`.
