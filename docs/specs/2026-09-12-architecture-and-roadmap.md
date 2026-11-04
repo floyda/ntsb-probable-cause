@@ -707,7 +707,9 @@ bucket and a nightly `board/1` export, and the predictions tables are not built 
 scheduled Fargate task is S4's (`NtsbLiveStack`, 0171). Four cloud nights coded the 62-case
 backfill and 11 fresh closures (`docs/results/s4-live.txt`). S5, the public site, is next.
 
-### S5. Deployment and the public site
+### S5. Deployment and the public site — done
+
+As built: see the [S5 specification's As-built section](2026-10-04-s5-public-site-design.md#as-built-s5-2026-11-04).
 
 CDK stack, S3 and CloudFront, the static site generator, and the
 five pages. The trajectory view presents the hypothesis trail; the Methods page shows the
