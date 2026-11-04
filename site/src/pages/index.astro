@@ -1,0 +1,128 @@
+---
+import Board from "../components/Board.astro";
+import Ladder from "../components/Ladder.astro";
+import OpenedCase from "../components/OpenedCase.astro";
+import RouteQuestions from "../components/RouteQuestions.astro";
+import Sign from "../components/Sign.astro";
+import TrailStrip from "../components/TrailStrip.astro";
+import Base from "../layouts/Base.astro";
+import "../styles/arrive.css";
+import { exportDir, loadExport } from "../lib/export";
+import { methodsLink } from "../lib/methods";
+import { assertPathClaims } from "../lib/claims";
+import { caseCount, oneIn } from "../lib/numbers";
+import { routeCase } from "../lib/route";
+import { SITE_LINE, SITE_QUESTION } from "../lib/site";
+
+// The six stops' one-line answers and the ladder's sentence make claims; each stops the build
+// when its figures no longer fit it (claims.ts).
+assertPathClaims();
+
+const { index, cases } = loadExport(exportDir());
+const newest = index.rows[0];
+// Stops 3 and 4 show the newest case with a trail; with none, the newest case without stop 4.
+const withTrail = routeCase(index, cases);
+const shownCase = withTrail ?? (newest === undefined ? undefined : cases.get(newest.case_number));
+
+// The first page's rail: the route's six stops (spec §3.1, §21 note of 2026-10-16).
+const places = [
+    { id: "question", label: "1 · The question" },
+    { id: "board", label: "2 · Closed cases" },
+    ...(shownCase === undefined ? [] : [{ id: "case", label: "3 · One case" }]),
+    ...(withTrail === undefined ? [] : [{ id: "trail", label: "4 · Its trail" }]),
+    { id: "loop", label: "5 · Was a loop needed?" },
+    { id: "path", label: "6 · The path taken" },
+];
+---
+
+<Base title="Ellery" description={SITE_LINE} current="home" places={places}>
+    {/* Stop 1 (spec §2, §3.1): the question, two sentences on the task, then the caveat. */}
+    <section id="question" class="caveat" aria-labelledby="question-heading">
+        <h1>Ellery</h1>
+        <Sign>1 · The question</Sign>
+        <h2 id="question-heading">{SITE_QUESTION}</h2>
+        <p>
+            When the NTSB closes a US aviation accident case, it publishes a probable cause and
+            codes what happened and why, from fixed lists. Ellery reads the evidence the
+            investigators gathered, never their own write-up or the verdict, and picks its codes
+            from the same lists, so its answer can be set beside the NTSB's.
+        </p>
+        <h3>Read this first</h3>
+        <p>
+            The board runs Ellery, version 1, an AI agent. It reads the same evidence, with the same
+            tools, as a simpler fixed method. On {caseCount("ladder.loop.top1")} accidents it had
+            never seen, its first code matched the investigator's in about{" "}
+            {oneIn("ladder.loop.top1")}. The fixed method matched in about{" "}
+            {oneIn("ladder.fixed.top1")}. It runs here because it is the version being improved, and
+            each new version is measured against that fixed method. This site is the record of how.
+        </p>
+        <p>
+            <a href="/path/">How the project decided what to build: the Path</a> ·{" "}
+            <a href={methodsLink("ladder")}>how these were measured</a>
+        </p>
+    </section>
+    <section id="board" aria-labelledby="board-heading">
+        <Sign>2 · Closed cases</Sign>
+        <h2 id="board-heading">Recently closed cases</h2>
+        <Board index={index} />
+    </section>
+    {shownCase !== undefined && (
+        <section id="case" aria-labelledby="one-case">
+            <Sign>3 · One case</Sign>
+            <h2 id="one-case">One case, both codings</h2>
+            <OpenedCase kase={shownCase} />
+        </section>
+    )}
+    {withTrail !== undefined && (
+        <section id="trail" aria-labelledby="trail-heading">
+            <Sign>4 · Its trail</Sign>
+            <h2 id="trail-heading">What it believed, and what it read</h2>
+            <TrailStrip kase={withTrail} />
+        </section>
+    )}
+    <section id="loop" aria-labelledby="loop-heading">
+        <Sign>5 · Was a loop needed?</Sign>
+        <h2 id="loop-heading">Was a loop needed?</h2>
+        <div class="panel">
+            <Ladder id="ladder-home" />
+        </div>
+    </section>
+    <section id="path" aria-labelledby="path-heading">
+        <Sign>6 · The path taken</Sign>
+        <h2 id="path-heading">The path taken</h2>
+        <RouteQuestions />
+        <p>
+            <a href="/path/">The whole path, with every figure</a>
+        </p>
+    </section>
+</Base>
+
+<script>
+    // arrive.ts first: it must see every board row before open-row.ts takes the older ones out.
+    import "../scripts/arrive.ts";
+    import "../scripts/open-row.ts";
+</script>
+
+<style>
+    /* The first page's stops (spec §3.1), spaced and ruled as the Path's and Methods' are. */
+    section {
+        display: grid;
+        gap: 0.75rem;
+        padding-block: var(--space-section);
+        border-top: 1px solid var(--rule);
+    }
+    h2,
+    h3 {
+        margin: 0;
+    }
+    #question-heading {
+        text-wrap: balance;
+    }
+    p {
+        margin-block: 0;
+    }
+    /* The board alone uses the main column's full width (board.css). */
+    #board {
+        max-width: none;
+    }
+</style>

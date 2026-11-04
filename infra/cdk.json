@@ -1,4 +1,6 @@
 {
   "app": "uv run python app.py",
-  "context": {}
+  "context": {
+    "@aws-cdk/core:defaultCrossStackReferences": "strong"
+  }
 }

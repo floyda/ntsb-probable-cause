@@ -1,0 +1,423 @@
+---
+// The Methods page (spec §9): every number on the site, its sample, model, run, commit, script
+// and results file, in the order a reader meets the numbers. A plain page, not a scrolling
+// route, so a link from any page lands beside the entries around it. Every row is generated from
+// the numbers file (lib/methods.ts); none is typed here.
+import Mark from "../components/Mark.astro";
+import MethodsGroup from "../components/MethodsGroup.astro";
+import Sign from "../components/Sign.astro";
+import SplitDiagram from "../components/SplitDiagram.astro";
+import Base from "../layouts/Base.astro";
+import { exampleCase } from "../lib/example-case";
+import { exportDir, loadExport } from "../lib/export";
+import { GLOSSARY } from "../lib/glossary";
+import { GROUPS } from "../lib/methods";
+import { assertPredictionsAsRead } from "../lib/claims";
+import { entry, list, pointsOn, text, usd, withInterval } from "../lib/numbers";
+import {
+    closedLong,
+    commitUrl,
+    pullUrl,
+    fileAtUrl,
+    gradeCounts,
+    GRADES,
+    type Grade,
+    repoUrl,
+} from "../lib/words";
+
+const { index } = loadExport(exportDir());
+const launched = index.stamp.launched_on;
+const example = exampleCase();
+const ladderCases = entry("ladder.loop.top1").n;
+
+// S3.2's predictions (spec §9 item 5), the registration's words copied by the numbers script
+// (plan step 5 choice 3). The build stops if which were met changes, until this page is reread.
+assertPredictionsAsRead();
+const predictions = list("s32.predictions");
+const met = predictions.filter((p) => p["outcome"] === "met").length;
+const REGISTRATION = "docs/rounds/s3-registration.md";
+const registeredIn = text("s32.registered_in");
+
+// S1 was squash-merged before decision 0033, so its run's commit is kept by its pull request.
+const s1Commit = entry("history.s1_ceiling.top1").run_commit;
+const s24Scored = entry("history.s24_fixed.top1").n;
+
+// What each grade means (spec §4), in the board's order.
+const MEANS: Record<Grade, string> = {
+    same_first: "The agent's first occurrence code is the NTSB's first code.",
+    same_codes_other_order:
+        "The NTSB's first code is among the agent's first three, but not first. This is the same measure as top-3 less top-1, so the board and this page use one scale.",
+    different:
+        "The NTSB's first code is not among the agent's first three. Different is not the same as wrong: the NTSB's own coding is not fully consistent (question 6, below).",
+    abstained:
+        "The agent judged the evidence too thin to answer. The row stays on the board: leaving it off would be selection.",
+    not_coded:
+        "The system produced no answer. For example, a document in the docket held the NTSB's probable cause, so the case could not be shown to the agent; or the agent's reply failed a technical check twice. Failed rows count in every total.",
+    awaiting_ntsb:
+        "The NTSB has closed the case but has not yet published its codes, so there is nothing to compare with.",
+};
+
+// Methods' rail (spec §21 note, 2026-10-16): its sections, which replace its own contents list.
+const places = [
+    { id: "reading", label: "Reading the numbers" },
+    { id: "board", label: "The board" },
+    { id: "ladder", label: "The ladder" },
+    { id: "questions", label: "The Path questions" },
+    { id: "predictions", label: "Predictions" },
+    { id: "history", label: "History" },
+    { id: "limits", label: "Limits" },
+    { id: "withheld", label: "How the verdict is withheld" },
+    { id: "glossary", label: "Glossary" },
+];
+
+const questions = GROUPS.filter((g) => !["ladder", "history", "limits"].includes(g.id));
+---
+
+<Base
+    title="Methods · Ellery"
+    description="Every number on the site: its cases, model, run, commit, script and results file."
+
+    current="methods"
+    places={places}
+>
+    <h1>Methods</h1>
+    <p class="lede">
+        Every number on this site, with the cases it rests on, the model and run that produced it,
+        and the script and results file behind it. Each commit links to the project's code as it
+        was. The sections follow the order in which a reader meets the numbers.
+    </p>
+    {/* The name line (spec §12 item 15). */}
+    <p>
+        Ellery is named after Ellery Queen, the detective of 1930s American novels that stopped near
+        the end to tell readers they now held every clue. Here every reader can check Ellery's
+        answer against the NTSB's. The name stands for no real person.
+    </p>
+
+    <section id="reading" aria-labelledby="reading-heading">
+        <Sign>Part 1</Sign>
+
+        <h2 id="reading-heading">How to read the numbers</h2>
+        <h3>First code matches (top-1)</h3>
+        <p>
+            The NTSB codes what happened in an accident as an ordered list of occurrence codes. The
+            first is the defining event. "First code matches" means the agent's first code is the
+            NTSB's first code. For example, if the NTSB coded "Loss of control in flight" first and
+            so did the agent, it matches; if the agent put "Aerodynamic stall/spin" first, it does
+            not. This is the headline measure, and it is checked by exact match, with no person or
+            model judging.
+        </p>
+        <h3>Among its three (top-3)</h3>
+        <p>
+            The NTSB's first code is somewhere among the agent's first three codes. It is a looser
+            measure, kept because much of what the agent misses is the NTSB's coding order.
+        </p>
+        <h3>The 95 percent interval</h3>
+        <p>
+            A rate is shown with a range in brackets, for example {withInterval("ladder.loop.top1")}
+            . The range is the 95 percent interval: the rate on all cases like these is likely to
+            lie inside it. Fewer cases give a wider range. Two results whose ranges overlap may not
+            differ at all.
+        </p>
+        <h3>Points, and paired differences</h3>
+        <p>
+            A difference between two rates is given in points: the plain difference between the two
+            percentages. Most differences here are paired: both methods ran on the same cases, and
+            the difference is taken case by case, which measures it more exactly. For example, the
+            loop against the fixed pipeline: {pointsOn("q7.loop_vs_fixed")}. A range that includes
+            zero means no difference was shown.
+        </p>
+        <h3>Development, held-out and live cases</h3>
+        <p>
+            Development cases are accidents up to 2019: the project tried its ideas on these.
+            Held-out cases are accidents from 2020 to 2023, kept aside and used rarely, to test what
+            was built. Live cases are those the NTSB closes now, which the agent codes at closure.
+            The three kinds never share a figure: a method tuned on development cases looks better
+            on them than it is, and live cases are counted, not sampled.
+        </p>
+        <h3>Billed cost</h3>
+        <p>
+            Costs are what the model provider billed. A provider charges less for the part of a
+            request it has seen before (a cached prompt), so the bill can be well under the list
+            price.
+        </p>
+    </section>
+
+    <section id="board" aria-labelledby="board-heading">
+        <Sign>Part 2</Sign>
+
+        <h2 id="board-heading">The board</h2>
+        <p>
+            The board lists the cases the NTSB has closed most recently. When the NTSB closes a case
+            it publishes its cause and codes, though the codes can come later. The agent codes the
+            same case once, at closure, from the docket as published, with the NTSB's cause and
+            codes withheld. The board puts the two side by side.
+        </p>
+        <h3 id="grades">How each case is graded</h3>
+        <ul class="grades">
+            {(Object.keys(GRADES) as Grade[]).map((grade) => (
+                <li>
+                    <Mark grade={grade} />
+                    <span>{MEANS[grade]}</span>
+                </li>
+            ))}
+        </ul>
+        <h3>The counts</h3>
+        <p>
+            The board counts every case the NTSB has closed since its declared start, 23 Sep 2026
+            (decision{" "}
+            <a
+                href={repoUrl(
+                    "docs/decisions/0155-the-board-is-backfilled-from-the-recorders-first-night.md",
+                )}
+            >
+                0155
+            </a>
+            ).
+            {launched !== null && (
+                <>
+                    {" "}
+                    Cases that closed before the live runs began on {closedLong(launched)} were
+                    coded after that, from the start, and carry the mark ◦.
+                </>
+            )}{" "}
+            The board shows counts, never a percentage: a live headline rate would make it a
+            scoreboard.
+        </p>
+        <ul class="counts">
+            {gradeCounts(index.rows).map(({ grade, count }) => (
+                <li>
+                    {count} {GRADES[grade].word}
+                </li>
+            ))}
+        </ul>
+    </section>
+
+    <section id="ladder" aria-labelledby="ladder-heading">
+        <Sign>Part 3</Sign>
+
+        <h2 id="ladder-heading">The ladder</h2>
+        <p>
+            Four ways of coding an accident, each with more machinery than the one before. The model
+            steps are S3.2's held-out runs on the same {String(ladderCases)} cases, under one rule
+            registered before they ran: a case that failed counts as not matching, and a case the
+            guard refused is left out of both sides of a comparison (none was, in these runs). The
+            first step uses no model: for each case it guesses the commonest first code among
+            development cases with the same phase of flight and weather, and it is checked on every
+            held-out case. The case record alone has no bill in a committed file, so it shows none.
+        </p>
+        <MethodsGroup id="ladder" />
+    </section>
+
+    <section id="questions" aria-labelledby="questions-heading">
+        <Sign>Part 4</Sign>
+
+        <h2 id="questions-heading">The Path questions</h2>
+        <p>Each question on the Path page, with the numbers it shows and where they came from.</p>
+
+        <h3 id="answer-key">1. Is there an answer key nobody had to write?</h3>
+        <p>
+            The case shown is {example.case_number}, a development case committed to the project as
+            a test record, with owner and operator details removed. Its cause and codes are the
+            NTSB's as published, and each code's words come from the NTSB's code tables. Script:{" "}
+            <a href={repoUrl("scripts/site_example_case.py")}>
+                <code>site_example_case.py</code>
+            </a>
+            .
+        </p>
+
+        <h3 id="case-record">2. Is the case record enough?</h3>
+        <p>
+            This question uses the ladder's first two steps, <a href="#ladder">above</a>.
+        </p>
+
+        {questions.map((g) => (
+            <>
+                <h3 id={g.id}>{g.title}</h3>
+                <MethodsGroup id={g.id} />
+            </>
+        ))}
+
+        <h3 id="newly-closed">8. Does it hold on newly closed cases?</h3>
+        <p>
+            This is the board: see <a href="#board">the board</a>, above.
+        </p>
+    </section>
+
+    <section id="predictions" aria-labelledby="predictions-heading">
+        <Sign>Part 5</Sign>
+
+        <h2 id="predictions-heading">S3.2's registered predictions</h2>
+        <p>
+            Before any held-out run, S3.2 wrote down nine predictions in its registration and
+            committed it on {closedLong(text("s32.registered_on"))} (
+            <a href={commitUrl(registeredIn)}>
+                <code>{registeredIn.slice(0, 7)}</code>
+            </a>
+            ), so that none could be chosen after a result was seen. A script checked each one, and
+            each is published whether it was met or not: {String(met)} were met and{" "}
+            {String(predictions.length - met)} were not.
+        </p>
+        <p>
+            The words of each prediction are the registration's, unedited. The disclosures they
+            refer to are in <a href={fileAtUrl(registeredIn, REGISTRATION)}>the registration</a> as
+            committed; each one's outcome is in{" "}
+            <a href={repoUrl(`docs/results/s32-claims-heldout.txt`)}>
+                <code>s32-claims-heldout.txt</code>
+            </a>
+            , section 8.
+        </p>
+        <ol class="predictions panel">
+            {predictions.map((p) => (
+                <li>
+                    <p>
+                        <strong>{p["title"]}</strong> ({p["scope"]}){p["colon"]} {p["text"]}
+                    </p>
+                    <p class="outcome">
+                        <strong>{p["outcome"] === "met" ? "Met." : "Not met."}</strong>{" "}
+                        {p["result"]}
+                    </p>
+                </li>
+            ))}
+        </ol>
+        <p>{text("s32.not_predicted")}</p>
+    </section>
+
+    <section id="history" aria-labelledby="history-heading">
+        <Sign>Part 6</Sign>
+
+        <h2 id="history-heading">History</h2>
+        <p>
+            Before S3.2, the ladder's middle steps were S1's one-shot ceiling and S2.4's fixed
+            pipeline. S3.2's runs replaced them. S1 ran on an earlier model. S2.4's pipeline had no
+            coding tools, and it left failed cases out of its count ({String(s24Scored)} cases
+            scored), where S3.2 counts a failed case as not matching.
+        </p>
+        <MethodsGroup id="history" />
+        {s1Commit !== null && (
+            <p class="note">
+                S1's run started from <code>{s1Commit}</code>. S1 was merged before the project kept
+                every run's commit in its main history (decision{" "}
+                <a href={repoUrl("docs/decisions/0033-stage-pull-requests-keep-their-commits.md")}>
+                    0033
+                </a>
+                ), so GitHub keeps that commit through <a href={pullUrl(5)}>S1's pull request</a>{" "}
+                instead.
+            </p>
+        )}
+    </section>
+
+    <section id="limits" aria-labelledby="limits-heading">
+        <Sign>Part 7</Sign>
+
+        <h2 id="limits-heading">Limits</h2>
+        <p>
+            <strong>The run-twice band.</strong> Run twice, identically, on the same development
+            cases, the two runs' first-code match differed by {pointsOn("q7.noise_band")} (
+            <a href="#n-q7-noise_band">its entry</a>, under question 7). A difference smaller than
+            this may be the agent's own variation. It was measured on development cases, so it is
+            not drawn on the ladder, which is held-out.
+        </p>
+        <p>
+            <strong>The cost cap.</strong> Every S3.2 run had a cap of {usd("limits.cap")} a case,
+            enforced in code. It is checked before each model call, on an estimate at the list
+            price, not on the bill. The fixed pipeline leaves documents out to stay under it; the
+            loop stops instead, and the case counts as failed.
+        </p>
+        <p>
+            <strong>Failures.</strong> A failed case counts as not matching in every S3.2 figure.
+            The counts, for the loop's held-out run and for its two development runs (S3.1's
+            run-twice pair):
+        </p>
+        <MethodsGroup id="limits" />
+    </section>
+
+    <section id="withheld" aria-labelledby="withheld-heading">
+        <Sign>Part 8</Sign>
+
+        <h2 id="withheld-heading">How the verdict is withheld</h2>
+        <p>
+            The agent never sees the NTSB's answer, or the investigators' write-ups that lead to it.
+            This is enforced in code, by one function and a guard, not by care.
+        </p>
+        <SplitDiagram />
+    </section>
+
+    <section id="glossary" aria-labelledby="glossary-heading">
+        <Sign>Part 9</Sign>
+
+        <h2 id="glossary-heading">Glossary</h2>
+        <dl class="glossary panel">
+            {GLOSSARY.map((t) => (
+                <div>
+                    <dt>{t.term}</dt>
+                    <dd>{t.means}</dd>
+                </div>
+            ))}
+        </dl>
+    </section>
+</Base>
+
+<style>
+    .lede {
+        font-size: 1.1rem;
+    }
+    section {
+        display: grid;
+        gap: 0.6rem;
+        padding-block: var(--space-section);
+        border-top: 1px solid var(--rule);
+    }
+    h2 {
+        margin: 0;
+    }
+    h3 {
+        font-size: 1.05rem;
+        margin: 0.6rem 0 0;
+    }
+    /* Block margins only: main's children keep their centring margin (tokens.css). */
+    p {
+        margin-block: 0;
+    }
+    /* Numbered: the page and the claims file call them "prediction 9", "P9". */
+    .predictions {
+        display: grid;
+        gap: 0.9rem;
+        list-style: decimal;
+        margin: 0;
+        padding-left: 1.6rem;
+    }
+    /* A list item, not a grid, so its number shows. */
+    .predictions .outcome {
+        margin-top: 0.2rem;
+    }
+    .outcome,
+    .note {
+        color: var(--ink-muted);
+    }
+    .glossary {
+        display: grid;
+        gap: 0.6rem;
+        margin: 0;
+    }
+    .glossary dt {
+        font-weight: 600;
+    }
+    .glossary dd {
+        margin: 0;
+    }
+    .counts {
+        margin: 0;
+        padding-left: 1.2rem;
+    }
+    .grades {
+        display: grid;
+        gap: 0.5rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+    .grades li {
+        display: grid;
+        gap: 0.15rem;
+    }
+</style>

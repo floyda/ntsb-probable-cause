@@ -1,0 +1,92 @@
+---
+// One case's trail as a strip (spec §3.1, stop 4; S5 step 6b): each belief the trail holds, its
+// first code's event, and whether that was the NTSB's first code, with what was read or looked
+// up between them. Codes and counts only, never the agent's account (spec §6 note, 2026-10-14).
+// Its id is the one the first page's row script swaps when a reader chooses another case.
+import type { CaseFile } from "../lib/board-case-types";
+import { stripItems } from "../lib/route";
+
+interface Props {
+    kase: CaseFile;
+}
+
+const { kase } = Astro.props;
+const items = stripItems(kase);
+const MATCH = (m: boolean | null): string | null =>
+    m === null ? null : m ? "the NTSB's first code" : "not the NTSB's first code";
+---
+
+<div class="strip" id="route-strip">
+    {items.length === 0 ? (
+        <p>This case has no trail to show.</p>
+    ) : (
+        <>
+            <ol class="items">
+                {items.map((item) =>
+                    item.kind === "belief" ? (
+                        <li class="belief panel">
+                            <span class="name">{item.name}</span>
+                            <strong class="event">{item.event}</strong>
+                            {MATCH(item.matched) !== null && (
+                                <span class={item.matched === true ? "match yes" : "match no"}>
+                                    {MATCH(item.matched)}
+                                </span>
+                            )}
+                        </li>
+                    ) : (
+                        <li class="between">
+                            <span aria-hidden="true">↓ </span>
+                            {item.text}
+                        </li>
+                    ),
+                )}
+            </ol>
+            <p class="full">
+                <a href={`/case/${kase.case_number}/trail/`}>The full trail</a>: every document,
+                look-up and cost.
+            </p>
+        </>
+    )}
+</div>
+
+<style>
+    .strip {
+        display: grid;
+        gap: 0.75rem;
+    }
+    .items {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.35rem;
+    }
+    .belief {
+        gap: 0.15rem;
+    }
+    .name {
+        color: var(--ink-muted);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    .match {
+        font-size: 0.88rem;
+        color: var(--ink-muted);
+    }
+    /* Said in words; a matched code is also marked by a solid bar, never by colour alone. */
+    .match.yes {
+        color: var(--ink);
+        border-left: 3px solid var(--ink);
+        padding-left: 0.4rem;
+    }
+    .between {
+        color: var(--ink-muted);
+        font-size: 0.88rem;
+        padding-left: 0.9rem;
+    }
+    p {
+        margin: 0;
+    }
+</style>
