@@ -1,0 +1,43 @@
+---
+// One case's own page, at its NTSB case number (spec §12 item 12).
+import type { GetStaticPaths } from "astro";
+import BackLinks from "../../../components/BackLinks.astro";
+import OpenedCase from "../../../components/OpenedCase.astro";
+import TrailStrip from "../../../components/TrailStrip.astro";
+import Base from "../../../layouts/Base.astro";
+import type { CaseFile } from "../../../lib/board-case-types";
+import { exportDir, loadExport } from "../../../lib/export";
+
+export const getStaticPaths = (() => {
+    const { cases } = loadExport(exportDir());
+    return [...cases.values()].map((kase) => ({
+        params: { case: kase.case_number },
+        props: { kase },
+    }));
+}) satisfies GetStaticPaths;
+
+interface Props {
+    kase: CaseFile;
+}
+
+const { kase } = Astro.props;
+---
+
+<Base
+    title={`${kase.case_number} · Ellery`}
+    description="One closed case: the agent's coding beside the NTSB's."
+    shareTitle="One closed case · Ellery"
+>
+    <BackLinks />
+    <h1>{kase.case_number}</h1>
+    <!-- The article's parts are h3, as on the first page, where a tapped row swaps it in
+         (scripts/open-row.ts); this heading keeps the page's outline whole (review). -->
+    <h2 class="vh">Both codings, side by side</h2>
+    <OpenedCase kase={kase} />
+    {kase.trail !== null && (
+        <section aria-labelledby="strip-heading">
+            <h2 id="strip-heading">Its trail at a glance</h2>
+            <TrailStrip kase={kase} />
+        </section>
+    )}
+</Base>

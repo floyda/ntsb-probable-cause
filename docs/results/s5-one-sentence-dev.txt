@@ -1,0 +1,27 @@
+S5 question 6: one cause sentence and its first codes (scripts/exploratory/s5_one_sentence.py; decision 0059)
+Exploratory: free and offline, no model call; it decides nothing. S3's statistics pool, development only. Counts and code labels only, but for the one sentence the S5 specification §7.4 publishes; no case number.
+The rule (fixed before the data was read; Andy, 2026-10-14): among groups of two or more cases whose NTSB probable-cause sentences match word for word (exact twins, all years), the group whose cases received the most different first codes; a tie goes to the group with more cases, then to the sentence that sorts first.
+
+exact-twin groups, all years: 374
+sentence: A loss of engine power for undetermined reasons.
+cases: 33
+different first codes: 18
+first codes, most common first (cases, code, label):
+- 4  350342  Initial Climb / Loss of engine power (partial)
+- 4  402341  Enroute-Cruise / Loss of engine power (total)
+- 3  350341  Initial Climb / Loss of engine power (total)
+- 3  402342  Enroute-Cruise / Loss of engine power (partial)
+- 3  506341  Approach-VFR Pattern Downwind / Loss of engine power (total)
+- 2  300341  Takeoff / Loss of engine power (total)
+- 2  400341  Enroute / Loss of engine power (total)
+- 2  600470  Emergency Descent / Collision with terr/obj (non-CFIT)
+- 1  300342  Takeoff / Loss of engine power (partial)
+- 1  450342  Maneuvering / Loss of engine power (partial)
+- 1  500341  Approach / Loss of engine power (total)
+- 1  505341  Approach-VFR Pattern Crosswind / Loss of engine power (total)
+- 1  507341  Approach-VFR Pattern Base / Loss of engine power (total)
+- 1  507342  Approach-VFR Pattern Base / Loss of engine power (partial)
+- 1  509341  Approach-VFR Go-Around / Loss of engine power (total)
+- 1  551095  Landing-Flare/Touchdown / Landing gear not configured
+- 1  600341  Emergency Descent / Loss of engine power (total)
+- 1  990120  Unknown / Control flight into terr/obj

@@ -1,0 +1,65 @@
+---
+// Question 6's figure (spec §7.4): one cause sentence the NTSB used word for word on many cases,
+// and the different first codes those cases received. The sentence is the one whose cases
+// received the most different first codes (Andy, 2026-10-14), and the figure says so, so it is
+// never read as typical. Everything comes from the numbers file.
+import { halfShown } from "../lib/first-codes";
+import FirstCodesTable from "./FirstCodesTable.astro";
+import { count, list, oneIn, text } from "../lib/numbers";
+
+const codes = list("q6.one.codes").map((c) => ({
+    count: Number(c["count"]),
+    label: String(c["label"]),
+}));
+const most = Math.max(...codes.map((c) => c.count));
+// The commonest codes until they cover half the cases; the rest behind a disclosure (Andy).
+const { shown, rest, restCases } = halfShown(codes);
+---
+
+<figure class="first-codes" aria-labelledby="first-codes-caption">
+    <blockquote>{text("q6.one.sentence")}</blockquote>
+    <figcaption id="first-codes-caption">
+        This is the sentence whose cases received the most different first codes:{" "}
+        {count("q6.one.distinct")} different first codes across its {count("q6.one.cases")} cases.
+        Across all repeated sentences, the first code matched in about {oneIn("q6.twins")}.
+    </figcaption>
+    <FirstCodesTable
+        id="first-codes-table"
+        caption="The commonest first codes the NTSB gave the cases with this sentence"
+        rows={shown}
+        most={most}
+    />
+    {rest.length > 0 && (
+        <details>
+            <summary>
+                And {rest.length} more codes, across the other {restCases} cases
+            </summary>
+            <FirstCodesTable
+                id="first-codes-rest"
+                caption="The other first codes the NTSB gave the cases with this sentence"
+                rows={rest}
+                most={most}
+            />
+        </details>
+    )}
+</figure>
+
+<style>
+    .first-codes {
+        margin: 0;
+        display: grid;
+        gap: 0.6rem;
+    }
+    blockquote {
+        margin: 0;
+        padding-left: 0.75rem;
+        border-left: 3px solid var(--rule);
+        font-weight: 700;
+    }
+    figcaption {
+        color: var(--ink-muted);
+    }
+    summary {
+        cursor: pointer;
+    }
+</style>

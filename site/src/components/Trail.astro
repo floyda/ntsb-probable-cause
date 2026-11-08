@@ -1,0 +1,290 @@
+---
+// One case's trail (spec §6): what Ellery believed, read and spent, step by step. Beliefs are
+// the spine; the read choices and coding lookups sit between them; the NTSB's verdict is last.
+import type { CaseFile } from "../lib/board-case-types";
+import {
+    confidenceLabel,
+    costLabel,
+    documentLine,
+    lookupDetails,
+    lookupName,
+    titleShown,
+    trailSteps,
+    verdictView,
+} from "../lib/trail";
+import { eventOf } from "../lib/words";
+
+interface Props {
+    kase: CaseFile;
+}
+
+const { kase } = Astro.props;
+const steps = trailSteps(kase);
+const total = kase.trail === null ? null : costLabel(kase.trail.total_usd);
+const verdict = verdictView(kase);
+---
+
+<div class="trail">
+    <p class="total">Total cost {total}</p>
+
+    <ol class="steps">
+        {steps.map((step) => (
+            <li class={`step step-${step.kind}`}>
+                {step.kind === "belief" && (
+                    <section>
+                        <header>
+                            <h2>{step.name}</h2>
+                            <span class="cost">{costLabel(step.belief.cost_usd)}</span>
+                        </header>
+                        <p class="first">
+                            First code: <strong>{eventOf(step.belief.first.label)}</strong>
+                            <span class="term"> · {step.belief.first.label}</span>
+                        </p>
+                        <p>{step.belief.cause}</p>
+                        <p class="meta">
+                            {confidenceLabel(step.belief.confidence)}
+                            {step.changed !== null && <> · {step.changed}</>}
+                        </p>
+                        {/* Ellery's account of the evidence (belief.account) is not shown: S4's names
+                            step replaces only owner, operator and registration in prose, so a
+                            passenger's or witness's name could pass through (Andy, 2026-10-14). */}
+                    </section>
+                )}
+                {step.kind === "read" && (
+                    <section>
+                        <header>
+                            <h2>{step.name}</h2>
+                            <span class="cost">{costLabel(step.choice.cost_usd)}</span>
+                        </header>
+                        <p>{step.choice.reason}</p>
+                        <div
+                            class="frame"
+                            tabindex="0"
+                            role="region"
+                            aria-labelledby={`docs-${step.choice.step}`}
+                        >
+                            {/* The roles keep the table's meaning where a phone lays it out as
+                                stacked rows (the styles below). */}
+                            <table role="table">
+                                <caption class="vh" id={`docs-${step.choice.step}`}>
+                                    Documents at the {step.name.toLowerCase()}
+                                </caption>
+                                <thead role="rowgroup">
+                                    <tr role="row">
+                                        <th scope="col" role="columnheader">
+                                            Document <span class="term">· the docket</span>
+                                        </th>
+                                        <th scope="col" role="columnheader">
+                                            Decision
+                                        </th>
+                                        <th scope="col" role="columnheader">
+                                            Detail
+                                        </th>
+                                        <th scope="col" role="columnheader">
+                                            The agent's note
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody role="rowgroup">
+                                    {step.choice.documents.map((doc) => {
+                                        const line = documentLine(doc);
+                                        return (
+                                            <tr role="row">
+                                                <td role="cell" class="title">
+                                                    {titleShown(doc.title)}
+                                                </td>
+                                                <td role="cell">{line.decision}</td>
+                                                <td
+                                                    role="cell"
+                                                    class:list={{ empty: line.detail === null }}
+                                                    data-label="Detail"
+                                                >
+                                                    {line.detail ?? "—"}
+                                                </td>
+                                                <td
+                                                    role="cell"
+                                                    class:list={{ empty: doc.note === null }}
+                                                    data-label="The agent's note"
+                                                >
+                                                    {doc.note ?? "—"}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                )}
+                {step.kind === "lookups" && (
+                    <section>
+                        <header>
+                            <h2>
+                                Coding lookups{" "}
+                                <span class="term">· the code tables and past usage</span>
+                            </h2>
+                            <span class="cost">{costLabel(step.cost_usd)}</span>
+                        </header>
+                        <ul class="lookups">
+                            {step.lookups.map((lookup) => {
+                                const { asked, why, note } = lookupDetails(lookup, kase);
+                                return (
+                                    <li>
+                                        <p class="lookup-name">
+                                            {lookupName(lookup.tool)}
+                                            {asked !== null && <> · {asked}</>}
+                                            <span class="cost">{costLabel(lookup.cost_usd)}</span>
+                                        </p>
+                                        {why !== null && <p>Why: {why}</p>}
+                                        {note !== null && <p>The agent's note: {note}</p>}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </section>
+                )}
+            </li>
+        ))}
+    </ol>
+
+    <section class="verdict" aria-labelledby="verdict-heading">
+        <h2 id="verdict-heading">The NTSB's verdict</h2>
+        {verdict === null ? (
+            <p>The NTSB has not published its codes yet.</p>
+        ) : (
+            <>
+                {verdict.first !== null && (
+                    <p class="first">
+                        First code: <strong>{eventOf(verdict.first.label)}</strong>
+                        <span class="term"> · {verdict.first.label}</span>
+                    </p>
+                )}
+                {verdict.cause !== null && <p>{verdict.cause}</p>}
+                {verdict.closest !== null && <p class="closest">{verdict.closest}</p>}
+            </>
+        )}
+    </section>
+</div>
+
+<style>
+    .trail {
+        display: grid;
+        gap: 1.25rem;
+    }
+    .total {
+        font-weight: 700;
+        margin: 0;
+    }
+    .steps {
+        margin: 0;
+        padding-left: 1.5rem;
+        display: grid;
+        gap: 1.25rem;
+    }
+    .step section,
+    .verdict {
+        display: grid;
+        gap: 0.4rem;
+        min-width: 0;
+        padding: 0.9rem;
+        border: 1px solid var(--panel-edge);
+        border-radius: 4px;
+        background: var(--paper);
+    }
+    header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 0.5rem;
+    }
+    h2 {
+        font-size: 1.1rem;
+        margin: 0;
+        text-wrap: balance;
+    }
+    p {
+        margin: 0;
+    }
+    .cost {
+        font-variant-numeric: tabular-nums;
+        color: var(--ink-muted);
+        margin-left: auto;
+    }
+    .term,
+    .meta {
+        color: var(--ink-muted);
+        font-size: 0.92em;
+        font-weight: 400;
+    }
+    .frame {
+        overflow-x: auto;
+    }
+    .frame:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.93rem;
+    }
+    th,
+    td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.35rem 0.5rem;
+        border-bottom: 1px solid var(--rule);
+    }
+    th {
+        color: var(--ink-muted);
+        font-weight: 700;
+    }
+    /* On a phone each document is a stacked row: its title, its decision, then the detail and the
+       agent's note, each named, so nothing is cut off at the screen's edge (review, 2026-10-21). */
+    @media (max-width: 640px) {
+        table,
+        tbody,
+        tr,
+        td {
+            display: block;
+        }
+        thead {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+        tr {
+            padding-block: 0.5rem;
+            border-bottom: 1px solid var(--rule);
+        }
+        td {
+            border-bottom: none;
+            padding: 0.1rem 0;
+        }
+        td.title {
+            font-weight: 700;
+        }
+        td.empty {
+            display: none;
+        }
+        td[data-label]::before {
+            content: attr(data-label) ": ";
+            color: var(--ink-muted);
+        }
+    }
+    .lookups {
+        margin: 0;
+        padding-left: 1.2rem;
+        display: grid;
+        gap: 0.6rem;
+    }
+    .lookup-name {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+</style>

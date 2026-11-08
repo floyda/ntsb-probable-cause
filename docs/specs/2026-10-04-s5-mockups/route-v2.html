@@ -1,0 +1,401 @@
+<title>Ellery route mock-up</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=Doto:wght@700;900&display=swap">
+<style>
+  /* Layout: one reading column; a rail of the six stops in the right margin on a wide screen,
+     a sticky strip across the top on a phone. Airport signage: ink on ground, amber on the
+     terminal panel. The "Terminal" theme carries the panel into each stop's title. */
+  :root {
+    --ground: #f6f7f8;
+    --paper: #ffffff;
+    --ink: #16191d;
+    --ink-muted: #4b525b;
+    --rule: #d3d8de;
+    --link: #1d4fb8;
+    --panel: #0d1117;
+    --panel-ink: #f2c94c;
+    --panel-dim: #b8c0cc;
+    --panel-rule: #2a3240;
+    --bar: #7d8996;
+    --read: "Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --dots: "Doto", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --rail-w: 13rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #111418; --paper: #171b21; --ink: #e9ecef; --ink-muted: #b3bac3;
+      --rule: #2f3640; --link: #9db8ff; --bar: #8d99a6; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #111418; --paper: #171b21; --ink: #e9ecef; --ink-muted: #b3bac3;
+    --rule: #2f3640; --link: #9db8ff; --bar: #8d99a6; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html.snap { scroll-snap-type: y proximity; }
+  html.snap .stop { scroll-snap-align: start; scroll-margin-top: var(--top-offset, 0px); }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 1.02rem/1.55 var(--read);
+  }
+  a { color: var(--link); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  .gutter {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  /* Header */
+  .site-head { background: var(--panel); color: var(--panel-dim); border-bottom: 1px solid var(--panel-rule); }
+  .site-head .inner {
+    max-width: 72rem; margin: 0 auto; padding-block: 0.7rem;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+  .wordmark { font: 900 1.5rem/1 var(--dots); color: var(--panel-ink); letter-spacing: 0.06em; text-decoration: none; }
+  .site-nav { display: flex; gap: 0.25rem 1.1rem; flex-wrap: wrap; font-size: 0.95rem; }
+  .site-nav a { color: var(--panel-dim); text-decoration: none; padding-block: 0.3rem; }
+  .site-nav a[aria-current="page"] { color: var(--panel-ink); border-bottom: 2px solid var(--panel-ink); }
+
+  /* The phone rail: a sticky strip of stops */
+  .rail-strip {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--paper); border-bottom: 1px solid var(--rule);
+  }
+  .rail-strip ol {
+    list-style: none; margin: 0; padding-block: 0.5rem; display: flex; gap: 0.4rem;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .rail-strip a {
+    display: block; white-space: nowrap; text-decoration: none; color: var(--ink-muted);
+    font-size: 0.85rem; padding: 0.3rem 0.6rem; border: 1px solid var(--rule); border-radius: 3px;
+  }
+  .rail-strip a.on { background: var(--panel); color: var(--panel-ink); border-color: var(--panel); }
+
+  /* The wide rail, in the right margin */
+  .layout { max-width: 72rem; margin: 0 auto; }
+  .rail { display: none; }
+  @media (min-width: 1000px) {
+    .rail-strip { display: none; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail-w); gap: 3rem; }
+    .rail { display: block; }
+    .rail nav { position: sticky; top: 1.5rem; padding-top: 2rem; }
+    .rail h2 { font: 700 0.75rem/1 var(--read); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); margin: 0 0 0.8rem; }
+    .rail ol { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--rule); }
+    .rail a {
+      display: grid; grid-template-columns: 1.6rem 1fr; gap: 0.3rem; align-items: baseline;
+      padding: 0.45rem 0 0.45rem 0.8rem; margin-left: -2px; border-left: 2px solid transparent;
+      color: var(--ink-muted); text-decoration: none; font-size: 0.92rem;
+    }
+    .rail a .n { font: 700 0.85rem/1 var(--dots); }
+    .rail a.on { border-left-color: var(--ink); color: var(--ink); font-weight: 700; }
+    .rail a.on .n { color: var(--ink); }
+  }
+
+  /* Stops */
+  main { min-width: 0; }
+  .stop { padding-block: 2.5rem; border-bottom: 1px solid var(--rule); display: grid; gap: 1rem; max-width: 44rem; }
+  .stop:last-of-type { border-bottom: 0; }
+  .sign {
+    display: inline-flex; align-items: center; gap: 0.5rem; justify-self: start;
+    font: 700 0.78rem/1 var(--read); letter-spacing: 0.12em; text-transform: uppercase;
+    background: var(--panel-ink); color: var(--panel); padding: 0.35rem 0.55rem; border-radius: 2px;
+  }
+  .stop h2 { margin: 0; font-size: 1.55rem; line-height: 1.2; text-wrap: balance; }
+  .stop p { margin: 0; max-width: 62ch; }
+  .more { font-size: 0.95rem; }
+  .muted { color: var(--ink-muted); }
+  .small { font-size: 0.88rem; }
+
+  /* Terminal theme: each stop's title is a departure-board line */
+  html.terminal .sign { display: none; }
+  html.terminal .stop h2 {
+    background: var(--panel); color: var(--panel-ink); font: 700 1.25rem/1.25 var(--dots);
+    letter-spacing: 0.04em; padding: 0.7rem 0.9rem; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--panel-rule);
+    display: grid; grid-template-columns: auto 1fr; gap: 0.8rem; align-items: baseline;
+  }
+  html.terminal .stop h2::before { content: attr(data-gate); color: var(--panel-dim); }
+  html.terminal .site-head { border-bottom: 3px solid var(--panel-ink); }
+
+  /* The board */
+  .board { background: var(--panel); color: var(--panel-ink); border-radius: 4px; padding: 0.9rem; overflow-x: auto; box-shadow: inset 0 0 0 1px var(--panel-rule); }
+  .board table { border-collapse: collapse; width: 100%; font: 700 0.95rem/1.25 var(--dots); }
+  .board caption { text-align: left; color: var(--panel-dim); font: 400 0.8rem/1.3 var(--read); padding-bottom: 0.6rem; }
+  .board th { color: var(--panel-dim); font-weight: 700; text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--panel-rule); }
+  .board td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--panel-rule); vertical-align: top; }
+  .board tr.chosen td { background: #1b2330; }
+  .board .hide-phone { display: none; }
+  @media (min-width: 640px) { .board .hide-phone { display: table-cell; } }
+  .mk { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 50%; border: 2px solid currentColor; margin-right: 0.35em; vertical-align: -0.05em; }
+  .mk.filled { background: currentColor; }
+  .mk.half { background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+  .mk.dashed { border-style: dashed; }
+
+  /* One case */
+  .pair { display: grid; gap: 0.8rem; }
+  @media (min-width: 560px) { .pair { grid-template-columns: 1fr 1fr; } }
+  .card { background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.9rem; display: grid; gap: 0.4rem; min-width: 0; }
+  .card h3 { margin: 0; font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); }
+  .card ol { margin: 0; padding-left: 1.2rem; }
+
+  /* The trail strip */
+  .trail { display: grid; gap: 0.5rem; }
+  @media (min-width: 640px) { .trail { grid-template-columns: repeat(4, 1fr); } }
+  .belief { background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.7rem; display: grid; gap: 0.25rem; min-width: 0; }
+  .belief .when { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); }
+  .belief .code { font-weight: 700; }
+  .belief .read { font-size: 0.85rem; color: var(--ink-muted); }
+
+  /* The ladder */
+  .ladder { display: grid; gap: 0.9rem; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 1rem; }
+  .step { display: grid; gap: 0.25rem; }
+  .step .name { font-weight: 700; }
+  .track { position: relative; height: 1.1rem; }
+  .fill { position: absolute; inset: 0 auto 0 0; background: var(--bar); border-radius: 2px; }
+  .whisk { position: absolute; top: 50%; height: 2px; background: var(--ink); }
+  .guess { position: absolute; top: -0.2rem; bottom: -0.2rem; border-left: 2px dashed var(--ink); }
+  .step .val { font-size: 0.9rem; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+  /* The eight questions */
+  .qs { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--rule); }
+  .qs li { border-bottom: 1px solid var(--rule); }
+  .qs a { display: grid; grid-template-columns: 2rem 1fr; gap: 0.6rem; padding: 0.75rem 0; text-decoration: none; color: inherit; }
+  .qs .n { font: 700 1rem/1.3 var(--dots); color: var(--ink-muted); }
+  .qs .q { font-weight: 700; }
+  .qs .a { color: var(--ink-muted); font-size: 0.95rem; }
+
+  /* Footer */
+  .site-foot { background: var(--panel); color: var(--panel-dim); margin-top: 2rem; }
+  .site-foot .inner { max-width: 72rem; margin: 0 auto; padding-block: 1.4rem 2rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; font-size: 0.92rem; }
+  .site-foot a { color: var(--panel-dim); }
+
+  /* Arrival: content is visible at rest; it rises only once a script has seen the reader scroll */
+  @media (prefers-reduced-motion: no-preference) {
+    html.arriving .stop:not(.seen) > * { opacity: 0; transform: translateY(0.8rem); }
+    html.arriving .stop > * { transition: opacity 0.45s ease, transform 0.45s ease; }
+    html.arriving .stop.seen > *:nth-child(2) { transition-delay: 0.06s; }
+    html.arriving .stop.seen > *:nth-child(3) { transition-delay: 0.12s; }
+    html.arriving .stop.seen > *:nth-child(4) { transition-delay: 0.18s; }
+  }
+
+  /* Mock-up controls */
+  .controls {
+    position: fixed; z-index: 10;
+    right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); padding: 0.6rem 0.7rem; display: grid; gap: 0.45rem;
+    font-size: 0.82rem; max-width: calc(100vw - 24px);
+  }
+  .controls b { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); }
+  .seg { display: flex; align-items: center; gap: 0.35rem; }
+  .seg span { min-width: 3.4rem; }
+  .seg button {
+    font: inherit; padding: 0.35rem 0.6rem; min-height: 32px; border-radius: 4px; cursor: pointer;
+    background: var(--ground); color: var(--ink); border: 1px solid var(--rule);
+  }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .controls .hide { justify-self: start; background: none; border: 0; color: var(--link); font: inherit; padding: 0.2rem 0; cursor: pointer; text-decoration: underline; }
+  .mock-note { background: var(--panel-ink); color: var(--panel); font-size: 0.85rem; font-weight: 700; padding-block: 0.4rem; }
+</style>
+
+<div class="mock-note gutter">Mock-up of the first page, for S5 step 6. The board, the case and its trail are invented examples; the ladder's figures are S3.2's real held-out results.</div>
+
+<header class="site-head gutter">
+  <div class="inner">
+    <a class="wordmark" href="#question">ELLERY</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="#question" aria-current="page">Board</a>
+      <a href="#path">The path</a>
+      <a href="#loop">Methods</a>
+      <a href="#foot">Open cases</a>
+    </nav>
+  </div>
+</header>
+
+<nav class="rail-strip gutter" aria-label="Stops on this page">
+  <ol id="strip"></ol>
+</nav>
+
+<div class="layout gutter">
+  <main>
+    <section class="stop" id="question" aria-labelledby="h-question">
+      <span class="sign">1 · The question</span>
+      <h2 id="h-question" data-gate="01">Can an agent code an accident's cause as the investigator did?</h2>
+      <p>Each closed US light-aircraft accident has a cause written by the NTSB, with codes for what happened and why. Ellery reads the same evidence the investigators gathered and codes it, without seeing their answer.</p>
+      <p class="muted"><strong>Read this first.</strong> The board runs Ellery, version 1, an AI agent. It reads the same evidence, with the same tools, as a simpler fixed method. On 400 accidents it had never seen, its first code matched the investigator's in about one case in four. The fixed method matched in about one case in three. It runs here because it is the version being improved, and each new version is measured against that fixed method.</p>
+    </section>
+
+    <section class="stop" id="board" aria-labelledby="h-board">
+      <span class="sign">2 · Closed cases</span>
+      <h2 id="h-board" data-gate="02">Recently closed cases</h2>
+      <div class="board">
+        <table>
+          <caption>Invented example rows. Tap a row to open its case below.</caption>
+          <thead><tr><th>Closed</th><th class="hide-phone">Aircraft</th><th class="hide-phone">Agent</th><th class="hide-phone">NTSB</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr class="chosen"><td>14 Oct</td><td class="hide-phone">Aeroplane, 1 piston</td><td class="hide-phone">Stall/spin</td><td class="hide-phone">Loss of control</td><td><span class="mk half" aria-hidden="true"></span>same codes, other order</td></tr>
+            <tr><td>14 Oct</td><td class="hide-phone">Aeroplane, 1 piston</td><td class="hide-phone">Fuel exhaustion</td><td class="hide-phone">Fuel exhaustion</td><td><span class="mk filled" aria-hidden="true"></span>same first code</td></tr>
+            <tr><td>13 Oct</td><td class="hide-phone">Helicopter</td><td class="hide-phone">Hard landing</td><td class="hide-phone">Loss of control</td><td><span class="mk" aria-hidden="true"></span>different</td></tr>
+            <tr><td>13 Oct</td><td class="hide-phone">Aeroplane, 2 piston</td><td class="hide-phone">No answer</td><td class="hide-phone">Engine power loss</td><td><span class="mk dashed" aria-hidden="true"></span>agent abstained</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">Since launch (example): 1 same first code, 1 same codes in another order, 1 different, 1 agent abstained. The NTSB's own coding is not fully consistent, so "different" is not simply "wrong" (<a href="#path">question 6</a>).</p>
+    </section>
+
+    <section class="stop" id="case" aria-labelledby="h-case">
+      <span class="sign">3 · One case</span>
+      <h2 id="h-case" data-gate="03">One case, both codings</h2>
+      <p>Both name the same events. The NTSB put loss of control first. The agent put the stall first.</p>
+      <div class="pair">
+        <div class="card"><h3>The agent</h3><ol><li>Aerodynamic stall/spin</li><li>Loss of control in flight</li><li>Collision with terrain</li></ol></div>
+        <div class="card"><h3>The NTSB</h3><ol><li>Loss of control in flight</li><li>Aerodynamic stall/spin</li><li>Collision with terrain</li></ol></div>
+      </div>
+      <p class="more"><a href="#trail">How it reached this: its trail ↓</a></p>
+    </section>
+
+    <section class="stop" id="trail" aria-labelledby="h-trail">
+      <span class="sign">4 · Its trail</span>
+      <h2 id="h-trail" data-gate="04">What it believed, and what it read</h2>
+      <div class="trail">
+        <div class="belief"><span class="when">Before reading</span><span class="code">Loss of control in flight</span><span class="read">from the recorded facts</span></div>
+        <div class="belief"><span class="when">After reading</span><span class="code">Aerodynamic stall/spin</span><span class="read">read 3 of 5 documents</span></div>
+        <div class="belief"><span class="when">After coding</span><span class="code">Aerodynamic stall/spin</span><span class="read">4 coding tools</span></div>
+        <div class="belief"><span class="when">Answer</span><span class="code">Aerodynamic stall/spin</span><span class="read">billed $0.005</span></div>
+      </div>
+      <p class="more"><a href="#trail">The full trail →</a></p>
+    </section>
+
+    <section class="stop" id="loop" aria-labelledby="h-loop">
+      <span class="sign">5 · Was a loop needed?</span>
+      <h2 id="h-loop" data-gate="05">Was a loop needed?</h2>
+      <div class="ladder" role="img" aria-label="First code matched: no model 17.7%; case record only 15.0%; every document, fixed order 33.0%; choosing what to read 23.5%.">
+        <div class="step"><span class="name">1. No model</span><div class="track"><span class="fill" style="width:44.25%"></span><span class="whisk" style="left:41.5%;width:5.75%"></span><span class="guess" style="left:44.25%"></span></div><span class="val">17.7% [16.6%, 18.9%]</span></div>
+        <div class="step"><span class="name">2. The case record only</span><div class="track"><span class="fill" style="width:37.5%"></span><span class="whisk" style="left:28.75%;width:17.5%"></span><span class="guess" style="left:44.25%"></span></div><span class="val">15.0% [11.5%, 18.5%]</span></div>
+        <div class="step"><span class="name">3. Every document, fixed order</span><div class="track"><span class="fill" style="width:82.5%"></span><span class="whisk" style="left:71.25%;width:22.5%"></span><span class="guess" style="left:44.25%"></span></div><span class="val">33.0% [28.5%, 37.5%] · billed $2.13</span></div>
+        <div class="step"><span class="name">4. Choosing what to read</span><div class="track"><span class="fill" style="width:58.75%"></span><span class="whisk" style="left:48%;width:20.75%"></span><span class="guess" style="left:44.25%"></span></div><span class="val">23.5% [19.2%, 27.5%] · billed $2.06</span></div>
+      </div>
+      <p>A step up in machinery is not a step up in result: the loop matched less often than the fixed pipeline, at about the same bill.</p>
+      <p class="more"><a href="#loop">How each step was measured →</a></p>
+    </section>
+
+    <section class="stop" id="path" aria-labelledby="h-path">
+      <span class="sign">6 · The path taken</span>
+      <h2 id="h-path" data-gate="06">The path taken</h2>
+      <ol class="qs">
+        <li><a href="#path"><span class="n">1</span><span><span class="q">Is there an answer key nobody had to write?</span><br><span class="a">Yes. The NTSB codes every closed case.</span></span></a></li>
+        <li><a href="#path"><span class="n">2</span><span><span class="q">Is the case record enough?</span><br><span class="a">No. Alone, it did no better than guessing.</span></span></a></li>
+        <li><a href="#path"><span class="n">3</span><span><span class="q">Does reading the docket help?</span><br><span class="a">Yes. The largest gain on the ladder.</span></span></a></li>
+        <li><a href="#path"><span class="n">4</span><span><span class="q">Does reading words in scanned pages help?</span><br><span class="a">Not shown to help. Paused.</span></span></a></li>
+        <li><a href="#path"><span class="n">5</span><span><span class="q">Are the misses about evidence or about coding?</span><br><span class="a">Mostly coding order.</span></span></a></li>
+        <li><a href="#path"><span class="n">6</span><span><span class="q">How consistent is the answer key itself?</span><br><span class="a">Twin cause sentences share a first code in about one case in three.</span></span></a></li>
+        <li><a href="#path"><span class="n">7</span><span><span class="q">Does choosing what to read beat reading everything?</span><br><span class="a">No. The loop was worse.</span></span></a></li>
+        <li><a href="#path"><span class="n">8</span><span><span class="q">Does it hold on newly closed cases?</span><br><span class="a">The board answers this in public.</span></span></a></li>
+      </ol>
+    </section>
+  </main>
+
+  <aside class="rail">
+    <nav aria-label="Stops on this page">
+      <h2>On this page</h2>
+      <ol id="rail"></ol>
+    </nav>
+  </aside>
+</div>
+
+<footer class="site-foot gutter" id="foot">
+  <div class="inner">
+    <span>Built by Andy Floyd</span>
+    <a href="#foot">The repository</a>
+    <a href="#loop">Methods</a>
+    <a href="#foot">Open cases</a>
+  </div>
+</footer>
+
+<div class="controls" id="controls" role="group" aria-label="Mock-up controls">
+  <b>Mock-up controls</b>
+  <div class="seg"><span>Theme</span><button type="button" id="t-quiet" aria-pressed="true">Quiet</button><button type="button" id="t-term" aria-pressed="false">Terminal</button></div>
+  <div class="seg"><span>Snap</span><button type="button" id="s-off" aria-pressed="true">Off</button><button type="button" id="s-on" aria-pressed="false">On</button></div>
+  <button type="button" class="hide" id="hide">Hide controls</button>
+</div>
+
+<script>
+  const STOPS = [
+    ["question", "The question"], ["board", "Closed cases"], ["case", "One case"],
+    ["trail", "Its trail"], ["loop", "Was a loop needed?"], ["path", "The path taken"],
+  ];
+  const root = document.documentElement;
+  const build = (list, numbered) => {
+    for (const [id, label] of STOPS) {
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = "#" + id;
+      a.dataset.stop = id;
+      a.innerHTML = numbered ? `<span class="n">${STOPS.findIndex((s) => s[0] === id) + 1}</span><span>${label}</span>` : label;
+      li.append(a);
+      list.append(li);
+    }
+  };
+  build(document.getElementById("rail"), true);
+  build(document.getElementById("strip"), false);
+
+  // The sticky strip's height, so a snapped or linked stop is not hidden beneath it.
+  const strip = document.querySelector(".rail-strip");
+  const setOffset = () => root.style.setProperty("--top-offset", (getComputedStyle(strip).display === "none" ? 0 : strip.offsetHeight) + "px");
+  setOffset();
+  addEventListener("resize", setOffset);
+
+  // Mark the stop being read, in both rails.
+  const links = [...document.querySelectorAll("[data-stop]")];
+  const mark = (id) => {
+    for (const a of links) {
+      const on = a.dataset.stop === id;
+      a.classList.toggle("on", on);
+      if (on) a.setAttribute("aria-current", "location"); else a.removeAttribute("aria-current");
+    }
+    const chip = document.querySelector(`#strip [data-stop="${id}"]`);
+    if (chip) chip.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+  const watch = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) mark(e.target.id);
+  }, { rootMargin: "-35% 0px -60% 0px" });
+  document.querySelectorAll(".stop").forEach((s) => watch.observe(s));
+  mark("question");
+
+  // Arrival: hide what is below the screen only once the reader has scrolled.
+  const reveal = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add("seen"); reveal.unobserve(e.target); }
+  }, { rootMargin: "0px 0px -12% 0px" });
+  addEventListener("scroll", function first() {
+    removeEventListener("scroll", first);
+    document.querySelectorAll(".stop").forEach((s) => {
+      if (s.getBoundingClientRect().top < innerHeight) s.classList.add("seen"); else reveal.observe(s);
+    });
+    root.classList.add("arriving");
+  }, { passive: true });
+
+  // Mock-up controls, remembered on this device where storage allows.
+  const save = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+  const load = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const setTheme = (t) => {
+    root.classList.toggle("terminal", t === "terminal");
+    document.getElementById("t-quiet").setAttribute("aria-pressed", String(t !== "terminal"));
+    document.getElementById("t-term").setAttribute("aria-pressed", String(t === "terminal"));
+    save("mock-theme", t);
+  };
+  const setSnap = (on) => {
+    root.classList.toggle("snap", on);
+    document.getElementById("s-off").setAttribute("aria-pressed", String(!on));
+    document.getElementById("s-on").setAttribute("aria-pressed", String(on));
+    save("mock-snap", on ? "on" : "off");
+  };
+  document.getElementById("t-quiet").onclick = () => setTheme("quiet");
+  document.getElementById("t-term").onclick = () => setTheme("terminal");
+  document.getElementById("s-off").onclick = () => setSnap(false);
+  document.getElementById("s-on").onclick = () => setSnap(true);
+  document.getElementById("hide").onclick = () => { document.getElementById("controls").hidden = true; };
+  setTheme(load("mock-theme") === "terminal" ? "terminal" : "quiet");
+  setSnap(load("mock-snap") === "on");
+</script>

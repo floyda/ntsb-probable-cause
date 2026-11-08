@@ -1,0 +1,159 @@
+/* The board (spec §4): an airport terminal display, the site's one pixel element (§10). */
+.board {
+    /* The board alone uses the page's full width, up to 72rem (tokens.css). */
+    max-width: none;
+    margin: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.board-frame {
+    /* Only the table's own frame may scroll sideways, never the page (plan Review Focus 4). */
+    overflow-x: auto;
+    background: var(--board-ground);
+    color: var(--board-ink);
+    border-radius: 6px;
+    /* An edge, so the dark board stays distinct on the dark page (spec §21 note, 2026-10-16). */
+    border: 1px solid var(--board-rule);
+    padding: 0.75rem;
+    /* A fixed window onto the rows, like a departures board (Andy, 2026-10-21): about eight rows
+       on a wide screen, most of the screen on a phone; older rows scroll inside it, by hand
+       or keyboard (the frame is focusable). Every row stays in the table for screen readers. */
+    max-height: min(34rem, 72vh);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+.board table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--board);
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: 0.02em;
+}
+
+.board caption {
+    text-align: left;
+    color: var(--board-dim);
+    font-size: 0.95rem;
+    padding-bottom: 0.5rem;
+}
+
+.board th {
+    /* The column names stay in view as the window scrolls. */
+    position: sticky;
+    top: -0.75rem;
+    z-index: 1;
+    background: var(--board-ground);
+    color: var(--board-dim);
+    font-weight: 700;
+    text-align: left;
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--board-rule);
+    white-space: nowrap;
+}
+
+.board td {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--board-rule);
+    vertical-align: top;
+}
+
+.board tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.board td.took {
+    white-space: nowrap;
+}
+
+/* With the script, a whole row opens its case (scripts/open-row.ts). */
+.board[data-rows-open] tbody tr {
+    cursor: pointer;
+}
+
+.board[data-rows-open] tbody tr:hover a {
+    text-decoration-thickness: 2px;
+}
+
+.board a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    white-space: nowrap;
+}
+
+.board-frame:focus-visible {
+    outline: 2px solid var(--board-ink);
+    outline-offset: 2px;
+}
+
+.board a:focus-visible {
+    outline: 2px solid var(--board-ink);
+    outline-offset: 2px;
+}
+
+.board .from-start {
+    margin-left: 0.25em;
+    color: var(--board-dim);
+}
+
+.board figcaption {
+    display: grid;
+    gap: 0.35rem;
+    color: var(--ink-muted);
+    font-size: 0.95rem;
+}
+
+.board figcaption p {
+    margin: 0;
+}
+
+/* With the script, the board first shows its newest rows, and a button shows the rest (Andy,
+   2026-10-22; scripts/open-row.ts takes the older rows out of the table): 20 in the wider
+   window, 5 on a phone, where the rows sit in the page with no window of their own, so a swipe
+   over the board scrolls the page. Without the script every row shows and the button does not.
+   The script takes the button away once every row is on show. */
+.board:not([data-capped]) .board-more {
+    display: none;
+}
+
+.board-more {
+    justify-self: start;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.board-more:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+}
+
+/* The phone keeps Closed, Aircraft and Result (spec §4). */
+@media (max-width: 640px) {
+    .board-frame {
+        max-height: none;
+        overscroll-behavior: auto;
+    }
+    .board .wide {
+        display: none;
+    }
+    /* Small enough that the three columns fit a 375px screen without scrolling sideways. */
+    .board table {
+        font-size: 0.95rem;
+    }
+    .board th,
+    .board td {
+        padding-inline: 0.3rem;
+    }
+}
+
+/* A result's words may wrap: beside the page's rail the board is narrower than the full
+   72rem it was first drawn for (step 6a). Each mark stays beside its first word (Mark.astro). */

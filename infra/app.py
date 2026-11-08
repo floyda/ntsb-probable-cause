@@ -42,6 +42,7 @@ import aws_cdk as cdk
 
 from live_stack import DEFAULT_LEDGER_BRANCHES, NtsbLiveStack
 from recorder_stack import NtsbRecorderStack
+from site_stacks import NtsbSiteDnsStack, NtsbSiteEdgeStack, NtsbSiteStack
 
 
 def deploy_environment() -> cdk.Environment:
@@ -50,6 +51,36 @@ def deploy_environment() -> cdk.Environment:
     See the module docstring for why the account is deliberately left unset.
     """
     return cdk.Environment(region="eu-west-2")
+
+
+def add_site_stacks(app: cdk.App) -> None:
+    """The public site's three stacks (S5), deployed by docs/runbooks/site-deploy.md.
+
+    The zone, certificate and web ACL are in us-east-1, where CloudFront takes them. All three
+    stacks are always built, whatever context is given, so each keeps one shape: a stack that
+    appeared only with `alert_email` once changed what the us-east-1 stacks export (review,
+    2026-10-12). Context, never committed: `alert_email` (the build-failure email; without it
+    the topic has no subscription), `site_source_branch` (default `main`),
+    `live_bucket_name` (S4's bucket; without it nothing reads S4's export),
+    `github_connection_arn` (runbook Stage 5; without it a push starts no build) and
+    `site_mode` (`holding` unless Andy's launch deploy passes `site`, spec §20; runbook Stage 8).
+    """
+    edge_env = cdk.Environment(region="us-east-1")
+    dns = NtsbSiteDnsStack(app, "NtsbSiteDnsStack", env=edge_env)
+    edge = NtsbSiteEdgeStack(app, "NtsbSiteEdgeStack", env=edge_env, zone=dns.zone)
+    NtsbSiteStack(
+        app,
+        "NtsbSiteStack",
+        env=deploy_environment(),
+        zone=dns.zone,
+        certificate=edge.certificate,
+        web_acl_arn=edge.web_acl.attr_arn,
+        source_branch=app.node.try_get_context("site_source_branch") or "main",
+        alert_email=app.node.try_get_context("alert_email"),
+        live_bucket_name=app.node.try_get_context("live_bucket_name"),
+        github_connection_arn=app.node.try_get_context("github_connection_arn"),
+        site_mode=app.node.try_get_context("site_mode") or "holding",
+    )
 
 
 def parse_branches(value: object) -> tuple[str, ...]:
@@ -69,6 +100,8 @@ if __name__ == "__main__":
         env=deploy_environment(),
         github_oidc_provider_arn=app.node.try_get_context("github_oidc_provider_arn"),
     )
+
+    add_site_stacks(app)
 
     # The live stack is built when `recorder_bucket` is given as context (the recorder's own
     # `cdk synth` needs none of this). Its other context values are then required: `alert_email`,

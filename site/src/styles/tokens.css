@@ -1,0 +1,144 @@
+/* Colour tokens (S5 spec §10, §12 item 8). Every colour on the site comes from here. */
+:root {
+    color-scheme: light dark;
+    --ink: #1a1a1a;
+    --ink-muted: #4a4a4a;
+    /* The Quiet look (spec §21 note, 2026-10-16): a pale page, white panels for figures. */
+    --ground: #f6f7f8;
+    --paper: #ffffff;
+    --panel-edge: #c9d0d7;
+    --rule: #c8c8c8;
+    /* An amber wayfinding sign, the board's amber, as a section's label (spec §10). */
+    --sign: #f2c94c;
+    --sign-ink: #0d1117;
+    /* The ladder's bars (spec §7.1): lit and dimmed, by lightness only, never good or bad. */
+    --bar: #7d8996;
+    --bar-dim: #d5d9de;
+    --read: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+    --board: "Doto", ui-monospace, monospace;
+    /* The board is a dark terminal panel in both themes (spec §4). */
+    --board-ground: #0d1117;
+    --board-ink: #f2c94c;
+    --board-dim: #b8c0cc;
+    --board-rule: #2a3240;
+    /* One type scale and one section space for every page. */
+    --step-0: 1rem;
+    --step-1: 1.2rem;
+    --step-2: 1.5rem;
+    --step-3: 2rem;
+    --space-section: 2.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ink: #ececec;
+        --ink-muted: #b8b8b8;
+        --ground: #111418;
+        --paper: #171b21;
+        --panel-edge: #39424d;
+        --rule: #3a3a3a;
+        --bar: #5f6b78;
+        --bar-dim: #2c3238;
+    }
+}
+
+html {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--read);
+    line-height: 1.5;
+}
+
+/* The footer sits at the foot of the screen on a short page (review, 2026-10-21: the 404 page). */
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The page between the top bar and the footer, whose dark bands run the full width. */
+.page {
+    flex: 1 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0 auto;
+    max-width: 72rem;
+    padding: 1.5rem 1rem;
+}
+
+main:focus {
+    outline: none;
+}
+
+/* A page with a rail: the rail takes the right margin from 1000px (components/Rail.astro). */
+@media (min-width: 1000px) {
+    .page.with-rail {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 13rem;
+        gap: 3rem;
+    }
+    .page.with-rail main {
+        grid-column: 1;
+        grid-row: 1;
+        min-width: 0;
+    }
+    /* Beside a rail, the reading column sits at the left of its space, not in its middle. */
+    .page.with-rail main > * {
+        margin-inline: 0;
+    }
+}
+
+/* A heading reached by a link stays below the phone's sticky strip. scripts/rail.ts measures
+   the strip; this is its height before the script runs, or without it. */
+:root {
+    --strip-h: 4rem;
+}
+@media (min-width: 1000px) {
+    :root {
+        --strip-h: 0px;
+    }
+}
+main [id] {
+    scroll-margin-top: calc(var(--strip-h) + 0.75rem);
+}
+
+/* Reading text keeps about 65 characters a line; the board is wider (board.css). */
+main > * {
+    max-width: 44rem;
+    margin-inline: auto;
+}
+
+/* One type scale for every page (spec §21 note, 2026-10-16). */
+h1 {
+    font-size: var(--step-3);
+    line-height: 1.15;
+    /* Block margins only: main's children keep their inline margin (below). */
+    margin-block: 0 0.75rem;
+    text-wrap: balance;
+}
+h2 {
+    font-size: var(--step-2);
+    line-height: 1.2;
+    text-wrap: balance;
+}
+
+/* The white panel: a figure or a list of codes set apart from the pale page (components/Panel). */
+.panel {
+    display: grid;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.9rem;
+    border: 1px solid var(--panel-edge);
+    border-radius: 4px;
+    background: var(--paper);
+}
+
+.vh {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
