@@ -1,5 +1,7 @@
 # NTSB probable-cause agent
 
+[![Ellery: can an agent read an accident docket and code the cause as the investigator did, and does it need to be an agent to do so?](site/public/cards/site.png)](https://ellery.demo.floyda.dev)
+
 An agent that determines the **probable cause** of a US general-aviation accident from the
 evidence investigators gathered, scored against the verdict the National Transportation
 Safety Board publishes.
