@@ -681,8 +681,8 @@ make s5-belief-path     # docs/results/s5-belief-path-heldout.txt, question 7's 
 make pypdf-text-check   # docs/results/pypdf-text-dev.txt: pypdf 6.19.0 against the locked version (0218); free
 ```
 
-`make site-board-sync` copied S4's schema and sample from S4's branch before S4 merged; they are
-now built on `main` by `make board-schema` and `make board-sample`. `pnpm --dir site run cards`
+The site's copy of the `board/1` schema and sample is the one `make board-schema` and
+`make board-sample` build on `main`. `pnpm --dir site run cards`
 remakes the preview cards under `site/public/cards/`; a test fails when a card's words no longer
 match the site's.
 
