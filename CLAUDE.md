@@ -44,7 +44,15 @@ holds every run and night manifest's SHA-256 (0178); failures reach Andy by emai
 night by one CloudWatch alarm (0177). Four cloud nights from 2026-10-13 coded the 62-case
 backfill and 11 fresh closures, and its closing rule (0181) was met on 2026-10-16
 (`docs/results/s4-live.txt`, counts only). The runbook is `docs/runbooks/live-cloud-nights.md`.
-**S5 (the public site) is next.** Read build-brief §7 before writing any code, then
+**S5 (the public site) is built and released** (pull request #42, `v0.12.0`): Ellery, a static
+Astro site under `site/`, launched at `https://ellery.demo.floyda.dev` on 2026-11-03. Each build
+reads S4's nightly `board/1` export and the numbers file (`scripts/site_numbers.py`, every figure
+read from one line of a committed result), checks both, and publishes only if every check passes.
+S4's finished mark starts the build, so the site rebuilds each morning with no one intervening.
+`NtsbSiteStack` (`infra/site_stacks.py`) serves it from CloudFront on the flat-rate Free plan. The
+runbook is `docs/runbooks/site-deploy.md`. **No later stage is specified yet.** The planned next
+version of the agent is version 2 with the precedent tool (0140), measured on `dev-seal-s3-400`
+and the live board (0141, 0153). Before starting any new stage, read build-brief §7, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, Superseded on 2026-10-03 by the S1
 and S3 specifications, which took over its parts; still the record of how S0 changed the design,
@@ -54,10 +62,12 @@ amend the brief where they differ. S3's specification
 (`docs/specs/2026-09-30-s3-agent-loop-design.md`) holds the shared design and S3.1 in full, S3.2
 and S3.3 in outline; the precedent tool's design note
 (`docs/specs/2026-10-03-s3-precedent-tool-design.md`) is a Draft for after S4. S5's site
-design (`docs/specs/2026-10-04-s5-public-site-design.md`) is a Draft, written early; three of
-its decisions bound S3.3 and S4: the agent's live run is at closure (0154), the board is
+specification (`docs/specs/2026-10-04-s5-public-site-design.md`) is Implemented; three of its
+decisions also bound S3.3 and S4: the agent's live run is at closure (0154), the board is
 backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, version 1, at
-`ellery.demo.floyda.dev` (0156).
+`ellery.demo.floyda.dev` (0156). A later version replaces version 1 on the board when it beats
+version 1 in a registered comparison; the fixed pipeline stays the bar for calling the loop
+warranted (S5 specification §1).
 
 ## Required components (build-brief §7)
 
@@ -158,7 +168,17 @@ backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, versio
   change feed stored beside them for comparison, not used as the source (0065). Raw data kept
   out of git.
 - **Live board**: the public surface — a page for open cases and a trajectory view of the
-  agent's steps and costs, in the clinical tone the design notes require.
+  agent's steps and costs, in the clinical tone the design notes require. **Built in S5** as
+  the site under `site/` (Astro 7, strict TypeScript, pnpm 11.28.4 with a frozen lockfile and a
+  release-age delay): the first page, one route of six stops with the board of closed cases; a
+  page and a trail view for each closed case (`case/<case number>/`); the Path page, with the
+  ladder and eight questions; the Methods page; the Open cases page, counts only (0154); and a
+  404 page. `site/src/lib/claims.ts` holds every worded claim with its numbers, and the build
+  fails if a claim stops being true; every built page is checked to show no aircraft
+  registration, and grades are shown by a mark's shape, never by colour (Rule 6). The stacks are
+  `NtsbSiteDnsStack`, `NtsbSiteEdgeStack` and `NtsbSiteStack` (`infra/site_stacks.py`); the CDK
+  context `site_mode` (`holding` or `site`) is the publish switch, and only a `cdk deploy` sets
+  it. Decisions 0186 and 0187.
 
 ## Rules that carry from the spike
 
@@ -496,7 +516,7 @@ results elsewhere in this file are historical reference points, not bars.
 ## Commands
 
 ```bash
-make check   # lint, mypy --strict and pytest — what CI runs
+make check   # lint, mypy --strict, pytest and site-check — what CI runs
 make lint    # ruff format --check, ruff check, import-linter, deptry, vulture
 make type    # mypy
 make test    # pytest
@@ -648,6 +668,24 @@ make s4-report             # docs/results/s4-live.txt, counts only (runs s4-expo
 make s4-image CONFIRM=yes  # builds the live image and PUSHES it to ECR; ask Andy first; prints the digest
 ```
 
+S5's targets (none is paid; the site needs Node from `site/.node-version` and pnpm 11.28.4; read
+`docs/runbooks/site-deploy.md` before any `cdk deploy` of the site stacks: a deploy without
+`-c site_mode=site` puts the holding line back at the next build):
+
+```bash
+make site-check         # pnpm install --frozen-lockfile, lint, format, astro check, types, build,
+                        #   Vitest and the axe browser checks (light, dark, phone); part of make check
+make site-numbers       # site/data/numbers.json from committed results; pytest fails while it is stale
+make site-example-case  # site/data/example-case.json, question 1's case, from a committed fixture
+make s5-belief-path     # docs/results/s5-belief-path-heldout.txt, question 7's figure (0186); free
+make pypdf-text-check   # docs/results/pypdf-text-dev.txt: pypdf 6.19.0 against the locked version (0218); free
+```
+
+The site's copy of the `board/1` schema and sample is the one `make board-schema` and
+`make board-sample` build on `main`. `pnpm --dir site run cards`
+remakes the preview cards under `site/public/cards/`; a test fails when a card's words no longer
+match the site's.
+
 The targets from `s3-miss-kinds` on run exploratory scripts (decision 0059, `scripts/exploratory/`):
 no model call, and they decide nothing. What any `s3-*` target commits is counts only; the
 reading pages and case lists go under `NTSB_RUNS_DIR`, never committed.
@@ -755,6 +793,9 @@ names step, 0182 to 0184) and `state`; `infra/live_stack.py` (`NtsbLiveStack`: i
 and the ledger's OIDC role, which trusts GitHub's immutable subject) and
 `scripts/build_live_image.sh`; and the version-1 settings check in `live/morning.py`, which
 refuses any other label or setting, the model pinned by name (0169).
+
+Every script in `scripts/` is catalogued in `docs/scripts.md`, from its `Status` block; a new
+script gets a row there.
 
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
