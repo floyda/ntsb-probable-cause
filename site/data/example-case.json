@@ -1,0 +1,40 @@
+{
+  "format": "example-case/1",
+  "case_number": "ANC09CA020",
+  "mkey": 73354,
+  "event_date": "2009-02-16",
+  "injury": "none",
+  "cause": "The pilot's misidentification of the runway surface during landing. Contributing to the accident were the snow-covered terrain, and low-light conditions.",
+  "occurrence": [
+    {
+      "code": "550402",
+      "label": "Landing / Loss of visual reference"
+    },
+    {
+      "code": "551094",
+      "label": "Landing-Flare/Touchdown / Landing gear collapse"
+    }
+  ],
+  "findings": [
+    {
+      "code": "0204151044",
+      "label": "Personnel issues \u2014 Action/decision \u2014 Info processing/decision \u2014 Identification/recognition - Pilot",
+      "in_cause": true
+    },
+    {
+      "code": "0202201544",
+      "label": "Personnel issues \u2014 Psychological \u2014 Perception/orientation/illusion \u2014 Visual illusion/disorientation - Pilot",
+      "in_cause": true
+    },
+    {
+      "code": "0302301599",
+      "label": "Environmental issues \u2014 Physical environment \u2014 Runway/land/takeoff/taxi surface \u2014 Snow/slush/ice covered - Not specified",
+      "in_cause": true
+    },
+    {
+      "code": "0303601583",
+      "label": "Environmental issues \u2014 Conditions/weather/phenomena \u2014 Light condition \u2014 Low light - Effect on personnel",
+      "in_cause": true
+    }
+  ]
+}

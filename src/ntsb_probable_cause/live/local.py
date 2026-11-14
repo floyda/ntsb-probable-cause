@@ -2,14 +2,14 @@
 
 A run folder is a *live* run when its ``run.jsonl``'s first record has ``sample == "live"``;
 a folder with no ``run.jsonl`` yet (a run killed before it finished) is one when its
-``spec.json`` says so. The folder name is never the test. This module pulls the store and never
-uploads it: no code in S3.3 writes to S3 (the sink is a local folder; a later stage may add one).
+``spec.json`` says so. The folder name is never the test.
+S4's bucket mirror (``live/cloud.py``) uploads run folders; this module never uploads the store.
 """
 
 import json
 import shutil
 from collections.abc import Iterator, Sequence
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Final
 
@@ -20,6 +20,8 @@ from ntsb_probable_cause.live.records import (
     ClosureRecord,
     write_manifest,
 )
+from ntsb_probable_cause.live.seams import MonthSpend
+from ntsb_probable_cause.live.state import NightState
 from ntsb_probable_cause.scoring.budget import spent_usd
 from ntsb_probable_cause.scoring.records import RunRecord, read_jsonl
 from ntsb_probable_cause.store import Store
@@ -27,6 +29,8 @@ from ntsb_probable_cause.store.sync import Location, S3Like, pull
 
 LIVE_SAMPLE: Final = "live"
 STORE_WORK_FILENAME: Final = "live-store.sqlite"
+STATE_FILE: Final = "live-state.json"
+LOCAL_LIMIT_USD: Final = 10.0  # the live key's monthly limit (decision 0170), as the Mac sees it
 
 _RUN_FILE: Final = "run.jsonl"
 _SPEC_FILE: Final = "spec.json"
@@ -116,7 +120,7 @@ class LocalSpend:
     def __init__(self, runs_dir: Path) -> None:
         self._runs_dir = runs_dir
 
-    def live_month_usd(self, now: datetime) -> float:
+    def month(self, now: datetime) -> MonthSpend:
         """Spend (decision 0135) of live run records started in the calendar month of ``now``."""
         total = 0.0
         for folder in _live_runs(self._runs_dir):
@@ -130,7 +134,7 @@ class LocalSpend:
                     now.month,
                 ):
                     total += spent_usd(record)
-        return total
+        return MonthSpend(used_usd=total, limit_usd=LOCAL_LIMIT_USD)
 
 
 class LocalFolderSink:
@@ -145,15 +149,6 @@ class LocalFolderSink:
         for folder in _live_runs(self._runs_dir):
             done.update(_case_ids(folder))
         return frozenset(done)
-
-    def coded_on(self, day: date) -> int:
-        """Cases in live runs whose run id starts with ``day`` as ``%Y%m%d``."""
-        prefix = day.strftime("%Y%m%d")
-        return sum(
-            len(_case_ids(folder))
-            for folder in _live_runs(self._runs_dir)
-            if folder.name.startswith(prefix)
-        )
 
     def unfinished_run(self) -> str | None:
         """The first live run whose last record is unfinished, or which has no record yet."""
@@ -182,6 +177,18 @@ class LocalFolderSink:
         if backfill is not None:
             (folder / BACKFILL_FILE).write_text(backfill.model_dump_json() + "\n")
         write_manifest(folder)
+
+    def night_state(self) -> NightState:
+        """The state in ``live-state.json``; an empty one when the file is not there."""
+        path = self._runs_dir / STATE_FILE
+        if not path.is_file():
+            return NightState()
+        return NightState.model_validate_json(path.read_text())
+
+    def write_night_state(self, state: NightState) -> None:
+        """Replace ``live-state.json``."""
+        self._runs_dir.mkdir(parents=True, exist_ok=True)
+        (self._runs_dir / STATE_FILE).write_text(state.model_dump_json() + "\n")
 
 
 def _case_ids(folder: Path) -> list[str]:

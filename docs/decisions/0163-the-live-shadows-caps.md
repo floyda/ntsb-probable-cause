@@ -57,3 +57,7 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 ## Clarified, 2026-10-09 (appended; nothing above is edited)
 
 - Decision item 1's "the worst possible day is $3" held at 10 cases a day. From [0167](0167-the-live-shadows-daily-limit-is-raised-to-50.md) (50 a day) the worst day is 50 × $0.30 = $15 in principle: the $5 month is checked before a morning as a projection at $0.04 a case, not as a stop during the run, whose budget is the $40 monthly guard. The caps themselves are unchanged.
+
+## Superseded in part, 2026-10-12 (appended; nothing above is edited)
+
+- On the cloud path, item 2 (the $5 calendar month, checked as a projection at $0.04 a case) is replaced by [0170](0170-live-runs-have-their-own-key-and-the-full-cap-rule.md): live runs use their own OpenRouter key with a $10 monthly limit set on OpenRouter, and a night codes floor(($9 - `usage_monthly`) / $0.30) cases, with no projection. Item 1 ($0.30 a case) stands (0170 item 4). Item 3 (S3.3's stop at $10 of its own spend) and item 4 were S3.3's and are unchanged; S4's development line is $10 on the development key (0170 item 6).

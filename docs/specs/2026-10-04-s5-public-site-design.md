@@ -1,10 +1,11 @@
 # S5 — The public site: structure, content and reader experience
 
-Status: Draft, 2026-10-04. Nothing here is built. This note is written early, on its own branch,
+Status: Implemented (2026-11-04, pull request #42). Approved (Andy, 2026-10-12), as S5's specification. Drafted 2026-10-04. Nothing here is built. This note is written early, on its own branch,
 while S3.2 runs, because the site's design is a large piece of work and its page list decides
 what S4's store must answer (roadmap §8). It is revised and approved as S5's specification when
-S5 starts. It covers what the site says and how a reader moves through it. It does not cover the
-site generator, the hosting or the build pipeline; those are S5's own and depend on S4's store.
+S5 starts. §1 to §16 cover what the site says and how a reader moves through it. *Added
+2026-10-11:* §17 to §22 cover the site generator, the hosting and the build pipeline, designed with
+Andy once S4's export format, `board/1`, existed.
 
 Every choice below was made by Andy in a design session on 2026-10-04, one question at a time.
 Where a point is still open it is listed in §12 and §16, not guessed.
@@ -58,7 +59,7 @@ docket and code the cause as the investigator did, and does it need to be an age
 | Opened case | one case: the agent's coding beside the NTSB's | a board row; it opens beneath the board |
 | Trail view | one case: what the agent believed, read and spent | the opened case |
 | Path | how the project decided what to build, step by step | the first screen |
-| Open cases | every watched open case | a plain link; not promoted |
+| Open cases | counts of the open cases watched, never a list | a plain link; not promoted |
 | Methods | every number, its sample and its script | any number on the site |
 
 This replaces the roadmap's five pages (§8 there). Home and the live board become one screen.
@@ -82,6 +83,9 @@ to bottom. Each stop is a short form of a page in the table above and links to t
 
 A slim rail of the six stops stays in view and marks the stop being read: at the left on a
 wide screen, across the top on a phone.
+
+*Note, 2026-10-16 (Andy, step 6 brainstorm):* the rail sits in the **right** margin on a wide
+screen, and every long page has one, not only the first. See §21's note.
 
 **The caveat sits in stop 1, above the board.** This meets the roadmap's rule that caveats
 come before results, without burying the board. Wording approved by Andy on 2026-10-05, written after
@@ -189,6 +193,18 @@ so S2.4's 40 guard refusals in 400 held-out cases do not describe the loop.
 On a phone the board keeps Closed, Aircraft and Result. About eight rows are shown, so the
 opened case stays within reach.
 
+*Note, 2026-10-21 (Andy, step 6b preview):*
+- **The board is a fixed window onto its rows,** about eight rows tall on a wide screen and most of the screen on a phone. Older rows scroll inside it, and its column names stay in view.
+- **Each row ticks up into place as it comes into the window,** like a departures board updating: the rows in view when the board arrives, and older ones as the window is scrolled.
+- **Each row's motion runs once,** as §3.1 requires. Andy chose this over a board that keeps cycling (which §12 item 7's "no scrolling text" and WCAG 2.2.2 rule out without a pause control), and kept "once per visit" for every stop.
+
+*Note, 2026-10-22 (Andy, after the step 6b review):*
+- **The board first shows its newest rows:** 20 in the window on a wide screen, 5 on a phone. A button under it, "Show all 85 closed cases" (the count from the export), shows the rest and moves focus to the first row it showed. The totals line still counts every case.
+- **A phone has no window.** Its five rows sit in the page, so a swipe over the board scrolls the page. The review found the window caught the swipe on a touch screen and left most rows blank after a fast flick.
+- **With scripts off,** every row shows and the button does not.
+- **A change of width only adds rows** (review, 2026-10-30). A page that narrows after load, such as a turned tablet or a zoom to 200%, keeps the rows on show and the reader's focus. The button goes once every row is on show, and rows it shows tick into place like the rest.
+- **The phone keeps Closed, Aircraft and Result.** Andy kept these over the two first codes, which the review proposed.
+
 A line under the board says that the NTSB's own coding is not fully consistent, and links to
 the Path page's question on it (§7). A reader must not read "different" as simply "wrong".
 
@@ -261,6 +277,11 @@ answers from wrong ones, so the trail shows the number plainly and makes no clai
 **The NTSB's verdict comes last**, after the agent's answer, with a line saying which belief was
 closest to it.
 
+*Note, 2026-10-14 (step 3):* S4's export also carries each belief's account of the evidence
+(`evidence_narrative`). It is **not shown** (Andy, 2026-10-14): S4's names step replaces only the
+case's owner, operator and registration in prose, so a passenger's or witness's name from a
+document could reach the page (§11). It can return behind a measured names check of its own.
+
 What the loop already records (`agent/trail.py`, `scoring/hypothesis.py`,
 `agent/schemas.py`): every belief in full (codes with probabilities, a cause statement, an
 explanation written for a non-expert, confidence, the abstain flag); for every offered document
@@ -315,6 +336,11 @@ The loop's step sits **below** the fixed pipeline's, and the ladder draws it tha
 figure's point is that a step up in machinery is not a step up in result. Costs show billed
 and list price, because the loop's bill equals the pipeline's only through the provider's
 discount on cached prompts; at list price it does about two-thirds more work.
+
+*Note, 2026-10-14 (Andy, step 4 preview):* the site shows **billed costs only**, on the ladder
+and in question 7. The list price is the project's budgeting estimate; what was charged is
+what matters. Step 2's bill is in its run folder, not a committed results file, so its cost
+line reads "bill not recorded". The list price stays in `docs/results/s32-claims-heldout.txt`.
 
 **How it is drawn.** Each step is a bar from zero with a thin whisker for its 95% interval. A
 faint line at the no-model rate runs across all four bars, so every step reads against
@@ -380,7 +406,9 @@ Accepted by Andy as a first draft on 2026-10-04.
 | 8. Newly closed cases | a strip of closed cases over time, one mark per case, shaped by result | S4's live data |
 
 Two more sit outside the questions: a **docket strip** in the first page's trail stop, each
-document a block sized by pages and marked read, skipped, scan only or withheld; and the
+document a block sized by pages and marked read, skipped, scan only or not offered (with its
+reason: not a PDF, photographs only, could not be fetched, already read at the first read choice,
+or over the prompt-size limit); and the
 **run-twice band**, showing how far the same agent moves when run again
 (`docs/results/s3-noise-floor-dev.txt`), at question 7's stop and on Methods, not on the
 ladder, because it was measured on development cases. The ladder lights each step as the story reaches it,
@@ -416,13 +444,13 @@ which the report counts as citable; the earlier 12-night copy,
 So far, the closure run is the only run with evidence to read. Nights 13 and 14 brought no
 closures and no new documents.
 
-**A row for an open case shows facts and status, never an answer** (Andy, 2026-10-04):
-accident date, aircraft type, state, and status, such as "awaiting docket" or "docket: 4
-documents". No first belief is made or shown for open cases without a docket: facts alone
-score below the no-model baseline, so a thousand such guesses about fatal accidents would cost
-money and mislead. The status column shows evidence arriving over months, which is the one
-thing this page can say that the board cannot. The page follows §11; no registration, no
-names.
+**The page shows counts, never a list of open cases** (Andy, 2026-10-11). An earlier draft gave
+each open case a row of facts and status (accident date, aircraft type, state, and "awaiting
+docket" or "docket: 4 documents"), never an answer. Andy dropped the rows: a list of open cases
+says little a count does not, and the export S5 reads, `board/1`, holds nothing about an open
+case beyond counts (S4's export decision, on the S4 branch until it merges). So the page states, from `board/1`'s `counts`: the open cases watched, how many hold a
+docket so far, and the closures each night. No first belief is made or shown for any open case:
+facts alone score below the no-model baseline. The page follows §11.
 
 ## 9. The Methods page
 
@@ -469,6 +497,16 @@ scrolling route, so a link from any page lands beside the entries around it:
    sentence or code appears in what the agent would see, while a sentence shared with the
    analysis write-up only marks the case. A last line says a test deliberately breaks the
    split to prove the checks catch it.
+
+   *Note, 2026-10-14 (Andy, step 5 preview):* the page draws the mechanism as built, not the
+   draft above. No docket document is classed or held back by its title: decision 0056 found the
+   deny-list cannot be filled from titles, and `docket/filter.py` admits every document whose
+   text could be extracted. The evidence route reads "the recorded facts, and every docket
+   document with readable text", and the last check is what stops a document holding the
+   verdict, by refusing the whole case. The fifth check is worded from `records/guard.py`:
+   sentences of the factual write-up may appear in docket documents and weather reports, which
+   it quotes; a sentence of the analysis write-up in a docket document only marks the case
+   (0077).
 8. **Glossary**, with the NTSB terms that the other pages show in small type (§12, item 4).
 
 Closed-case numbers from the board and held-out numbers from evaluation never share a figure
@@ -636,6 +674,17 @@ says whether it is settled.
       beat reading everything? No.", because the findings are what readers should share.
       No card ever shows a case's details: individual accidents, often fatal, are kept out of
       social feeds (§11).
+
+    *Note, 2026-11-01 (Andy, step 6c):*
+    - **The site card shows "ELLERY" in dot letters and the question in the reading font.**
+      The question is too long for the dot font: it would run to about four lines, and be hard
+      to read at the size LinkedIn shows a card. Its one line is the first page's description.
+    - **Each Path question's card sits on a forwarding page, `/path/<anchor>/`,** which sends
+      the reader to `/path/#<anchor>`. Link-preview services ignore the `#` part of an address,
+      so a link straight to the anchor would show the site card.
+    - **The cards are PNG files made once by a script and committed.** A test fails the build
+      when a card's words no longer match the site's. Plan:
+      `docs/plans/2026-11-01-s5-6c-open-cases-and-cards.md`.
 15. **The name.** Settled (Andy, 2026-10-06): the agent and the site are both **Ellery**, at
     **`ellery.demo.floyda.dev`**. On the site the agent is "Ellery, version 1", and later
     versions keep the name with a new number. The site calls Ellery "it". The name comes from
@@ -717,6 +766,9 @@ says whether it is settled.
 - **S4 or S5: document titles.** The trail view needs each document's title, joined from the
   docket listing by position. A document classed as synthesis is shown as withheld, without
   its text.
+  *Note, 2026-10-11:* S4's `board/1` carries the titles. A document the agent could not be
+  offered is `not_offered`, with its reason, never "withheld": a document holding the
+  probable cause makes the whole case "not coded".
 - **S4: the store answers these pages.** For each closed case: the facts on the board, both
   code lists, both cause statements, the findings, the trail, and the costs.
 - **S3.2: the ladder's numbers.** Delivered (§7.1); one interval to recompute by one script.
@@ -743,7 +795,7 @@ version 1, on the board; items 14 and 15).
 **The rest are recorded when this specification is approved**, as S5's own decisions:
 
 1. The primary reader, the second reader, and the link rule (§2).
-2. The board lists closed cases; open cases have their own page (§3, §4, §8).
+2. The board lists closed cases; open cases have their own page, of counts only (§3, §4, §8).
 3. The agent's main live run is at closure (§13); this amends what S4 was to build.
 4. The theme: an airport terminal display for the board only (§10).
 5. Injury level in the opened case only (§11).
@@ -767,11 +819,23 @@ version 1, on the board; items 14 and 15).
 16. WCAG 2.2 level AA on every page (§12, item 8); preview cards by kind of page, with cases
     kept out of social feeds (§12, item 12); a withheld-verdict line on every case and a
     diagram of the split on Methods (§5, §9).
+17. The site is built with Astro, its packages managed by pnpm, locked and delayed 7 days (§17.1,
+    §17.2).
+18. The site is rebuilt by AWS CodeBuild when the export lands and after each merge to `main`,
+    not by a scheduled GitHub workflow (§18.1).
+19. CloudFront serves the site on the flat-rate Free plan (§18.3).
+20. Every number on the Path and Methods pages comes from a script-written numbers file, quoted by
+    name (§17.3).
+21. Previews are private pages; the public address shows a holding line until Andy decides to
+    launch (§20).
+
+Items 17 to 21 are numbered after S4 merges, because S4's branch is still adding records.
 
 ## 16. Open questions for Andy
 
 1. Settled: the middle result grade is a top-3 match that is not a top-1 match (§4).
-2. Settled: an open case shows facts and status, never an answer (§8).
+2. Settled: an open case is never listed; the Open cases page shows counts only (§8; Andy,
+   2026-10-11, replacing the 2026-10-04 rows of facts and status).
 3. Settled: the Methods page follows the order the reader meets the numbers (§9).
 4. Every point in §12 is settled, except hiding the next stop until it arrives, which waits
    for an example site from Andy (item 7).
@@ -784,8 +848,858 @@ version 1, on the board; items 14 and 15).
    mock-ups predate most decisions here and are sketches only. The recorder's counts became
    citable at 14 nights on 2026-10-06 (§8).
 
+## 17. How the site is built
+
+§1 to §16 say what the site shows. §17 to §22 say how it is built, published and checked. Andy
+chose each point in a design session on 2026-10-11, one question at a time; the reasons and what
+each rules out are recorded as decisions when this specification is approved (§15, items 17 to
+21).
+
+**The starting rule is decision [0003](../decisions/0003-static-site-as-pure-function-of-store.md):**
+the site is generated ahead of time as files and served from S3 behind CloudFront. Nothing is
+computed when a reader arrives: no server, no database, no API. Everything below keeps that rule.
+
+### 17.1 The generator: Astro
+
+The site is an Astro project in `site/`, beside the Python packages.
+
+*Why:* Astro builds plain HTML and sends no script unless a part asks for it. So the board, the
+opened case and Methods work with scripts off and read well in a screen reader by default (§12,
+item 8), and only the parts with behaviour carry script. It suits pages that are mostly text, one
+table and a few figures.
+
+*Ruled out:* **Python with templates.** One toolchain, but the scrolling route, the board and the
+figures are where the JavaScript tools are strongest (Andy, 2026-10-11). **SvelteKit.** The best
+built-in animation, but every page loads its runtime script, so working with scripts off needs
+care on every page. **Eleventy.** The plainest, but all behaviour would be loose hand-written
+script.
+
+### 17.2 Dependencies: pnpm, locked and delayed
+
+The site's packages are managed with pnpm. Andy asked that dependencies be locked and that new
+releases not be taken too soon (2026-10-11), because a poisoned release is the commonest way a
+supply-chain attack reaches a project. Each setting below is from pnpm's settings reference, read
+2026-10-11:
+
+- **A committed lockfile**, installed with `--frozen-lockfile` everywhere, so a build never
+  resolves anything new.
+- **`minimumReleaseAge: 10080`** (7 days, in minutes): pnpm refuses a version published less than
+  a week ago. Most poisoned releases are found and removed within days. pnpm 11's default is one
+  day; the site sets 7 explicitly.
+- **No install scripts by default.** A package may run a build script only if it is named in
+  `allowBuilds`; with `strictDepBuilds` an install fails if an unreviewed package tries.
+- **`trustPolicy: no-downgrade`**: the install fails if a package's release is less trusted than
+  its earlier ones, for example a release published without the usual signing.
+- **`blockExoticSubdeps`** (on by default): only a direct dependency may come from git or a
+  download link; every indirect one comes from the registry.
+- **Dependabot** watches the site's packages weekly, with a 7-day cooldown. The same cooldown was
+  added for the Python packages on 2026-10-11, in an incidental pull request outside S5.
+
+The site's checks are held to the strictness of decision
+[0011](../decisions/0011-tooling-uv-hatchling-strict-analysis.md): strict TypeScript, Astro's
+type check, a linter, a formatter, a pinned Node version and a dependency audit, run by
+`make check`, in CI and in the pre-commit hooks.
+
+### 17.3 Inputs
+
+The site reads two things, and nothing else.
+
+1. **The export, `board/1`**, S4's nightly files: `index.json` and `cases/<case number>.json`. A
+   loader checks every file against `docs/schemas/board-1.schema.json` and stops the build on a
+   mismatch; the site's types are generated from the same schema. A missing key is read as null
+   (S4's request). **Only the case files that `index.json` lists are read**: S4's task cannot
+   delete, so a case file that drops out of the export stays in the bucket (§22). Development
+   builds use S4's invented sample in `tests/fixtures/board/` unless a
+   real export is named.
+2. **The numbers file, `site/data/numbers.json`**, for every number on the Path and Methods pages
+   (§7, §9). A Python script under `scripts/`, with its own tests, writes it. Each entry holds the
+   value, its interval and count, the sample, the model, the run, the results file and the script.
+   Example (the values are S3.2's, from `docs/results/s32-claims-heldout.txt`):
+
+   ```json
+   "ladder.loop.top1": {
+     "value": 0.235, "low": 0.192, "high": 0.275, "n": 400,
+     "sample": "heldout-400", "model": "openai/gpt-6-luna",
+     "run": "20261004T140804-e0dc881-heldout-400-C",
+     "results_file": "docs/results/s32-claims-heldout.txt",
+     "script": "scripts/s32_claims.py"
+   }
+   ```
+
+   A page names the number, `ladder.loop.top1`; the build writes "23.5% [19.2%, 27.5%], 400
+   cases" and links it to its Methods entry, and the ladder draws its bar from the same entry. No
+   number is typed into a page. The Methods page is generated from the entries. The file changes
+   only when results change, and its diff shows which numbers on the site moved.
+
+   The same script also copies the few **fixed sentences the site must quote from the code**,
+   so none is retyped by hand. The first is the limit of the names step, `live/names.py`'s
+   `NAMES_LIMIT` on S4's branch, which the Methods page states (§9, §11).
+
+   *Ruled out:* **Astro reading the results files directly**, which are written for people, each
+   laid out differently, so a change of wording could silently break a number. **Numbers typed
+   into pages with a check** that each appears in its cited file, which is weak ("23.5%" can
+   appear for another reason) and against the rule that every number comes from a script.
+
+### 17.4 Pages and addresses
+
+| address | page |
+|---|---|
+| `/` | the scrolling route of six stops (§3.1) |
+| `/case/<case number>/` | the opened case (§5) |
+| `/case/<case number>/trail/` | the trail view (§6) |
+| `/path/` | the Path page; each question has a short anchor, for example `/path#choosing` (§7, §12 item 12) |
+| `/methods/` | the Methods page (§9) |
+| `/open/` | the Open cases page, counts only (§8) |
+
+Made at build time, so they need no script: the board as a real HTML table in a self-hosted
+dot-matrix font; each figure as SVG with a data table behind it; the sentence on where the two
+codings differ, written in site code from the comparison marks (§5), never by a model; and the
+preview-card images, one for the site and one per Path question (§12, item 12).
+
+What runs in the reader's browser is small:
+
+- **The stops** rise into place once as they reach the screen. All content is in the page before
+  any script runs, and reduced motion shows everything at once (§3.1).
+- **Choosing a board row.** Without script each row is a link to its case page; with script the
+  case opens beneath the board. Either way the address can be shared.
+
+Fonts and scripts are served from the site itself, never from another site at read time.
+
+## 18. The rebuild and the AWS stack
+
+### 18.1 Each morning
+
+1. S4's nightly task rebuilds the export into `export/board-1/` in its private bucket, at about
+   06:15 UTC (S4's specification, §5), and writes a finished mark last (§22).
+2. The mark starts the site's CodeBuild job, through an EventBridge rule.
+3. The job fetches the site's code from `main`, copies the export down, checks it against the
+   schema, builds the site with Astro, and runs the checks of §19.
+4. If all pass, it copies the site to the site bucket (§19.1 gives the order) and clears
+   CloudFront's copies. Readers see the new board within minutes.
+5. If any step fails, nothing is published, yesterday's site stays, and an email goes out through
+   S4's alert topic.
+
+A merge to `main` starts the same job, so a change to the site's code goes live the same way. The
+Path and Methods pages change only when the numbers file is regenerated and committed.
+
+*Why CodeBuild, not GitHub Actions:* both cost about nothing here (below). GitHub turns off
+scheduled workflows in a public repository after 60 days without activity, so a quiet project
+could leave the board stale with no alert. A build started by the export's arrival never goes
+dormant, keeps its logs private, and can email on failure. *Ruled out:* **GitHub Actions on a
+schedule**, for that reason; **the build inside S4's nightly task**, because a change to the site's
+styling would then need a new live image.
+
+### 18.2 The stack, `NtsbSiteStack`
+
+A new CDK stack in Python, in the project's AWS account, beside `NtsbRecorderStack` and S4's live
+stack.
+
+- **DNS.** A hosted zone for `demo.floyda.dev` in this account. Andy adds four NS records once in
+  the `floyda.dev` zone in his personal account, to delegate to it (§12, item 15).
+- **Certificate.** An exact-name certificate for `ellery.demo.floyda.dev` from AWS Certificate
+  Manager, in `us-east-1` because CloudFront requires it, validated by DNS and renewed
+  automatically.
+- **The site bucket.** Private, versioned, in `eu-west-2`, readable only by CloudFront.
+- **The distribution.** CloudFront on the **flat-rate Free plan** (§18.3), HTTPS only, with
+  standard security headers and an error page.
+- **The build.** A CodeBuild project on the smallest machine, with a 15-minute limit. Its role may
+  read `export/board-1/` and nothing else in S4's bucket, write the site bucket, clear CloudFront's
+  copies, and publish to S4's alert topic.
+- **The rules.** S4's finished mark starts a build; a merge to `main` starts a build, through a
+  GitHub connection that Andy approves once; a failed build sends an email.
+- **Who does what.** Andy runs `cdk deploy`, since the stack creates roles, as for the earlier
+  stacks; adds the NS records; and approves the GitHub connection.
+
+### 18.3 Cost
+
+About **$0.50 a month**, nearly all of it one fixed charge. Prices are external, from AWS's
+pricing pages, read 2026-10-11; volumes are estimates.
+
+| part | cost | basis |
+|---|---|---|
+| hosted zone `demo.floyda.dev` | $0.50 a month | Route 53: "$0.50 per hosted zone per month"; alias lookups to CloudFront are free |
+| CloudFront, flat-rate Free plan | $0 | 1 million requests and 100 GB a month; "no overage charges … even during traffic spikes or attacks"; includes 5 GB of S3 storage credit |
+| site bucket | $0 | a few megabytes, inside the plan's credit |
+| CodeBuild | about $0 | 100 free build minutes a month on the smallest machine, which do not expire after the first year; a build is estimated at 2 to 3 minutes, so about 60 to 90 minutes a month; past that, the page's example rate is $0.005 a minute |
+| certificate, event rules | $0 | |
+
+A visit is roughly 10 to 20 requests (estimate), so the Free plan carries something like 50,000 to
+100,000 visits a month. The step up, if ever needed, is the Pro plan at $15 a month.
+
+*Why the flat-rate plan:* decision 0003 promises a hosting bill that does not move with traffic.
+Pay-as-you-go pricing still bills a spike of readers; a flat-rate plan does not. *Ruled out:*
+**pay-as-you-go**, for that reason.
+
+**To check before relying on it:** what CloudFront does when the Free plan's allowance is passed,
+and whether CDK can choose the plan or Andy sets it once in the console. The runbook records the
+answer.
+
+*Checked 2026-10-12 (S5 step 1, Task 5), from AWS's CloudFront developer guide on flat-rate
+plans and the CloudFormation reference, read that day:*
+
+- **The plan is set in code.** CloudFormation's `AWS::PricingPlanManager::Subscription` (in CDK as
+  `aws_pricingplanmanager.CfnSubscription`, available in `eu-west-2`) subscribes the distribution
+  to the `FREE` tier, active at once. No console step.
+- **It needs an AWS WAF web ACL** on the distribution, of `CLOUDFRONT` scope, so in `us-east-1`.
+  `NtsbSiteEdgeStack` adds one: allow by default, and one rule that blocks an address making more
+  than 600 requests in 5 minutes (the Free plan allows 5 rules; blocked requests never count
+  against the allowance). Without the plan a web ACL bills pay-as-you-go, so the runbook checks
+  the plan is active.
+- **The plan also covers the `demo.floyda.dev` zone**, whose DNS it includes, so the site's
+  expected bill is **$0 a month** rather than $0.50, while DNS queries stay within the plan's
+  allowance.
+- **Past the allowance** there is never an overage charge. AWS emails at 50%, 80% and 100% of the
+  allowance; usage that "consistently and significantly" exceeds it over months may see delivery
+  adjusted (served from fewer or more distant edge locations) until the plan is upgraded.
+- An account may hold at most 3 Free plans.
+- *Found at the first deploy, 2026-10-13:* the Free plan (and Pro) refuses **custom response
+  header rules**. The standard security headers come from AWS's managed `SecurityHeadersPolicy`,
+  and the Content-Security-Policy is added by a CloudFront Function, both allowed on Free.
+
+## 19. Failures and checks
+
+### 19.1 When something goes wrong
+
+- **The export fails the schema, or any step fails:** nothing is published; yesterday's site
+  stays; an email goes out.
+- **S4's night fails, so no new export arrives:** no build starts and the board keeps its last
+  state. The board's stamp shows the export's own build time (`stamp.built_at`), never the site's,
+  so stale data never looks fresh (§12, item 14). S4 already alerts on a failed night.
+- **Publishing order:** new styles and scripts first, then pages, then removal of files no longer
+  used, so a reader mid-deploy never gets a page without its styles. The bucket keeps old
+  versions; going back is a build at the previous commit.
+
+### 19.2 Checks on every pull request
+
+Run in CI and by `make check`:
+
+- The site builds against S4's invented sample, and the sample passes the schema.
+- Unit tests for the site's logic: the difference sentence, the grade marks, a missing key read as
+  null.
+- **Accessibility:** an automated WCAG 2.2 AA check of every built page, in light and dark, fails
+  on any error (§12, item 8). Screenshots at a phone width of 390 pixels, by the method that renders
+  true phone width on this machine. A manual keyboard and screen-reader pass covers what automation
+  cannot, before launch (§20).
+- **Links:** every internal link resolves, and every number links to an existing Methods entry.
+- **The numbers file:** the script's tests, and a consistency check that each entry's value
+  appears, formatted, in the results file it names. This catches a copy that has drifted from its
+  source, although CI cannot re-run the parts that read run folders on Andy's Mac.
+- **Respect (§11):** the built pages are scanned for the registration pattern, and every case page
+  must belong to a row on the board, so no other case reaches the site. S4's export is already
+  checked; this checks what is published.
+
+## 20. Previews and launch
+
+**Previews are private pages.** Each part, when ready, is built against S4's sample, or a real
+export once one exists, and published as a private claude.ai page that Andy can open on any
+device, labelled with its commit and checked at phone width before it is sent. No second AWS
+setup is kept. *Ruled out:* **a password-protected preview address**, a second distribution and an
+edge function for one reviewer; **publishing unfinished**, an unfinished page about fatal
+accidents at Andy's own domain.
+
+**Before launch the public address shows one holding line**, for example "Ellery: coming soon".
+The stack is deployed early, so the certificate, the DNS and the builds are proven before launch.
+
+**Launch is Andy's decision** (2026-10-11). These conditions are what Claude reports as ready;
+they never trigger it:
+
+1. S4 has merged, its first cloud night has run, and the backfill is coded, so the board starts
+   complete from 23 September 2026 (decision
+   [0155](../decisions/0155-the-board-is-backfilled-from-the-recorders-first-night.md)).
+2. Every page is built, and every check in §19 passes.
+3. Andy has made the manual pass on his phone and with a screen reader.
+
+On launch day the holding line is replaced by the site, and the real address's certificate,
+redirects and preview cards are checked.
+
+*Note, 2026-11-03 (Andy):* **launch comes before S5 closes.** The site goes live from the S5
+branch, and the As-built record is written afterwards, so it records the first site build on AWS
+and the launch-day checks rather than predicting them, and a launch fault is fixed inside the
+stage (as S3.3's As-built followed its live runs). After the merge the build moves to `main`
+(runbook `site-deploy.md`, Stage 9). *Cost:* until then every push to the S5 branch rebuilds the
+public site before a pull request has reviewed it, so that branch takes only launch fixes and
+the close-out. *Ruled out:* **closing first and launching from `main`**, which leaves the stage's
+record silent on whether the site ever ran and turns a launch fault into a pull request outside
+the stage.
+
+## 21. Order of work
+
+Each step ends in a private preview.
+
+1. **The skeleton:** the Astro project, the pnpm settings, the checks in CI, and `NtsbSiteStack`
+   serving the holding line.
+2. **The board and the opened case**, against the sample.
+3. **The trail view.**
+4. **The numbers script and file**, then the Path page with the ladder.
+5. **The Methods page**, generated from the numbers file.
+6. **The Open cases page** (counts), the stops' animation, and the preview cards.
+7. **Andy's manual accessibility pass.** Launch, when Andy decides.
+
+The site works after step 5, without animation or preview cards; whether to launch then or after
+step 6 is Andy's choice.
+
+*Note, 2026-10-16 (Andy, step 6 brainstorm):* after step 5's preview Andy judged the site "a bit
+rubbish as is, especially in terms of navigation": it had no header, no footer and no way back,
+and the first page held three of its six stops. Step 6 is split in three, each with its own plan,
+preview and review, in this order.
+
+- **6a. Navigation and the look.**
+  - **The top bar**, the same on every page, holds the site's separate pages:
+    **ELLERY** (the first page) · The path · Methods · Open cases. The page being read is
+    marked. On a phone it wraps; nothing hides behind a menu button. "Board" was dropped from
+    the mock-up's bar, because the first page holds more than the board and ELLERY already
+    leads there.
+  - **A rail of places within the page** on every long page: the first page's six stops, the
+    Path's ladder and eight questions, Methods' sections. It sits in the right margin on a wide
+    screen and is a strip of tabs across the top on a phone. It marks where the reader is.
+  - **Case and trail pages** open with "← All closed cases"; the trail adds "← This case".
+  - **The footer**, on every page, is §3.1's: "Built by Andy Floyd", the repository, Methods
+    and Open cases.
+  - **The look stays Quiet** (§10; Andy chose it over a "Terminal" variant, where every
+    heading is a departure-board line):
+    - one dark header and footer, the board's dark, with the name ELLERY in the board's dot
+      font, the only other use of that font;
+    - an amber wayfinding sign as each section's label above a plain heading;
+    - a pale page ground with figures and code lists on white panels with a thin edge, and the
+      same layering in dark mode;
+    - one type scale, more space between sections, and running text no wider than about 65
+      characters;
+    - no new colour for meaning (§11).
+- **6b. The first page as a route** (§3.1):
+  - stops 4 to 6: its trail as four blocks, the ladder with its sentence, and the eight
+    questions with one-line answers;
+  - the rail and the arrival motion. The one-line answers are written from the Path's measured
+    answers, guarded like every worded claim, and Andy reads them before they go in.
+- **6c. The rest:**
+  - the Open cases page, counts only, from S4's export (§8);
+  - the preview cards (§12, item 12);
+  - the site's test sample brought up to S4's later additions to `board/1` (`5c16e0d`,
+    `65a5244` on S4's branch);
+  - the Open cases link added to the top bar and footer.
+
+**Set aside: snapping each stop to the top.** Tried in the mock-up as a gentle CSS snap
+(`scroll-snap-type: y proximity`). Andy found it "not very smooth". §3.1's rule stands for now:
+the reader keeps control of the scroll. It can return when a version is smooth on a phone.
+
+Mock-up: `docs/specs/2026-10-04-s5-mockups/route-v2.html`
+(<https://claude.ai/artifact/45h5oxFhQj4yPTchLZbVgc>), with switches for the theme and the snap.
+Its board, case and trail are invented; its ladder figures are S3.2's.
+
+## 22. What this asks of S4
+
+Passed to the S4 session on 2026-10-11:
+
+1. **A finished mark**, written last, after every file of the night's export is written, so a build
+   never reads half an export.
+2. **The live bucket sends events to EventBridge**, so the mark can start the build.
+3. **Read access for the site's build role** to `export/board-1/` only, if the live bucket's
+   policy would otherwise refuse it.
+
+S4's answer, 2026-10-11. Items 1 and 2 were pushed to S4's branch at `9c5be5d` on 2026-10-12.
+
+- **The mark is `export/board-1/_finished.json`**, holding `{"format": "board-finished/1",
+  "built_at": …, "commit": …}`. S4 uploads `cases/*`, then `index.json`, then the mark, and
+  overwrites the mark each night. If an upload fails partway, the mark keeps the previous night's
+  `built_at`, so **the build goes ahead only when the mark's `built_at` equals `index.json`'s**.
+- **The live bucket gets `eventBridgeEnabled`.**
+- **No change to the bucket's policy is needed.** Its one statement refuses requests not made over
+  TLS. The site's role is given, in its own IAM policy, `s3:GetObject` on
+  `export/board-1/*` and `s3:ListBucket` with an `s3:prefix` condition on `export/board-1/*`. The
+  bucket's name is S4's stack output `LiveBucketName`.
+
+Delivered by S4 on 2026-10-11, at Claude's request after reviewing the sample: optional `board/1`
+fields for the NTSB's internal case key (`mkey`, for the links of §5), the launch date and a
+backfill flag (§12, item 6), each document's page count (§7.4), and a reason for a document not
+offered. S4's final review, 2026-10-12, added two reasons: `already_read` (at the second read
+choice, a document read at the first) and `over_size_limit` (left out by the prompt-size ceiling;
+the loop as built never produces it). It also replaced the case's owner, operator and registration
+in document titles, with a published limit (§17.3).
+
+## As built (S5, 2026-11-04)
+
+*S5 closed on 2026-11-04 in pull request #42. This part records what was built and launched.*
+
+S5 built the public site, Ellery, and launched it at `https://ellery.demo.floyda.dev` on
+2026-11-03, before this close-out (§20, note of 2026-11-03). The site is static. Each build reads
+S4's nightly export `board/1` and S5's numbers file, checks them, and publishes only if every check
+passes. The first night after launch rebuilt the site from S4's export with no one intervening.
+The roadmap's condition for S5 is met. The launch figures below come from the CodeBuild project's
+build records, the CloudFormation stack and the live site, read on 2026-11-03 and 2026-11-04 and
+quoted in pull request #42.
+
+### Delivered
+
+- **The site** (`site/`; §3 to §11, §17). Astro 7 in strict TypeScript, with pnpm 11.28.4 pinned
+  in `packageManager`, a frozen lockfile and a release-age delay (§17.2). It has these pages:
+  - the first page, one route of six stops (§3.1), with the board of closed cases (§4);
+  - a page for each closed case (§5) and its trail view (§6), under `case/<case number>/`;
+  - the Path page, with the ladder and eight questions (§7), and a forwarding page with its own
+    preview card for each question, under `path/<question>/`;
+  - the Methods page (§9);
+  - the Open cases page, counts only (§8);
+  - a 404 page.
+- **Numbers and claims** (§17.3). `scripts/site_numbers.py` (`make site-numbers`) writes the
+  numbers file from committed results, each entry naming its file and the commit that recorded it.
+  `site/src/lib/claims.ts` holds every worded claim with the numbers that support it. The build
+  fails if a claim stops being true, and pytest fails while the numbers file is stale.
+  `scripts/site_example_case.py` (`make site-example-case`) builds question 1's case from a
+  committed fixture.
+- **Respect** (§11). Every built page is checked to show no aircraft registration, so the names
+  step S4 runs on the export is checked again on the site. Grades are shown by a mark's shape,
+  never by colour (`site/src/lib/words.ts`).
+- **Preview cards** (§12 item 12). One 1200 × 630 image for the site and one per question, made
+  once by `site/scripts/make-cards.mjs` and committed under `site/public/cards/`. A test fails
+  when a card's words no longer match the site's. Every page carries the Open Graph tags.
+- **The stacks** (`infra/site_stacks.py`; §18). `NtsbSiteDnsStack` (the `demo.floyda.dev` zone),
+  `NtsbSiteEdgeStack` (the certificate and the web ACL CloudFront's Free plan requires) and
+  `NtsbSiteStack`. `NtsbSiteStack` holds:
+  - the private, versioned site bucket and the CloudFront distribution on the flat-rate Free plan;
+  - AWS's managed security headers, and a CloudFront Function that adds the content security
+    policy; `infra/site_url_rewrite.js` maps folder addresses to their index pages;
+  - the CodeBuild project, started by a push to the site's branch and by S4's finished mark;
+  - the failed-build alert by email.
+- **The publish switch.** `site_mode` (`holding` or `site`) is CDK context, written into the
+  build's `SITE_MODE`. Only a `cdk deploy` sets it. `site/scripts/publish.sh` publishes the
+  holding line in holding mode. In site mode it copies `export/board-1/`, checks the finished mark
+  with `site/scripts/check-finished.ts`, builds the site, runs the page checks, and checks the mark
+  again just before it publishes.
+- **Checks** (§19.2). `make check` gains `site-check`: lint, format, `astro check`, types, the
+  build, the Vitest tests and the browser checks (axe in light, dark and phone).
+- **Decision records 0186 and 0187.**
+- **The runbook** `docs/runbooks/site-deploy.md`, Stages 1 to 9, with the map
+  `docs/runbooks/site-aws-map.html`.
+
+### Done means, with evidence
+
+The roadmap's condition for S5 is "a public URL, rebuilt from the store, with hosting cost that
+does not move with traffic". The specification has no Done-means section of its own, so its
+launch conditions (§20) and checks (§19) are listed after it.
+
+1. A public URL. **Met.** `https://ellery.demo.floyda.dev` has served the site since build 30 on
+   2026-11-03, 23:17 to 23:18 UTC, from `f1b04f2`. Andy's checks then: no holding line on the
+   first page, `HTTP/2 200` for `/open/`, `200` for the site card. Read on 2026-11-04: every page
+   checked answers 200, a missing page answers 404, and HSTS and the content security policy are
+   on every response. No built page holds an inline style or script that the policy would block
+   (pull request #42; tested on every build in `site/tests/dist.test.ts`, "has no inline script or
+   style").
+2. Rebuilt from the store. **Met.** S4 wrote its finished mark at 06:35:11 UTC on 2026-11-04. Build
+   31 was started by the rule `NtsbSiteStack-ExportFinished` at 06:35:11 and succeeded at
+   06:36:45. The board went from 85 to 115 cases and reads "Updated 06:01 UTC, 4 Nov". The rules
+   are tested in `tests/test_infra_site_stacks.py::test_only_the_finished_mark_starts_a_build`,
+   `tests/test_site_publish.py::test_site_builds_from_a_whole_export_then_publishes_in_holdings_order`
+   and `tests/test_site_publish.py::test_site_publishes_nothing_when_a_step_fails`.
+3. Hosting cost that does not move with traffic. **Met.** The distribution is on CloudFront's
+   flat-rate Free plan: the stack's `FlatRatePlan` (`AWS::PricingPlanManager::Subscription`) is
+   `CREATE_COMPLETE`, and `tests/test_infra_site_stacks.py::test_distribution_is_on_the_flat_rate_free_plan`
+   holds it. The plan has no overage charge (§18.3).
+4. Launch condition 1: S4 merged, its first cloud night run, the backfill coded. **Met.** S4 merged
+   in pull request #36 and was released as `v0.11.0`. Its nights from 2026-10-13 are in
+   `docs/results/s4-live.txt`.
+5. Launch condition 2: every page built and every check in §19 passing. **Met.** `make check` on
+   the branch: 4,863 Python tests, 583 site tests and 168 browser checks passed. CI on pull
+   request #42, at its last commit before the close-out:
+   https://github.com/floyda/ntsb-probable-cause/actions/runs/41910895582.
+6. Launch condition 3: Andy's pass on his phone and with a screen reader. **Met.** Made on
+   2026-11-03 against the current build served on his own network (Andy's attestation).
+7. The preview cards on the real address. **Met.** On 2026-11-04 LinkedIn's Post Inspector and
+   Facebook's Sharing Debugger each showed the site card for the first page and the question's
+   own card for `path/choosing` (Andy's screenshots). Facebook warns that `fb:app_id` is missing;
+   that tag is for Facebook's own analytics and is not used.
+8. The stage is closed out (status Implemented, As-built section, roadmap marked done, plans
+   deleted). **Met** — this pull request's close-out commit; `uv run python -m scripts.check_docs`
+   clean.
+
+### Departures from this specification
+
+- **Step 1, the skeleton (§17, §18).**
+  - The 7-day minimum release age also applies to tools. This held back pnpm to 11.28.4 (not
+    11.28.5) and `actions/setup-node` to v7.0.0 (not v7.1.0). TypeScript is 6, not 7, because
+    `@astrojs/check` 0.9.10 supports only 5 and 6.
+  - ESLint 10 runs without `eslint-plugin-jsx-a11y`, which supports ESLint up to 9 only. The axe
+    check of WCAG 2.2 AA on every built page (§12 item 8) still gates accessibility. Only the early
+    lint hints are lost.
+  - Andy chose a trust-check exemption for `chokidar@4.0.3`. `trustPolicy: no-downgrade` refused it
+    because two releases were published without provenance. The exemption names one exact version,
+    and `test_trust_exemptions_name_exact_versions_only` refuses any other form. `esbuild` may run a
+    build script, which only checks its platform binary.
+  - Astro's telemetry is off (`ASTRO_TELEMETRY_DISABLED=1`), because it breaks §17.4's rule of no
+    third-party requests. The first `astro check` on Andy's Mac ran before this was set and may have
+    sent one anonymous event.
+  - Small placements:
+    - The build folders went into `.gitignore` in Task 1, not Task 3.
+    - Prettier indents by 4, following `.editorconfig`.
+    - The lockfile's `typos` exclusion is in `.pre-commit-config.yaml`.
+    - The publish test runs `bash` by its full path (ruff S607).
+    - `@aws-cdk/core:defaultCrossStackReferences` is set to `strong`.
+    - `NtsbSiteStack.__init__` carries `noqa: PLR0913`.
+  - The axe failure proof used a full sentence. axe files very short text under "incomplete", not
+    under "violations". The check fails on violations only. "Incomplete" results are for the manual
+    pass before launch (§20).
+  - The site stack has its own alert topic, not S4's (§18.2). An EventBridge rule can publish only
+    to a topic whose policy admits it, and S4's policy belongs to S4's stack. The plan named this
+    departure in advance.
+  - The flat-rate Free plan is set in code (`AWS::PricingPlanManager::Subscription`), not in the
+    console. The plan requires a `CLOUDFRONT`-scope WAF web ACL, so `NtsbSiteEdgeStack` adds one:
+    allow by default, with one per-address rate rule of 600 requests in 5 minutes. §18.3 records the
+    findings.
+  - The branch filter is anchored (`and_head_ref_is("^refs/heads/<branch>$")`), because CDK's
+    `and_branch_is` would also match `<branch>-old`.
+  - A test checks that both holding pages share one style block, because the CSP allows one inline
+    style by its hash.
+  - The runbook adds a CDK bootstrap of `us-east-1`. It also gives the console route for the GitHub
+    connection, because the installed CLI does not confirm CodeBuild over CodeConnections.
+  - The final review's fix pass:
+    - `infra/app.py:add_site_stacks` always builds all three site stacks, and the email is optional.
+      The recorder runbook now names `NtsbRecorderStack` on every deploy.
+    - `publish.sh` uploads in this order: hashed assets (a year, immutable), other files (5
+      minutes), then pages (`no-cache`). It then clears CloudFront's copies and waits. Only after
+      that does it remove stale files, and it never removes `_astro/`.
+    - The build turns off commit-status reporting (`report_build_status=False`). At launch this
+      proved to hold only for builds not started by a push (see Launch and close-out).
+    - The build role has `GetObject`, `PutObject`, `DeleteObject` and `ListBucket` only.
+  - The step's preview was two phone-width screenshots, not a published page.
+  - The first deploy took four attempts. Each rollback cost nothing.
+    - The Free plan refused custom response header rules. The stack now uses AWS's managed
+      `SecurityHeadersPolicy`. A viewer-response CloudFront Function adds the self-only
+      Content-Security-Policy.
+    - The webhook failed because the GitHub connection had been made in Andy's personal account. The
+      project now names the connection (`Source.Auth`, type `CODECONNECTIONS`, from context
+      `github_connection_arn`). The build role may use only that connection. Without the context
+      there is no webhook.
+    - CodeBuild checked the connection permission before CloudFormation had created it. The
+      permission is now its own policy, and the project depends on it.
+    - The fourth attempt succeeded once Andy accepted the AWS Connector app's pending webhook
+      permission on GitHub. The runbook now says to accept it.
+  - The first build failed at its last step. The role lacked `cloudfront:GetInvalidation`, which the
+    wait added in review needs. The permission was added and the stack redeployed. With Andy's
+    approval, four empty buckets left by the rolled-back creates were deleted on 2026-10-13.
+- **Step 2, the board and the opened case (§4, §5).**
+  - There are two generated type files, `board-index-types.ts` and `board-case-types.ts`, because
+    both schemas define `Code` and `Aircraft`. The generator drops each property's own `title`
+    before compiling, and it formats through Prettier's API. Lint skips the generated files, and
+    test files may use untyped JSON. Ajv is `Ajv2020`, with `ajv-formats`, so dates are checked.
+  - Layout:
+    - The page is a 72rem frame. Text keeps the 44rem width, and only the board uses the full frame.
+    - Result words stay on one line above 640 px.
+    - "NTSB coded" shows a dash on a case whose record could not be read.
+    - Fonts are imported in `Base.astro`.
+    - `words.ts` also exports `closedLong`.
+    - Playwright runs only `*.spec.ts`.
+  - The caveat (§3.1) is Andy's approved wording, word for word. Its "400" and "one case in four"
+    were typed in until step 4 took them from the numbers file.
+  - On an abstained case, the agent's column is headed "The agent's reason for not answering".
+  - The NTSB's report address was checked with one request for development case ANC09CA020. It
+    returned HTTP 200 and a six-page PDF. `caseReportUrl` builds the address, and the link reads
+    "the NTSB's final report (PDF)".
+  - The final review's fix pass:
+    - Codes that differ only in phase are named in full (`firstNames`).
+    - "Not published" is said only of an awaiting case, else "Not available."
+    - Each side's findings show when there is no comparison.
+    - Back and forward reload only when the path changes.
+    - The code version links to its commit (§5).
+    - An abstained case shows "No answer: the agent abstained." and the NTSB's side only, with no
+      leaning codes. Andy confirmed this ruling at the preview.
+    - Nine smaller points were deferred.
+  - Andy approved the step's six choices. He found the pages "a bit plain", and visual polish moved
+    to step 6.
+- **Step 3, the trail view (§6).**
+  - Step 2's type generator had a fault. It also stripped `DocumentChoice`'s `title` property from
+    the generated type. Validation was not affected. The generator now leaves property names alone.
+  - Each step's heading is an `h2`. Each document table has a hidden caption. Each lookup shows its
+    own cost.
+  - The lookups step shows the sum of its lookups' costs. The plan said the site never sums costs.
+    The figures are the export's, added and not repriced. Four rounded step costs can differ from
+    the rounded total by $0.0001 to $0.0002. The total is always the export's `total_usd`. The
+    heading reads "{case} · Ellery's trail".
+  - The final review's fix pass:
+    - An abstained answer reads "The answer: the agent abstained", and `closestLine` skips it.
+    - Every frame that scrolls sideways, the board's included, is a labelled region that takes focus
+      (WCAG 2.1.1).
+    - Lookups name codes by their labels, else "code N", and name kinds in words (§12 item 4).
+    - `verdictView` shows the cause whenever there is a verdict.
+  - **Ellery's account of the evidence is not shown, for now** (Andy). S4's names step replaces only
+    the owner, operator and registration in prose, so a passenger's or witness's name could pass
+    through. This replaces the plan's rule that the account was shown folded. A test checks that no
+    trail page holds an account. The export still carries the account, and it can return behind a
+    measured names check.
+- **Step 4, the numbers and the Path (§7, §17.3).**
+  - Counts are stored as counts: `q5.first_right` 88 of 399, `q5.in_sequence` 140 of 399,
+    `q7.read_all` 245 of 375. Nothing is rounded twice. `q4.pages.*` includes `blank` (109), so the
+    page-kind bar adds up to 16,790.
+  - A line that repeats within a results file is read inside one named section. A line matched twice
+    fails. `run` is filled only where one run stands behind the figure. `--check` names the first
+    stale key.
+  - New formatters: `count`, `countOf`, `caseCount` and `list`. `oneIn` refuses a rate more than a
+    fifth from the nearest "one in N", so a rerun that moves the rate fails the build.
+  - The ladder:
+    - It is drawn twice, at 340 and 640, and CSS shows one by screen width.
+    - The always-guessing line is a short dashed mark on each bar.
+    - A browser check measures the rendered labels with `getBBox`.
+    - The sentence under it gives both rates and both bills, and its wording changes if the loop
+      draws level or moves ahead.
+    - The ladder's hidden table is wrapped in a hidden `div`, after the phone page grew to 1,226px
+      wide.
+  - New parts:
+    - `PageKinds.astro`, which refuses to build unless the four kinds add up to the total.
+    - A `bare` form of `Mark`.
+    - `repoUrl`, which links a folder as a tree and a file as a blob.
+  - Each entry in the numbers file must appear on `/path/`, not only the entries the page uses.
+  - Andy's choices at the preview:
+    - **Billed costs only.** The list-price `.cost` entries left the numbers file, and a test keeps
+      them out. The ladder reads "billed $2.06". Step 1 reads "no model cost" and step 2 "bill not
+      recorded". Question 7 reads "Its bill was about the same: $2.06 against the pipeline's $2.13."
+      §7.1 has a dated note.
+    - Andy kept two wordings that differ from §7.2. Question 4 says "far more than answering" in
+      place of decision 0120's "about ten times", which is not in the numbers file. Question 7 says
+      "the same loop without it was −8.5 points … on the first code".
+    - He approved the decisions written for questions 1, 6 and 8.
+    - Question 4's labels became "image only: no text to read" and "text and image: text readable".
+    - Question 5's column reads "The fixed pipeline put first". Its counts are S2.6's arm B, and
+      S3's rerun moved to step 4b.
+    - Question 8's counts line puts each mark beside its count.
+    - The ladder's sentence and "What could come next" were kept as built.
+  - The final review's fix pass:
+    - Question 3's +14.3 points is now named as S2.4's first fixed pipeline, before its coding
+      tools.
+    - `pointsOn` prints the case count with every paired figure (§12 item 9).
+    - The ladder's `aria-label` follows the caption's condition.
+    - Every worded claim is a guard in `lib/claims.ts`. "About the same" uses S3.2's ±10% band
+      (0145).
+    - Question 5 shows six pairs where two tie for fifth.
+    - A missing overall block now fails, where before it was read from the fatal block.
+  - Logged and not changed: question 8 read "Since launch:" (changed in step 6b). The dimmed bars
+    are below 3:1 (WCAG 1.4.11) and are left to the accessibility pass.
+- **Step 4b, the Path figures (§7.4).**
+  - Andy's choices:
+    - Question 1's case is `ANC09CA020`.
+    - Question 5 keeps S2.6's figure and adds S3's rerun.
+    - Question 6 shows the sentence whose cases received the most different first codes. This is not
+      the largest group. Ties go to the larger group, then to the sentence that sorts first. The
+      figure says how the sentence was chosen.
+    - Question 7 uses a new counts-only reading with three checkpoints, recorded first as decision
+      0186 (`401e384`). The recommended option was the diagnosis's committed counts.
+  - Task 4 was rewritten for that choice. `scripts/exploratory/s5_belief_path.py` reuses
+    `s32_heldout_diagnosis.py`'s functions, held-out path and refusals. One run from a clean commit
+    wrote `docs/results/s5-belief-path-heldout.txt`. The claims guard checks before + fixed − broken
+    = after. `BeliefPath.astro` draws three columns.
+- **Step 5, the Methods page (§9).**
+  - Andy's choices:
+    - Each figure and each Path stop has one "How this was measured" link, and each ladder step
+      links its own entry. §2's words would give every number its own link.
+    - Both commits are linked: the run's commit and the commit that recorded the results file.
+    - The predictions are the registration's exact words, with "Met" or "Not met" and one plain line
+      beneath each.
+    - The split diagram follows the code, not §9's draft (dated note in §9).
+  - The numbers file moves to `site-numbers/3`, with `recorded_in` and `run_commit`.
+  - S1's ceiling run names `c717ab5`. That commit is not in `main`'s history, because S1 was
+    squash-merged before decision 0033. GitHub serves it through the pull request's refs. The
+    history test allows it by name, and the Methods page says so.
+  - A shallow checkout made `site_numbers --check` fail, so CI checks out full history.
+  - A source that repeats a block is read only when every copy is the same.
+  - The cost cap is read from `s32-cap-check-dev.txt`.
+  - The limits entries are: 6 of 400 failures, 4 of 400 format failures, and 5 and 8 of 401.
+  - The registration was first committed in `f0e78b7` on 2026-10-04, and the page prints that commit
+    and date. A test checks the predictions against the file as it was at `f0e78b7`.
+    `assertPredictionsAsRead` requires nine predictions, with exactly 3, 7, 8 and 9 met. "Met" and
+    "Not met" are bold words with no shape mark, so they are not mistaken for the board's marks. The
+    result lines are not edited.
+  - §9's draft drew docket documents classed as evidence and as synthesis. No document is held back
+    for its title (decision 0056, `docket/filter.py`). The tripwire refuses the whole case instead.
+    The fifth check is worded from `records/guard.py`, which is more exact than §9. It names the
+    sentence exemptions and the analysis-sentence mark (0077). Check 3 names the phase-of-flight
+    exception (0016). Check 4 is a test, and the page says so. The diagram is HTML and CSS, with no
+    script. The glossary is `lib/glossary.ts`, with 25 terms.
+  - Groups are found by key prefix. Rows link each results file at the commit that recorded it.
+    `methodsLink` refuses an unknown id. Question 8's strip has no link of its own. Link spacing was
+    raised from 23.2px to meet WCAG 2.2's 24px.
+  - The final review's fix pass:
+    - The fifth check now says the withheld text is never sent, and the case stops and is not coded.
+      The loop has already sent the structured evidence when it finds a leak in a chosen document.
+    - The baseline is now described as the commonest first code for the case's phase of flight and
+      weather, fitted on development cases.
+    - The cost cap is described as checked before each call on a list-price estimate.
+    - A new test proves the dirty-file refusal can fail.
+    - Prediction 8 keeps its missing colon.
+    - The dist checks read each linked file at its commit.
+    - `build` refuses a registration with uncommitted changes.
+  - The predictions were unnumbered at the preview and are now numbered (`b89d711`).
+- **Step 6a, navigation and the look (§21 note of 2026-10-16, §3.1, §10).**
+  - Andy's choice: the footer's author line links to <https://floyda.dev>.
+  - The contrast test does not require 3:1 for a panel's edge, which the plan asked for. WCAG 1.4.11
+    covers controls and graphics needed to understand content, and a panel's edge is neither. The
+    dark ground changes from `#121212` to `#111418`.
+  - The tests were written beside the code, not first. They were then proved able to fail.
+  - The rail script loads on every page, because Astro would inline a conditional script, which the
+    CSP blocks. The script sets `--strip-h` through the CSSOM. `tokens.css` holds a fallback for
+    when the script does not run.
+  - The first page's stops became sections, and the board gained a heading. "← All closed cases"
+    goes to `/#board`.
+  - Signs and headings were reworded so that no sign repeats its heading.
+  - The panel look is one global `.panel` class. The board keeps its dark frame and gains a 1px
+    edge.
+  - The board's section is full width. Beside the rail, the rule that kept result words on one line
+    is removed.
+  - Added at the preview (Andy): "Why it happened" was redrawn, with no mock-up.
+    - Each finding shows its item and detail in bold and its area in small type, parsed from the
+      label (`lib/findings.ts`). Pairing compares labels, because no file in the repository records
+      how many digits each code level takes.
+    - One list shows the findings both named, then near-miss pairs, then the rest.
+    - Tags read "Both", "NTSB only" and "Agent only". Each has a word and a shape, never colour
+      alone.
+  - The final review's fix pass:
+    - Area separators are real `aria-hidden` spans.
+    - The phone test of a link to a place could not fail. It was rewritten, and the Task 3 note that
+      it was "shown to fail" did not hold.
+    - `rail.ts` uses `matchMedia("(min-width: 1000px)")` and a `ResizeObserver`. The fallback strip
+      height went from 3.25rem to 4rem.
+    - Methods' ids moved to the sections.
+    - "What could come next" became a place, with the sign "After version 1".
+    - The case page gained a hidden `h2`.
+  - No sample case has a pair with the same item and a different detail. That pairing is covered by
+    unit tests only.
+- **Step 6b, the first page as a route (§3.1).**
+  - Andy approved the eight one-line answers as drafted, and chose all four kinds of motion.
+  - There is no "after coding" belief, because the trail records none. The strip shows the two to
+    four beliefs a trail holds, not four fixed blocks.
+  - The strip is its own stop (`#trail`), not part of the opened case's article, so its heading is
+    an `h2`. `open-row.ts` swaps it when a row is opened. Stop 4 is left out when no case has a
+    trail.
+  - A new guard, `q3.largest_gain`, protects question 3's answer. The first page calls
+    `assertPathClaims()`.
+  - Every figure has its own arrival, not every stop alone. In the phone frames the board's stop
+    started on screen, so its rows never turned over. Each row arrives on its own, 60ms after the
+    one before. Each arrival ends within about a second. Nothing is marked until the first scroll,
+    and nothing moves under reduced motion.
+  - Andy's decisions at the preview:
+    - Each arrival happens once per visit.
+    - The board is a fixed window, `min(34rem, 72vh)`. Its rows turn over once and do not cycle
+      (dated note in §4).
+    - The board first shows 20 rows on a wide screen and 5 on a phone, and a button shows the rest
+      (§4 note). The phone keeps three columns.
+    - Older rows are taken out of the table, not hidden, because Safari kept the space of hidden
+      rows (`5edb2b5`).
+    - Decision 0187 was amended: inside a word the lost character is an apostrophe, elsewhere a dash
+      (`8dcd2de`).
+  - The Fable review's fixes (Andy: "go ahead and fix"):
+    - Stop 1 asks the question (§2).
+    - Result words follow §11, and no page says "score".
+    - "Since launch" became "Since 23 Sep 2026" (`BOARD_START`, 0155).
+    - A tap anywhere on a row opens its case.
+    - On a phone, a trail's documents are stacked rows.
+    - The facts line names the state, the kind of flight and the injuries in words, with the docket
+      count.
+    - Methods carries the name line (§12 item 15).
+    - Question 3 says S2.4 left failed cases out.
+    - Not changed: question 1 keeps the NTSB's labels word for word, and the reading face keeps its
+      slashed zero.
+  - The fresh review of step 3 was Fable's, not Opus's. An Opus review of `52548b7` and `5edb2b5` on
+    2026-10-30 found three edge cases, and all three were fixed:
+    - A change of width now only adds rows.
+    - `arrive.ts` runs before `open-row.ts`.
+    - The button goes away once every row shows.
+- **Step 6c, Open cases and the preview cards (§8, §12 item 12).**
+  - Andy settled three choices before the plan was written (dated note in §12 item 12):
+    - Each Path question has a forwarding page.
+    - The cards are drawn once by a script and committed, with a test that fails when a card's words
+      drift from the site's.
+    - The site card's question is in the reading font, not dot letters.
+  - "Most open cases have no docket to read until then" shows only while fewer than half have one.
+    The check is in `lib/open.ts`.
+  - The test sample needed no change.
+  - The drawing script is `scripts/make-cards.spec.ts`, run by Playwright, not `make-cards.mjs`. The
+    site's question and line moved to `lib/site.ts`.
+  - "Link to this question" ends each question's sources line, rather than sitting under its
+    heading. Each forwarding page is a whole page in the site's layout. axe reads the forwarding
+    pages with the refresh removed.
+  - The Open cases page opens with the plain heading "Open cases" and a lede, with no sign.
+  - The fresh review's fix pass:
+    - Question 8's card can now fail the drift test.
+    - Case and trail pages share as "One closed case · Ellery", so no case number reaches a social
+      feed (§11).
+    - The 404 page has no `og:url`.
+    - `checkCounts` refuses an export with zero counts.
+    - Card addresses carry a `?v=` mark.
+    - Two sentences were reworded to what the counts support.
+  - Not changed:
+    - Whether link-preview services follow the refresh can only be checked at launch.
+    - The PNG files are not tied to `cards.json` by a hash.
+    - The table of closures grows by one row each night with a closure.
+- **Step 7, the site publish mode (§18.1, §19, §20).**
+  - The finished-mark check runs as TypeScript under Node 24's type stripping. CodeBuild's first
+    site build is the first run on Node 24. The Python test uses a fake `node`.
+  - `publish.sh` removes `site/dist` before it builds.
+  - The runbook gives a build time of 2 to 3 minutes, from a measured dry run, not the plan's guess.
+  - The plan's **Spec:** line was split for `scripts/check_docs.py`.
+  - The fresh review's fix pass:
+    - `publish.sh` requires the line "the export is whole". Without it, a symlinked path could pass
+      the check while checking nothing.
+    - The script fetches the mark again before it publishes, and stops without publishing if a newer
+      night has landed. CodeBuild's one-build limit was ruled out, because a throttled build might
+      be dropped.
+    - The script requires `dist/index.html`.
+    - The runbook warns that `cdk deploy --all` without `site_mode=site` takes the site down.
+  - Left as they are:
+    - A copy taken mid-upload, followed by a failed S4 upload, can publish an inconsistent board.
+      Closing that gap needs an S4 change.
+    - The build image installs no pnpm, so there is nothing for `npm install --global pnpm` to clash
+      with.
+    - Whether to keep `site_mode` in `cdk.json` is left to Andy.
+- **Launch and close-out (§20).**
+  - The site launched before this close-out, not after it (§20, note of 2026-11-03). Runbook
+    Stage 8 deployed site mode from `s5-public-site`; Stage 9 moves the build to `main` after
+    the merge.
+  - A build started by a push still posts its pass or fail as a status on the pushed commit.
+    AWS always reports a webhook build's status, and `report_build_status=False` cannot turn
+    that off; it stops only builds started by S4's finished mark or by hand. Andy chose to keep
+    push builds and correct the claim: the stack's comment, the test (now
+    `test_only_push_builds_report_status_to_github`) and the runbook's Stage 5 paragraph say so.
+    The GitHub app's write access to commit statuses is the same either way.
+  - The merge of `main` into the branch brought new audit advisories into the site's
+    dependencies. Updating vite, zod, undici and fast-uri within their ranges cleared all but
+    one. The last, `GHSA-g3hv-75wg-m249` in minimatch, which reaches the site only through
+    ESLint, is exempted by its ID in `site/pnpm-workspace.yaml` with Andy's approval, until
+    ESLint accepts minimatch 11. `test_audit_exemptions_name_reviewed_advisories_only` refuses
+    any other form of exemption.
+  - Step 4b's plan kept four unticked steps that Andy's choice 4 B replaced. They are marked
+    replaced, with a note pointing to the rewritten task in its Deviations.
+
+### Decisions taken during the stage
+
+- [0186](../decisions/0186-a-counts-only-reading-of-s32s-held-out-trail-for-the-path-page.md):
+  a counts-only reading of S3.2's held-out trail, for the Path page's question 7.
+- [0187](../decisions/0187-the-site-repairs-a-dash-the-ntsb-lost-in-document-titles.md): the
+  site repairs a dash the NTSB lost in document titles.
+
+### Implementation record
+
+- Pull request: #42 (https://github.com/floyda/ntsb-probable-cause/pull/42)
+- Plans, one per step, each at its last commit:
+  - Step 1, the skeleton: https://github.com/floyda/ntsb-probable-cause/blob/e6bf2aed7452c6e236b42193bae38ac70fdd61ca/docs/plans/2026-10-12-s5-1-skeleton.md
+  - Step 2, the board and the opened case: https://github.com/floyda/ntsb-probable-cause/blob/2b3920ea33aa1e1d86c8e087216103dd86dae269/docs/plans/2026-10-13-s5-2-board-and-case.md
+  - Step 3, the trail view: https://github.com/floyda/ntsb-probable-cause/blob/990dbe51b11bd7e1047159bb486496189c0e1089/docs/plans/2026-10-13-s5-3-trail-view.md
+  - Step 4, the numbers and the Path: https://github.com/floyda/ntsb-probable-cause/blob/bdf36737ab97ae11a0aa5bfe2e64e13044b8bb5c/docs/plans/2026-10-14-s5-4-numbers-and-path.md
+  - Step 4b, the Path figures: https://github.com/floyda/ntsb-probable-cause/blob/0b4f07bdb675ca40f4a2d7f98a35c7f824713097/docs/plans/2026-10-14-s5-4b-path-figures.md
+  - Step 5, the Methods page: https://github.com/floyda/ntsb-probable-cause/blob/c7f0cf520f32c6afc650a42ab8d0a4f7e9b6b19a/docs/plans/2026-10-14-s5-5-methods.md
+  - Step 6a, navigation and the look: https://github.com/floyda/ntsb-probable-cause/blob/196875aefb3203260910288ad05b68d882c84017/docs/plans/2026-10-16-s5-6a-navigation-and-look.md
+  - Step 6b, the first page as a route: https://github.com/floyda/ntsb-probable-cause/blob/f802e7130ab283b3c594bcdc831e59575de7a330/docs/plans/2026-10-20-s5-6b-first-page-route.md
+  - Step 6c, Open cases and the preview cards: https://github.com/floyda/ntsb-probable-cause/blob/1337bd2381f61a6a1a03946f771fe8dc2377104d/docs/plans/2026-11-01-s5-6c-open-cases-and-cards.md
+  - Step 7, the site publish mode: https://github.com/floyda/ntsb-probable-cause/blob/a697ecf76a1747dbd9a2abe0567650f98eb63d05/docs/plans/2026-11-01-s5-7-site-publish-mode.md
+- Commits: 6c4d7f0..95ddc00 (the last commit before the close-out commit)
+- Release: v0.12.0 (tag created by Andy after the merge commit; decisions 0018, 0033)
+
+
 ## Glossary
 
+- **Astro**: the tool that builds the site's pages ahead of time from the export and the numbers
+  file (§17.1).
+- **CloudFront**: AWS's service that hands the site's files to readers; on the flat-rate Free plan
+  its bill does not grow with readers (§18.3).
+- **CodeBuild**: AWS's build service; it builds and publishes the site each morning (§18.1).
+- **Export (`board/1`)**: S4's nightly files that the board, cases and trails are built from.
+- **Minimum release age**: pnpm's rule that a package version must be a set time old before it is
+  installed (§17.2).
+- **Numbers file**: `site/data/numbers.json`, every number on Path and Methods with its source,
+  written by a script (§17.3).
 - **Abstain**: the agent's statement that the evidence is too thin to answer.
 - **Belief**: the agent's hypothesis at a checkpoint; the project's records call it H0, H1, H2
   and the answer.

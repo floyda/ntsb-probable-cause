@@ -1,0 +1,32 @@
+---
+// A Path question's forwarding page (spec §12 item 12, note of 2026-11-01; S5 step 6c). Link-
+// preview services drop the `#` part of an address, so a link to /path/#choosing would show the
+// site card. This page carries the question's own card and sends the reader on at once, by a
+// meta refresh, which is not a script and so passes the CSP. Without it, the link does the same.
+import type { GetStaticPaths } from "astro";
+import Base from "../../layouts/Base.astro";
+import { cardFor } from "../../lib/cards";
+import { ROUTE_QUESTIONS, type RouteQuestion } from "../../lib/route";
+
+export const getStaticPaths = (() =>
+    ROUTE_QUESTIONS.map((q) => ({
+        params: { anchor: q.anchor },
+        props: { q },
+    }))) satisfies GetStaticPaths;
+
+interface Props {
+    q: RouteQuestion;
+}
+
+const { q } = Astro.props;
+const card = cardFor(`q-${q.anchor}`);
+const target = `/path/#${q.anchor}`;
+---
+
+<Base title={`${card.question} · Ellery`} description={card.line} card={card.name} forward={target}>
+    <h1>{card.question}</h1>
+    <p>{card.line}</p>
+    <p>
+        <a href={target}>Read this question on the Path</a>
+    </p>
+</Base>

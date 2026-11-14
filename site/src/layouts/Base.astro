@@ -1,0 +1,88 @@
+---
+import "@fontsource/atkinson-hyperlegible-next/400.css";
+import "@fontsource/atkinson-hyperlegible-next/700.css";
+import "@fontsource/doto/700.css";
+import "../styles/tokens.css";
+import SiteFooter from "../components/SiteFooter.astro";
+import Rail from "../components/Rail.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import { cardFor, cardVersion, CARD_DIR } from "../lib/cards";
+import type { PageId, Place } from "../lib/site";
+
+interface Props {
+    title: string;
+    description: string;
+    /** The top bar's page this is; none on case and trail pages. */
+    current?: PageId;
+    /** The places within the page that its rail names; no rail when absent. */
+    places?: readonly Place[];
+    /** The preview card a shared link shows (spec §12 item 12): the site card unless named. */
+    card?: string;
+    /** Where a forwarding page sends the reader at once (S5 step 6c): a Path question's stop. */
+    forward?: string;
+    /** The title a shared link shows, when it must differ from the page's own: a case page's
+     * names its accident, which stays out of social feeds (§11; review, 2026-11-01). */
+    shareTitle?: string;
+    /** False on a page with no address of its own to share, such as the 404 page. */
+    shareable?: boolean;
+}
+
+const {
+    title,
+    description,
+    current,
+    places,
+    card = "site",
+    forward,
+    shareTitle,
+    shareable = true,
+} = Astro.props;
+// The preview tags (S5 step 6c, Task 3). Link-preview services need absolute addresses, from
+// the site's own address in astro.config.mjs. A question's card is titled with its question.
+const site = Astro.site ?? new URL("https://ellery.demo.floyda.dev");
+const shared = cardFor(card);
+const sharedTitle = card === "site" ? (shareTitle ?? title) : shared.question;
+const pageUrl = new URL(Astro.url.pathname, site).href;
+// The version mark changes with the card's words, so a redrawn card is fetched afresh.
+const imageUrl = new URL(`/${CARD_DIR}/${shared.name}.png?v=${cardVersion(shared)}`, site).href;
+---
+
+<!doctype html>
+<html lang="en-GB">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content={description} />
+        <title>{title}</title>
+        {forward !== undefined && (
+            <>
+                <meta http-equiv="refresh" content={`0; url=${forward}`} />
+                <link rel="canonical" href={new URL(forward.split("#")[0] ?? "/", site).href} />
+            </>
+        )}
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content={sharedTitle} />
+        <meta property="og:description" content={description} />
+        {shareable && <meta property="og:url" content={pageUrl} />}
+        <meta property="og:image" content={imageUrl} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content={shared.alt} />
+        <meta name="twitter:card" content="summary_large_image" />
+    </head>
+    <body>
+        <SiteHeader current={current} />
+        <div class={places === undefined ? "page" : "page with-rail"}>
+            {places !== undefined && <Rail places={places} />}
+            <main id="content" tabindex="-1">
+                <slot />
+            </main>
+        </div>
+        <SiteFooter />
+    </body>
+</html>
+
+<script>
+    // Bundled to a file by Astro, under the CSP; it does nothing on a page without a rail.
+    import "../scripts/rail.ts";
+</script>

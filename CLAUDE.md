@@ -34,8 +34,25 @@ stays sealed for v2 (0141), and the held-out gates closed after use (`docs/round
 once, at closure, through a daily queue on Andy's Mac (the `live` package and `ntsb-live`),
 scored as counts only and printed alone (`docs/results/s33-live-shadow.txt`): four runs coded
 the 47-case backfill and 13 fresh closures, and its closing rule was met on 2026-10-09. S3 is
-complete. **S4 (predictions and resolution) is next.** Read build-brief §7 before writing any
-code, then
+complete. **S4 (predictions and resolution) is built**: the S3.3 live shadow moved off the Mac
+and made unattended. Ellery version 1 (re-pinned to `+tdff9dea78f23`, 0168) codes each case the
+NTSB closes at 06:00 UTC the next day, as a scheduled Fargate task in `NtsbLiveStack`, on its own
+OpenRouter key with a $10 monthly limit and the full-cap rule (0170, 0171); its run folders, later
+scores and night records live in a private bucket (0172; no SQLite predictions tables), which
+each night exports in the format `board/1` for S5 (0173); a public ledger on the `ledger` branch
+holds every run and night manifest's SHA-256 (0178); failures reach Andy by email, and a missed
+night by one CloudWatch alarm (0177). Four cloud nights from 2026-10-13 coded the 62-case
+backfill and 11 fresh closures, and its closing rule (0181) was met on 2026-10-16
+(`docs/results/s4-live.txt`, counts only). The runbook is `docs/runbooks/live-cloud-nights.md`.
+**S5 (the public site) is built and released** (pull request #42, `v0.12.0`): Ellery, a static
+Astro site under `site/`, launched at `https://ellery.demo.floyda.dev` on 2026-11-03. Each build
+reads S4's nightly `board/1` export and the numbers file (`scripts/site_numbers.py`, every figure
+read from one line of a committed result), checks both, and publishes only if every check passes.
+S4's finished mark starts the build, so the site rebuilds each morning with no one intervening.
+`NtsbSiteStack` (`infra/site_stacks.py`) serves it from CloudFront on the flat-rate Free plan. The
+runbook is `docs/runbooks/site-deploy.md`. **No later stage is specified yet.** The planned next
+version of the agent is version 2 with the precedent tool (0140), measured on `dev-seal-s3-400`
+and the live board (0141, 0153). Before starting any new stage, read build-brief §7, then
 `docs/specs/2026-09-12-architecture-and-roadmap.md`, the agency design
 (`docs/specs/2026-09-14-agency-hypothesis-trail-design.md`, Superseded on 2026-10-03 by the S1
 and S3 specifications, which took over its parts; still the record of how S0 changed the design,
@@ -45,10 +62,12 @@ amend the brief where they differ. S3's specification
 (`docs/specs/2026-09-30-s3-agent-loop-design.md`) holds the shared design and S3.1 in full, S3.2
 and S3.3 in outline; the precedent tool's design note
 (`docs/specs/2026-10-03-s3-precedent-tool-design.md`) is a Draft for after S4. S5's site
-design (`docs/specs/2026-10-04-s5-public-site-design.md`) is a Draft, written early; three of
-its decisions bound S3.3 and bind S4: the agent's live run is at closure (0154), the board is
+specification (`docs/specs/2026-10-04-s5-public-site-design.md`) is Implemented; three of its
+decisions also bound S3.3 and S4: the agent's live run is at closure (0154), the board is
 backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, version 1, at
-`ellery.demo.floyda.dev` (0156).
+`ellery.demo.floyda.dev` (0156). A later version replaces version 1 on the board when it beats
+version 1 in a registered comparison; the fixed pipeline stays the bar for calling the loop
+warranted (S5 specification §1).
 
 ## Required components (build-brief §7)
 
@@ -117,15 +136,27 @@ backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, versio
   document lists with first-seen timestamps; resolution outcomes. **The store's first tables
   are built in S2.5**: `store/` (`db.py`, `schema.py` with numbered migrations, `models.py`,
   `sync.py` for a local or `s3://` location) is the only code that touches SQLite, and holds
-  what the recorder observes, never a synthesis or verdict field. The predictions tables come
-  in S4 (S3 specification §11); S3.1's trails are JSONL in the run folder, never committed.
+  what the recorder observes, never a synthesis or verdict field. S3.1's trails are JSONL in the
+  run folder, never committed. **S4 built no predictions tables** (0172): live predictions are
+  run folders in the private live bucket, copied up after each case and never deleted by the
+  task, with `scores/<date>.jsonl` for later scores and `nights/<date>/` for night records; the
+  closure record (version 2) holds the docket's hashes as coded (0176, 0185); each night rebuilds
+  one export, `export/board-1/` (`live/export.py`, `live/board.py`; JSON Schema from
+  `make board-schema`, an invented sample under `tests/fixtures/board/`), ending with
+  `_finished.json`.
 - **Scheduler and resolution watcher**: poll open cases and dockets, run the watcher, lock
   predictions (design notes suggest committing hashed rows to git for tamper-evidence). **The
   polling half is built in S2.5**: the recorder (`recorder/window.py`, `recorder/cases.py`,
   `recorder/dockets.py`, `recorder/run.py`; the command `ntsb-record run` in
   `apps/recorder/`) polls every watched open case and its docket listing each night at 03:00
   UTC, as one scheduled AWS Fargate task defined in `infra/` (`NtsbRecorderStack`), with the
-  store in S3. The resolution watcher and prediction locking come in S4.
+  store in S3. **The watcher and the locking are built in S4**: since the live run is at closure
+  (0154), the "watcher" is the night itself (`live/night.py`, `ntsb-live run` in the image):
+  `NtsbLiveStack`'s task, at 06:00 UTC, codes every watched closure once and scores it at coding,
+  or later when the NTSB's codes arrive (`live/later.py`, 0174). Locking is the public ledger:
+  `.github/workflows/ledger.yml` appends each new run and night manifest's SHA-256 to
+  `ledger.jsonl` on the protected `ledger` branch (`live/ledger.py`, 0178), and
+  `make s4-verify-ledger` checks the bucket against it.
 - **Tests and CI**: the layered leakage guard's tests, including a mutation test that proves
   the boundary test can fail (0016); docket parser fixtures; a check that held-out cases never
   appear in development fixtures, judged by event date; a redaction check on fixtures (0015);
@@ -137,7 +168,17 @@ backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, versio
   change feed stored beside them for comparison, not used as the source (0065). Raw data kept
   out of git.
 - **Live board**: the public surface — a page for open cases and a trajectory view of the
-  agent's steps and costs, in the clinical tone the design notes require.
+  agent's steps and costs, in the clinical tone the design notes require. **Built in S5** as
+  the site under `site/` (Astro 7, strict TypeScript, pnpm 11.28.4 with a frozen lockfile and a
+  release-age delay): the first page, one route of six stops with the board of closed cases; a
+  page and a trail view for each closed case (`case/<case number>/`); the Path page, with the
+  ladder and eight questions; the Methods page; the Open cases page, counts only (0154); and a
+  404 page. `site/src/lib/claims.ts` holds every worded claim with its numbers, and the build
+  fails if a claim stops being true; every built page is checked to show no aircraft
+  registration, and grades are shown by a mark's shape, never by colour (Rule 6). The stacks are
+  `NtsbSiteDnsStack`, `NtsbSiteEdgeStack` and `NtsbSiteStack` (`infra/site_stacks.py`); the CDK
+  context `site_mode` (`holding` or `site`) is the publish switch, and only a `cdk deploy` sets
+  it. Decisions 0186 and 0187.
 
 ## Rules that carry from the spike
 
@@ -208,6 +249,13 @@ backfilled from 23 September 2026 (0155), and it runs the loop as Ellery, versio
   `../ntsb-spike/labelling/decidability.filled.csv`) as regression fixtures.
 
 ## Eval bars to beat (held-out split)
+
+**Every docket-reading result below read pypdf 6.19.0's text (decision 0218).** pypdf moved to
+6.21.4 on 2026-11-02; on `dev-400` it lays out the text of 561 documents differently, changes
+the characters of 2 and reads 3 it could not, and the guard, the case marks and the classifier
+decide as before (`docs/results/pypdf-text-dev.txt`). The results stand as recorded. A comparison
+between a run before the change and one after it names 0218. Arm A, the ceiling and the baseline
+read no docket.
 
 **S1 measured the bars; they live in `docs/results/s1-bars.txt`, with the scoring targets
 fixed by decision 0025 and the samples and ledger by 0026.** The spike's 57% / 65% one-shot
@@ -436,9 +484,10 @@ source of every module that composes model-facing text, so any edit to those fil
 included, changes it (0133). From S3.3, `+t` replaces `+p` (0161): it fingerprints the
 model-facing text of every request the loop and arm B's post-pass send over invented inputs
 (`agent/rendered.py`), so a comment no longer moves it; version 1, the frozen loop, is
-`s3-v1+ge17fecdc66ec+te7811b387b31` (`agent/version.py:VERSION_1`, continuous on `fd6053f`:
+`s3-v1+ge17fecdc66ec+tdff9dea78f23` (`agent/version.py:VERSION_1`, re-pinned in S4 when the
+invented inputs gained a record with several events, 0168; continuous on `fd6053f`:
 `docs/results/s33-fingerprint-continuity.txt`), and a live run refuses any other label or
-setting. Live runs use the standard price through the sync driver (0165). Batch replies carry no cost of their own, so a run's computed cost
+setting, with the model pinned by its literal name (0169). Live runs use the standard price through the sync driver (0165). Batch replies carry no cost of their own, so a run's computed cost
 prices every prompt token at the batch input rate, while the provider bills cached tokens
 lower: for arm C and arm B's tool post-pass, S3's spend line and the monthly guard count what
 was billed when every round reported it, else the computed price (0135). Both figures stay in
@@ -467,7 +516,7 @@ results elsewhere in this file are historical reference points, not bars.
 ## Commands
 
 ```bash
-make check   # lint, mypy --strict and pytest — what CI runs
+make check   # lint, mypy --strict, pytest and site-check — what CI runs
 make lint    # ruff format --check, ruff check, import-linter, deptry, vulture
 make type    # mypy
 make test    # pytest
@@ -600,10 +649,42 @@ S3's $50 line and S3.3's $21.46 line, decision 0163, and runs through `scripts/p
 ```bash
 make s33-continuity        # +t on fd6053f and on the tree; docs/results/s33-fingerprint-continuity.txt; free
 make s33-mutation-sweep    # every model-text literal, edited in turn, must move +t; free, about 1.5 minutes
-make s33-dry-run           # a morning's checks, the store, the queue and one fetch; no model call; free
-make s33-morning [LIMIT=N] # one live morning: at most 50 cases a UTC day (0167), standard price (paid)
 make s33-report            # docs/results/s33-live-shadow.txt, counts only; free; never through paid_run.sh
 ```
+
+S4 removed `s33-morning` (paid nights run only in the cloud image, 0171) and `s33-dry-run`
+(superseded by `s4-dry-run`). S4's targets (`s4-*`; read `docs/runbooks/live-cloud-nights.md`
+first; none is paid; run from a worktree with `NTSB_DATA_DIR` at the main checkout's `data/`):
+
+```bash
+make board-schema          # the board/1 JSON Schema, from live/export.py; free
+make board-sample          # the invented board/1 sample under tests/fixtures/board/; free
+make s4-names-probe        # can names reach the board past the names rule; counts only, dev-400 (0180); free
+make s4-spend              # S4's development spend by commit on s4- branches, against its $10 line; free
+make s4-dry-run            # the cloud night's checks on the Mac: bucket, live key's limit, store, one fetch; no model call
+make s4-export             # copies the bucket's runs/, scores/, nights/ and night export; rebuilds the export locally
+make s4-verify-ledger      # checks the local copy against the public ledger branch; free
+make s4-report             # docs/results/s4-live.txt, counts only (runs s4-export first); free
+make s4-image CONFIRM=yes  # builds the live image and PUSHES it to ECR; ask Andy first; prints the digest
+```
+
+S5's targets (none is paid; the site needs Node from `site/.node-version` and pnpm 11.28.4; read
+`docs/runbooks/site-deploy.md` before any `cdk deploy` of the site stacks: a deploy without
+`-c site_mode=site` puts the holding line back at the next build):
+
+```bash
+make site-check         # pnpm install --frozen-lockfile, lint, format, astro check, types, build,
+                        #   Vitest and the axe browser checks (light, dark, phone); part of make check
+make site-numbers       # site/data/numbers.json from committed results; pytest fails while it is stale
+make site-example-case  # site/data/example-case.json, question 1's case, from a committed fixture
+make s5-belief-path     # docs/results/s5-belief-path-heldout.txt, question 7's figure (0186); free
+make pypdf-text-check   # docs/results/pypdf-text-dev.txt: pypdf 6.19.0 against the locked version (0218); free
+```
+
+The site's copy of the `board/1` schema and sample is the one `make board-schema` and
+`make board-sample` build on `main`. `pnpm --dir site run cards`
+remakes the preview cards under `site/public/cards/`; a test fails when a card's words no longer
+match the site's.
 
 **The coding memory** (a side track beside S4, on branches named `coding-memory*`; decisions
 0200 to 0208; design note `docs/specs/2026-10-08-coding-memory-design.md`, registration
@@ -761,6 +842,21 @@ every `ntsb-eval` command and development script (0024, `scripts/_live_fence.py`
 a read-only key in `pass`, 0166) and finds the store from the recorder stack; and `paid_run.sh`
 installing with `--locked` and passing the NTSB key (`pass` `api/ntsb`) to `s33-` targets.
 
+S4 added: `ntsb-live export --from DIR --out DIR` (builds `board/1` from a copy of the bucket) and
+`ntsb-live verify-ledger --ledger PATH [--mirror DIR]`; `ntsb-live report` now reads the mirror,
+the export, the night's own export, the ledger and Andy's attestation file (`--attest`); the
+`live` package gains `night` (one cloud night: the same-day marker, the full-cap rule, resume,
+later scores, the export, the night record, alerts), `cloud` (the bucket mirror, the live key's
+spend, alerts and the metric), `board` and `export` (`board/1`), `later`, `ledger`, `names` (the
+names step, 0182 to 0184) and `state`; `infra/live_stack.py` (`NtsbLiveStack`: its own VPC, the
+`ntsb-live` image repository, the task and its roles, the live bucket, the alert topic and alarm,
+and the ledger's OIDC role, which trusts GitHub's immutable subject) and
+`scripts/build_live_image.sh`; and the version-1 settings check in `live/morning.py`, which
+refuses any other label or setting, the model pinned by name (0169).
+
+Every script in `scripts/` is catalogued in `docs/scripts.md`, from its `Status` block; a new
+script gets a row there.
+
 `uv run python -m scripts.make_fixture` creates redacted development-split fixtures (0015);
 `uv run python -m scripts.check_docs` is the documentation check decision 0017's stage
 close-out depends on. Settings come from the environment (`NTSB_` prefix, 0012) or `.env`:
@@ -782,7 +878,9 @@ to `<NTSB_DATA_DIR>/transcriptions`, so it moves with `NTSB_DATA_DIR` unless set
 never committed, S2.6 decision 0081). A run from a git worktree needs `NTSB_DATA_DIR` pointed at the main checkout's `data/` (a worktree's own `data/` is empty), which also moves `runs_dir` and `docket_dir` (0057). S3.1 added no setting. S3.3 added
 `NTSB_LIVE_DOCKET_DIR` (where live cases' docket documents are cached, apart from the
 development cache; defaults to `<NTSB_DATA_DIR>/live-docket`; never committed, and cleared after
-each finished live run, 0160).
+each finished live run, 0160). S4 added `NTSB_LIVE_BUCKET` and `NTSB_LIVE_ALERT_TOPIC_ARN` (the
+live bucket and the alert topic; set inside the cloud task and by `scripts/live_env.sh`, unset
+elsewhere, 0172, 0177).
 
 The recorder (`ntsb-record run`, S2.5 Task 10) reads two more: `NTSB_STORE` (where the SQLite
 store lives — a local path, default `<NTSB_DATA_DIR>/recorder.sqlite`, or an `s3://bucket/key`

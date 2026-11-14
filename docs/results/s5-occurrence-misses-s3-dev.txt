@@ -1,0 +1,44 @@
+occurrence misses (scripts/occurrence_misses.py; counts only, decision 0024)
+run 20260929T053953-674c92e-dev-400-B-tools-check-luna [complete]
+sample=dev-400 arm=B evidence=v1 prompt=s1-v6+ge17fecdc66ec+tools-s3+p947fac1c86a4+check-luna-s3 model=openai/gpt-6-luna reasoning=medium max_output_tokens=8000 price_variant=batch
+exclusions=- includes=-
+guidance=r3-loc-stall+r6-aircraft-control sha256=e17fecdc66ec
+commit=cc31441 started=2026-10-03T07:17:08.099026+00:00 finished=2026-10-03T08:04:36.885544+00:00
+cases=401 total_cost_usd=0.1065
+
+scored cases: 399 (abstained, counted as misses on every rate: 2; NTSB sequence empty, counted as misses: 0)
+first guess = the NTSB's first code: 110 of 399 (27.6%)
+first guess's event = the first event (any phase): 173 of 399 (43.4%)
+first guess's phase = the first phase: 240 of 399 (60.2%)
+first guess anywhere in the NTSB's sequence: 148 of 399 (37.1%)
+any of the 3 guesses anywhere in the NTSB's sequence: 242 of 399 (60.7%)
+NTSB sequence length (codes per case): 1: 63, 2: 130, 3: 117, 4: 50, 5: 30, 6: 7, 7: 2
+
+most common misses by event, NTSB's first event -> model's first-guess event (the 12 commonest of 117 pairs; 224 cases whose first-guess event is not the first event):
+- 14  Aerodynamic stall/spin -> Loss of control in flight
+- 11  Loss of control in flight -> Aerodynamic stall/spin
+- 8  Control flight into terr/obj -> Loss of control in flight
+- 7  Loss of engine power (total) -> Loss of engine power (partial)
+- 6  Nose over/nose down -> Loss of control on ground
+- 6  Fuel starvation -> Loss of engine power (total)
+- 6  Loss of control in flight -> Control flight into terr/obj
+- 6  Loss of engine power (total) -> Loss of control in flight
+- 6  Loss of engine power (partial) -> Loss of engine power (total)
+- 5  Unknown or undetermined -> Loss of control in flight
+- 5  Runway excursion -> Loss of control on ground
+- 4  Loss of control in flight -> VFR encounter with IMC
+
+## the six groups (first guess)
+- exact: 110 of 399 (27.6%); median confidence 0.72
+- right event, wrong phase: 63 of 399 (15.8%); median confidence 0.72
+- in sequence, not defining: 38 of 399 (9.5%); median confidence 0.70
+- a later guess in sequence: 68 of 399 (17.0%); median confidence 0.68
+- event under another phase: 45 of 399 (11.3%); median confidence 0.67
+- nothing in common: 73 of 399 (18.3%); median confidence 0.58
+- abstained: 2 of 399 (0.5%); median confidence 0.00
+
+## finding depth (the NTSB's flagged findings, each at its deepest match)
+flagged 1111: found 285; item right, modifier wrong 80; category right, item wrong 241; category wrong 505
+
+## the model's own words (misses whose NTSB event has a phrase list, scoring/misses.py:EVENT_PHRASES)
+the model's narrative or cause names the NTSB's defining event: 97 of 200 (48.5%)

@@ -73,3 +73,7 @@ Accepted, 2026-10-08 (Andy: "yes make the change").
   Here the command is `pass show aws/ntsb-live-reader`.
 - **Inline policy**: a list of allowed actions stored on one IAM user.
 - **CDK stack**: the code that sets up the recorder's AWS parts. The user is not part of it.
+
+## Superseded, 2026-10-12 (appended; nothing above is edited)
+
+- Replaced by [0171](0171-live-nights-run-as-a-scheduled-fargate-task.md) item 5. The cloud task reads the store through its own task role, so the Mac and its read-only key are not needed: after the first good cloud night Andy removes `ntsb-live-reader`, its key and inline policy, the `pass` entry and the `ntsb-live` profile. Until then the record stands for S3.3's Mac mornings.

@@ -77,6 +77,11 @@ infra/cdk.out/
 infra/cdk.context.json
 dist/
 node_modules/
+# The site's build output and tool caches (S5).
+site/dist/
+site/.astro/
+site/test-results/
+site/playwright-report/
 .DS_Store
 .claude/worktrees/
 

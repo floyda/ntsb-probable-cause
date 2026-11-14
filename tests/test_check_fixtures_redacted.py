@@ -13,13 +13,13 @@ from scripts.check_fixtures_redacted import (
     docket_fixture_name_problems,
     docket_fixture_problems,
     main,
-    title_looks_like_a_name,
 )
 
 from ntsb_probable_cause.docket.title_vocab import (
     VENDORED_DICTIONARY_PATH,
     known_title_words,
     load_title_vocabulary,
+    title_looks_like_a_name,
 )
 
 

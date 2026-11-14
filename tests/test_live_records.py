@@ -8,12 +8,15 @@ import pytest
 from ntsb_probable_cause.live.records import (
     BACKFILL_FORMAT,
     CLOSURE_FORMAT,
+    CLOSURE_FORMAT_V1,
     MANIFEST_FILE,
     MANIFEST_FORMAT,
     Backfill,
     ClosureRecord,
+    ClosureRecordV1,
     DocumentLine,
     portability_problems,
+    read_closure_records,
     verify_manifest,
     write_manifest,
 )
@@ -38,7 +41,9 @@ def _record() -> ClosureRecord:
         training_cutoff_source="page",
         uv_lock_sha256="0" * 64,
         documents=(
-            DocumentLine(position=1, title="Pilot form", status="read", ellery="read"),
+            DocumentLine(
+                position=1, title="Pilot form", status="read", ellery="read", sha256="d" * 64
+            ),
             DocumentLine(position=2, title="Photos", status="skipped: photo-only", ellery=None),
         ),
         prelim_present=True,
@@ -50,11 +55,16 @@ def _record() -> ClosureRecord:
         top3=None,
         abstained=None,
         cost_usd=0.5,
+        event_date=date(2026, 9, 1),
+        listing_sha256="a" * 64,
+        request_sha256s=("b" * 64, "c" * 64),
+        replied_models=("m",),
+        providers=("p",),
     )
 
 
 def test_formats() -> None:
-    assert CLOSURE_FORMAT == "live-closure/1"
+    assert CLOSURE_FORMAT == "live-closure/2"
     assert BACKFILL_FORMAT == "live-backfill/1"
     assert MANIFEST_FORMAT == "live-manifest/1"
     assert _record().format == CLOSURE_FORMAT
@@ -65,6 +75,26 @@ def test_closure_record_round_trips() -> None:
     again = ClosureRecord.model_validate_json(record.model_dump_json())
     assert again == record
     assert json.loads(record.model_dump_json())["closed_on"] == "2026-09-24"
+
+
+def test_a_version_1_line_fails_version_2_validation() -> None:
+    line = json.loads(_record().model_dump_json())
+    line["format"] = CLOSURE_FORMAT_V1
+    with pytest.raises(ValueError, match="live-closure/2"):
+        ClosureRecord.model_validate(line)
+
+
+def test_both_versions_are_read_back(tmp_path: Path) -> None:
+    v2 = _record()
+    v1_fields = json.loads(v2.model_dump_json(exclude={"event_date", "listing_sha256"}))
+    for name in ("request_sha256s", "replied_models", "providers"):
+        v1_fields.pop(name)
+    v1_fields["format"] = CLOSURE_FORMAT_V1
+    path = tmp_path / "closures.jsonl"
+    path.write_text(json.dumps(v1_fields) + "\n" + v2.model_dump_json() + "\n")
+    read = read_closure_records(path)
+    assert isinstance(read[0], ClosureRecordV1)
+    assert read[1] == v2
 
 
 def test_backfill_format() -> None:
@@ -154,3 +184,32 @@ def test_portability_reports_unreadable_json(tmp_path: Path) -> None:
 def test_portability_accepts_ordinary_strings(tmp_path: Path, value: str) -> None:
     (tmp_path / "a.json").write_text(json.dumps({"v": value}))
     assert portability_problems(tmp_path) == []
+
+
+def test_a_document_line_without_pages_still_loads() -> None:
+    older = '{"position": 1, "title": "T", "status": "read", "ellery": null, "sha256": null}'
+    assert DocumentLine.model_validate_json(older).pages is None
+    line = DocumentLine(position=1, title="T", status="read", ellery=None, pages=9)
+    assert DocumentLine.model_validate_json(line.model_dump_json()).pages == 9
+
+
+def test_the_entries_hash_ignores_page_bytes_outside_the_entries_and_sees_a_new_document() -> None:
+    """Follow-up to item A2, on a saved real listing page (a development fixture)."""
+    import hashlib  # noqa: PLC0415
+
+    from ntsb_probable_cause.docket.listing import parse_listing  # noqa: PLC0415
+    from ntsb_probable_cause.live.records import entries_sha256  # noqa: PLC0415
+
+    page = Path("tests/fixtures/docket/ERA17LA217/listing.html").read_bytes().decode("utf-8")
+    stamped = page.replace("</html>", "<!-- built 2026-10-13T06:00:00Z session=x1y2 --></html>")
+    assert stamped != page
+    assert hashlib.sha256(stamped.encode()).hexdigest() != hashlib.sha256(page.encode()).hexdigest()
+    first = parse_listing(page, mkey=95459)
+    again = parse_listing(stamped, mkey=95459)
+    assert entries_sha256(again.entries) == entries_sha256(first.entries)
+    added = first.entries[-1].model_copy(
+        update={"index": first.entries[-1].index + 1, "title": "Added document", "href": "/x"}
+    )
+    assert entries_sha256((*first.entries, added)) != entries_sha256(first.entries)
+    renamed = first.entries[0].model_copy(update={"title": first.entries[0].title + " (revised)"})
+    assert entries_sha256((renamed, *first.entries[1:])) != entries_sha256(first.entries)

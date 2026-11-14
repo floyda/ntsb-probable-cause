@@ -1,0 +1,56 @@
+[
+  {
+    "name": "site",
+    "question": "Can an agent read an accident docket and code the cause as the investigator did, and does it need to be an agent to do so?",
+    "line": "An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's.",
+    "alt": "Ellery. Can an agent read an accident docket and code the cause as the investigator did, and does it need to be an agent to do so? An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's."
+  },
+  {
+    "name": "q-answer-key",
+    "question": "Is there an answer key nobody had to write?",
+    "line": "Yes. The NTSB codes every closed case.",
+    "alt": "Ellery. Is there an answer key nobody had to write? Yes. The NTSB codes every closed case."
+  },
+  {
+    "name": "q-case-record",
+    "question": "Is the case record enough?",
+    "line": "No. Alone, it did no better than guessing.",
+    "alt": "Ellery. Is the case record enough? No. Alone, it did no better than guessing."
+  },
+  {
+    "name": "q-docket",
+    "question": "Does reading the docket help?",
+    "line": "Yes. It is the largest gain on the ladder.",
+    "alt": "Ellery. Does reading the docket help? Yes. It is the largest gain on the ladder."
+  },
+  {
+    "name": "q-scanned-pages",
+    "question": "Does reading words in scanned pages help?",
+    "line": "Not shown to help, and costly, so it is paused.",
+    "alt": "Ellery. Does reading words in scanned pages help? Not shown to help, and costly, so it is paused."
+  },
+  {
+    "name": "q-coding",
+    "question": "Are the misses about evidence or about coding?",
+    "line": "Mostly the NTSB's coding order.",
+    "alt": "Ellery. Are the misses about evidence or about coding? Mostly the NTSB's coding order."
+  },
+  {
+    "name": "q-consistency",
+    "question": "How consistent is the answer key itself?",
+    "line": "Not fully: cases with the same cause sentence share a first code in about one case in three.",
+    "alt": "Ellery. How consistent is the answer key itself? Not fully: cases with the same cause sentence share a first code in about one case in three."
+  },
+  {
+    "name": "q-choosing",
+    "question": "Does choosing what to read beat reading everything?",
+    "line": "No. The loop was worse than the fixed pipeline, at about the same bill.",
+    "alt": "Ellery. Does choosing what to read beat reading everything? No. The loop was worse than the fixed pipeline, at about the same bill."
+  },
+  {
+    "name": "q-newly-closed",
+    "question": "Does it hold on newly closed cases?",
+    "line": "The live board answers this in public.",
+    "alt": "Ellery. Does it hold on newly closed cases? The live board answers this in public."
+  }
+]
