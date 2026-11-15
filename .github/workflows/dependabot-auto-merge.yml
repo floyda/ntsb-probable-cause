@@ -1,0 +1,33 @@
+name: dependabot-auto-merge
+
+# Decision 0220. Turns on GitHub's auto-merge (squash) for a Dependabot PR whose highest change
+# is a minor or patch version, unless it updates pypdf or pypdfium2 (0218). GitHub then merges
+# the PR only once main's required checks pass on it (lint, test, audit, site). This workflow
+# merges nothing itself and never checks out or runs the PR's code.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    # The PR's author, not the actor: someone else pushing to Dependabot's branch does not count.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+      - name: Turn on auto-merge for a minor or patch update
+        if: >-
+          (steps.meta.outputs.update-type == 'version-update:semver-minor'
+          || steps.meta.outputs.update-type == 'version-update:semver-patch')
+          && !contains(steps.meta.outputs.dependency-names, 'pypdf')
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge --auto --squash "$PR_URL"

@@ -1,25 +1,46 @@
+# Decision 0220. Each ecosystem gets one grouped PR a week for minor and patch updates. A major
+# update comes as its own PR. pypdf and pypdfium2 always come alone, because they change the
+# docket text the agent reads (0218). The dependabot-auto-merge workflow merges a grouped minor
+# or patch PR once the required checks pass. Everything else waits for Andy.
+#
+# Every ecosystem waits 7 days after a release before proposing it. This matches pnpm's own
+# minimum release age (S5 spec §17.2): most poisoned releases are found and pulled within days.
 version: 2
 updates:
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: weekly
-    # Wait a week after a release before proposing it (default 3 days):
-    # most poisoned releases are caught and pulled within days.
     cooldown:
       default-days: 7
+    groups:
+      uv-minor-and-patch:
+        update-types: [minor, patch]
+        exclude-patterns: [pypdf, pypdfium2]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker-minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /site
     schedule:
       interval: weekly
-    # Same cooldown as uv's, and as pnpm's own minimum release age (S5 spec §17.2).
     cooldown:
       default-days: 7
+    groups:
+      site-minor-and-patch:
+        update-types: [minor, patch]
