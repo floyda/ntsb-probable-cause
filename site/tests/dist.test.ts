@@ -11,7 +11,7 @@ import { anchorFor, shown } from "../src/lib/methods";
 import { cardFor, cardVersion } from "../src/lib/cards";
 import { closureNights, openLines } from "../src/lib/open";
 import { ROUTE_QUESTIONS } from "../src/lib/route";
-import { AUTHOR_URL, PAGES } from "../src/lib/site";
+import { AUTHOR_HOME, AUTHOR_URL, COPYRIGHT, PAGES } from "../src/lib/site";
 import { count, countOf, numbers, pointsOn, usd, withInterval } from "../src/lib/numbers";
 import { costLabel } from "../src/lib/trail";
 import { differenceSentence } from "../src/lib/words";
@@ -482,7 +482,9 @@ describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () =>
         const html = read(page);
         const head = /<header[^>]*class="site-head[\s\S]*?<\/header>/.exec(html)?.[0] ?? "";
         const hrefs = [...head.matchAll(/<a[^>]*href="([^"]+)"/g)].map((m) => m[1]);
-        expect(hrefs).toEqual(["/", ...PAGES.map((p) => p.href)]);
+        // The author's name, linking to his profile site, opens the bar (decision 0219).
+        expect(hrefs).toEqual([AUTHOR_HOME, "/", ...PAGES.map((p) => p.href)]);
+        expect(visibleText(head)).toContain("Andy Floyd");
         const marked = [...head.matchAll(/<a[^>]*href="([^"]+)"[^>]*aria-current="page"/g)].map(
             (m) => m[1],
         );
@@ -492,6 +494,7 @@ describe.skipIf(!built)("the top bar and the footer (S5 step 6a, Task 2)", () =>
 
     it.each(all)("%s ends with the footer", (page) => {
         const foot = /<footer[^>]*class="site-foot[\s\S]*?<\/footer>/.exec(read(page))?.[0] ?? "";
+        expect(visibleText(foot)).toContain(COPYRIGHT);
         expect(foot).toContain(`href="${AUTHOR_URL}"`);
         expect(visibleText(foot)).toContain("Built by Andy Floyd");
         expect(foot).toContain('href="https://github.com/floyda/ntsb-probable-cause"');

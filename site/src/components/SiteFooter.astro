@@ -1,38 +1,60 @@
 ---
-// The foot of every page (spec §3.1): the author, linking to his profile page, the repository,
-// Methods and Open cases.
-import { AUTHOR_URL } from "../lib/site";
+// The foot of every page (spec §3.1; decision 0219): the copyright line, then the author, linking
+// to his profile page, the repository, Methods and Open cases.
+import { AUTHOR_URL, COPYRIGHT } from "../lib/site";
 import { repoRoot } from "../lib/words";
 ---
 
 <footer class="site-foot">
-    <ul class="inner">
-        <li>
-            <a href={AUTHOR_URL}>Built by Andy Floyd</a>
-        </li>
-        <li>
-            <a href={repoRoot()}>The repository</a>
-        </li>
-        <li>
-            <a href="/methods/">Methods</a>
-        </li>
-        <li>
-            <a href="/open/">Open cases</a>
-        </li>
-    </ul>
+    <div class="inner">
+        <p class="copy">{COPYRIGHT}</p>
+        <ul>
+            <li>
+                <a href={AUTHOR_URL}>Built by Andy Floyd</a>
+            </li>
+            <li>
+                <a href={repoRoot()}>The repository</a>
+            </li>
+            <li>
+                <a href="/methods/">Methods</a>
+            </li>
+            <li>
+                <a href="/open/">Open cases</a>
+            </li>
+        </ul>
+    </div>
 </footer>
 
 <style>
+    /* On the page's own ground, under a 2px rule (0219), as floyda.dev's footer is. */
     .site-foot {
-        background: var(--board-ground);
-        border-top: 1px solid var(--board-rule);
+        border-top: var(--section-rule);
         margin-top: var(--space-section);
     }
     .inner {
-        list-style: none;
+        /* The same box as .page (tokens.css), so the bar's ends line up with the column's. */
+        box-sizing: border-box;
         max-width: 72rem;
         margin: 0 auto;
         padding: 1.25rem 1rem 2rem;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem 1.5rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        letter-spacing: var(--mono-track);
+        text-transform: uppercase;
+    }
+    .copy {
+        margin: 0;
+        color: var(--ink-muted);
+    }
+    ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
         display: flex;
         flex-wrap: wrap;
         gap: 0.25rem 1.5rem;
@@ -40,13 +62,10 @@ import { repoRoot } from "../lib/words";
     a {
         display: inline-block;
         padding-block: 0.4rem;
-        color: var(--board-dim);
-    }
-    a:hover {
-        color: var(--board-ink);
+        color: var(--ink);
     }
     a:focus-visible {
-        outline: 2px solid var(--board-ink);
+        outline: 2px solid var(--ink);
         outline-offset: 2px;
     }
 </style>

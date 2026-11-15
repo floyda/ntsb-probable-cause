@@ -1,26 +1,46 @@
-/* Colour tokens (S5 spec §10, §12 item 8). Every colour on the site comes from here. */
+/* Colour tokens (S5 spec §10, §12 item 8). Every colour on the site comes from here.
+   The page around Ellery's content takes floyda.dev's look (decisions 0219, 0221). A value marked
+   "floyda.dev" is copied from that site's published tokens (its site/src/styles/tokens.css, read
+   from https://floyda.dev on 2026-11-15); every other value is Ellery's own. */
 :root {
     color-scheme: light dark;
-    --ink: #1a1a1a;
-    --ink-muted: #4a4a4a;
-    /* The Quiet look (spec §21 note, 2026-10-16): a pale page, white panels for figures. */
-    --ground: #f6f7f8;
+    /* floyda.dev: --ink. */
+    --ink: #1a1a18;
+    /* floyda.dev: --muted. */
+    --ink-muted: #6b675e;
+    /* floyda.dev: --bg, its warm paper. */
+    --ground: #faf8f3;
+    /* White panels for figures (spec §21 note, 2026-10-16), with a warm edge and thin rule. */
     --paper: #ffffff;
-    --panel-edge: #c9d0d7;
-    --rule: #c8c8c8;
+    --panel-edge: #ddd7ca;
+    --rule: #cfc9bc;
+    /* floyda.dev: --gridline, the grid behind the first page's opening. */
+    --gridline: #e6e1d6;
     /* An amber wayfinding sign, the board's amber, as a section's label (spec §10). */
     --sign: #f2c94c;
     --sign-ink: #0d1117;
+    /* floyda.dev: --wordmark. The amber is 1.5:1 as text on the light ground, so amber text is
+       this deeper gold there (0219 item 3). */
+    --amber-text: #8f6b00;
     /* The ladder's bars (spec §7.1): lit and dimmed, by lightness only, never good or bad. */
     --bar: #7d8996;
     --bar-dim: #d5d9de;
     --read: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+    /* floyda.dev: --font-sans, for headings only; every sentence stays in --read (0219). */
+    --display: "Schibsted Grotesk", system-ui, sans-serif;
+    /* floyda.dev: --font-mono, for small labels in capitals. */
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    /* floyda.dev: its .mono labels' letter-spacing. */
+    --mono-track: 0.07em;
     --board: "Doto", ui-monospace, monospace;
     /* The board is a dark terminal panel in both themes (spec §4). */
     --board-ground: #0d1117;
     --board-ink: #f2c94c;
     --board-dim: #b8c0cc;
     --board-rule: #2a3240;
+    /* The rule between sections, and under the top bar and above the footer: 2px (0219), in
+       the ink colour as floyda.dev's rules are. */
+    --section-rule: 2px solid var(--ink);
     /* One type scale and one section space for every page. */
     --step-0: 1rem;
     --step-1: 1.2rem;
@@ -31,18 +51,23 @@
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --ink: #ececec;
-        --ink-muted: #b8b8b8;
-        --ground: #111418;
-        --paper: #171b21;
-        --panel-edge: #39424d;
-        --rule: #3a3a3a;
+        /* floyda.dev's dark tokens: --ink, --muted, --bg, --gridline, --wordmark. */
+        --ink: #e7eaee;
+        --ink-muted: #8a919b;
+        --ground: #0e1116;
+        --gridline: #1a1f27;
+        --amber-text: #f2c94c;
+        --paper: #141922;
+        --panel-edge: #2a313c;
+        --rule: #333b47;
         --bar: #5f6b78;
         --bar-dim: #2c3238;
     }
 }
 
 html {
+    /* With body's own clip below: body's alone would pass to the screen and clip nothing. */
+    overflow-x: clip;
     background: var(--ground);
     color: var(--ink);
     font-family: var(--read);
@@ -52,12 +77,14 @@ html {
 /* The footer sits at the foot of the screen on a short page (review, 2026-10-21: the 404 page). */
 body {
     margin: 0;
+    /* The first page's gridded band runs past the column to both edges (index.astro). */
+    overflow-x: clip;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
-/* The page between the top bar and the footer, whose dark bands run the full width. */
+/* The page between the top bar and the footer, whose rules run the full width. */
 .page {
     flex: 1 0 auto;
     width: 100%;
@@ -109,8 +136,18 @@ main > * {
     margin-inline: auto;
 }
 
-/* One type scale for every page (spec §21 note, 2026-10-16). */
+/* One type scale for every page (spec §21 note, 2026-10-16). Headings are in floyda.dev's
+   heading face (0219): a page's title at weight 900, section headings at 800. */
+h1,
+h2,
+h3,
+h4 {
+    font-family: var(--display);
+    font-weight: 800;
+}
 h1 {
+    font-weight: 900;
+    letter-spacing: -0.02em;
     font-size: var(--step-3);
     line-height: 1.15;
     /* Block margins only: main's children keep their inline margin (below). */
@@ -119,6 +156,7 @@ h1 {
 }
 h2 {
     font-size: var(--step-2);
+    letter-spacing: -0.015em;
     line-height: 1.2;
     text-wrap: balance;
 }

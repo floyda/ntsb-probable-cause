@@ -56,4 +56,32 @@ if (rail !== null) {
         area.setAttribute("data-place-of", id);
         watch.observe(area);
     }
+
+    // The first page's opening band ends in a rule that runs the full width (index.astro). A
+    // rail that stayed in place on a wide screen would have that rule pass through it. So the
+    // rail there starts inside the band and scrolls away with it, then fades in, in its fixed
+    // place, once the reader reaches the next section (Andy, 2026-11-15). Without this script
+    // the rail stays in place throughout.
+    const band = document.querySelector<HTMLElement>("[data-rail-rides]");
+    const next = band?.closest("section")?.nextElementSibling ?? null;
+    if (band !== null && next !== null) {
+        let waiting = false;
+        const place = (): void => {
+            waiting = false;
+            // Reached: the band is above the screen, and the next section is in the upper half.
+            const reached =
+                band.getBoundingClientRect().bottom < 0 &&
+                next.getBoundingClientRect().top < window.innerHeight / 2;
+            rail.classList.toggle("rides", !reached);
+            rail.classList.toggle("arrives", reached);
+        };
+        const ask = (): void => {
+            if (waiting) return;
+            waiting = true;
+            requestAnimationFrame(place);
+        };
+        place();
+        window.addEventListener("scroll", ask, { passive: true });
+        window.addEventListener("resize", ask);
+    }
 }

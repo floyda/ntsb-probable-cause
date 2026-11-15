@@ -19,8 +19,15 @@ export const SITE_QUESTION =
 export const SITE_LINE =
     "An AI agent codes closed aviation accident cases from the evidence; its answers are set beside the NTSB's.";
 
-/** "Built by Andy Floyd" links here (Andy, 2026-10-16). */
+/** "Built by Andy Floyd" links here (Andy, 2026-10-16). It moves to floyda.dev's Ellery page,
+ * https://floyda.dev/projects/ellery/, once that page is published (decision 0221). */
 export const AUTHOR_URL = "https://floyda.dev";
+
+/** The author's name in the top bar links to his profile site's first page (decision 0219). */
+export const AUTHOR_HOME = "https://floyda.dev";
+
+/** The footer's copyright line (decision 0219). */
+export const COPYRIGHT = "© 2026 Andy Floyd";
 
 /** One place within a page that the rail names: the id it links to, and its short label. */
 export interface Place {

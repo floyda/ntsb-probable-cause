@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// The Quiet look's colour pairs (S5 step 6a, Task 1), checked by number in both themes. axe checks
+// The site's colour pairs (S5 step 6a, Task 1; decisions 0219 and 0221, which brought floyda.dev's
+// grounds, ink and amber text), checked by number in both themes. axe checks
 // the built pages too; this catches a token change before any page is built.
 const css = readFileSync(join(__dirname, "..", "styles", "tokens.css"), "utf8");
 
@@ -41,12 +42,23 @@ const TEXT_PAIRS: [string, string][] = [
     ["--sign-ink", "--sign"],
     ["--board-ink", "--board-ground"],
     ["--board-dim", "--board-ground"],
+    // Amber as text on the page's ground (0219 item 3): the question's final mark, and the
+    // numbers in the rail.
+    ["--amber-text", "--ground"],
 ];
 
-describe("the Quiet look's colours (S5 step 6a)", () => {
+describe("the site's colours (S5 step 6a; decisions 0219, 0221)", () => {
     it("reads the colour tokens in both themes", () => {
         expect(Object.keys(light).length).toBeGreaterThan(10);
         expect(dark["--ground"]).not.toBe(light["--ground"]);
+    });
+    it("uses floyda.dev's published grounds (0219)", () => {
+        expect(light["--ground"]).toBe("#faf8f3");
+        expect(dark["--ground"]).toBe("#0e1116");
+    });
+    it("darkens amber text on the light ground only (0219 item 3)", () => {
+        expect(light["--amber-text"]).not.toBe(light["--sign"]);
+        expect(dark["--amber-text"]).toBe(dark["--sign"]);
     });
     for (const [theme, tokens] of [
         ["light", light],

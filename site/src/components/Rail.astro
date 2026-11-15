@@ -10,6 +10,11 @@ interface Props {
 }
 
 const places = checkPlaces(Astro.props.places);
+// A place's leading number ("1 · The question") is set in amber (decision 0219).
+const parts = (label: string): { n: string; rest: string } => {
+    const found = /^(\d+)(\s.*)$/.exec(label);
+    return found === null ? { n: "", rest: label } : { n: found[1] ?? "", rest: found[2] ?? "" };
+};
 ---
 
 <nav class="rail" aria-label="On this page">
@@ -20,7 +25,8 @@ const places = checkPlaces(Astro.props.places);
         {places.map((p) => (
             <li>
                 <a href={`#${p.id}`} data-place={p.id}>
-                    {p.label}
+                    {parts(p.label).n !== "" && <span class="n">{parts(p.label).n}</span>}
+                    {parts(p.label).rest}
                 </a>
             </li>
         ))}
@@ -59,8 +65,20 @@ const places = checkPlaces(Astro.props.places);
         border: 1px solid var(--rule);
         border-radius: 3px;
         color: var(--ink-muted);
-        font-size: 0.88rem;
+        /* floyda.dev's label face, in capitals (0219). */
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        letter-spacing: var(--mono-track);
+        text-transform: uppercase;
         text-decoration: none;
+    }
+    .n {
+        color: var(--amber-text);
+        font-weight: 600;
+    }
+    /* On the marked tab the number takes the tab's own colour: amber would not read on ink. */
+    a.on .n {
+        color: inherit;
     }
     a:focus-visible {
         outline: 2px solid var(--ink);
@@ -89,9 +107,10 @@ const places = checkPlaces(Astro.props.places);
             display: block;
             margin: 0 0 0.6rem;
             color: var(--ink-muted);
-            font-size: 0.75rem;
-            font-weight: 700;
-            letter-spacing: 0.12em;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: var(--mono-track);
             text-transform: uppercase;
         }
         ol {
@@ -109,12 +128,32 @@ const places = checkPlaces(Astro.props.places);
             border: 0;
             border-left: 2px solid transparent;
             border-radius: 0;
-            font-size: 0.92rem;
         }
         a.on {
             background: none;
             color: var(--ink);
             border-left-color: var(--ink);
+        }
+        a.on .n {
+            color: var(--amber-text);
+        }
+        /* On the first page the rail starts in the opening band and scrolls away with it,
+           then fades in here once the reader reaches the next section (scripts/rail.ts). */
+        .rail.rides {
+            position: static;
+        }
+        .rail.arrives {
+            animation: rail-in 0.3s ease-out;
+        }
+        @keyframes rail-in {
+            from {
+                opacity: 0;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .rail.arrives {
+                animation: none;
+            }
         }
     }
 </style>
