@@ -26,17 +26,19 @@ import { repoRoot } from "../lib/words";
 </footer>
 
 <style>
-    /* On the page's own ground, under a 2px rule (0219), as floyda.dev's footer is. */
+    /* On the page's own ground, under a 2px rule (0219) that stops at the column's edges, as
+       floyda.dev's does (decision 0222). */
     .site-foot {
-        border-top: var(--section-rule);
-        margin-top: var(--space-section);
+        /* The same box as .page (tokens.css), so the rule's ends line up with the column's. */
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 72rem;
+        margin: var(--space-section) auto 0;
+        padding-inline: 1rem;
     }
     .inner {
-        /* The same box as .page (tokens.css), so the bar's ends line up with the column's. */
-        box-sizing: border-box;
-        max-width: 72rem;
-        margin: 0 auto;
-        padding: 1.25rem 1rem 2rem;
+        padding-block: 1.25rem 2rem;
+        border-top: var(--section-rule);
         display: flex;
         flex-wrap: wrap;
         justify-content: space-between;

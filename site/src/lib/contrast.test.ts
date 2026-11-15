@@ -15,10 +15,9 @@ function block(source: string): Record<string, string> {
 }
 
 const light = block(/:root\s*{([\s\S]*?)}/.exec(css)?.[1] ?? "");
-const dark = {
-    ...light,
-    ...block(/prefers-color-scheme:\s*dark\)\s*{\s*:root\s*{([\s\S]*?)}/.exec(css)?.[1] ?? ""),
-};
+// Dark is the default, whatever the system's setting; light is the reader's choice (0222).
+const darkBlock = block(/:root:not\(\[data-theme="light"\]\)\s*{([\s\S]*?)}/.exec(css)?.[1] ?? "");
+const dark = { ...light, ...darkBlock };
 
 /** WCAG 2.2's contrast ratio between two #rrggbb colours. */
 function ratio(a: string, b: string): number {
@@ -51,6 +50,10 @@ describe("the site's colours (S5 step 6a; decisions 0219, 0221)", () => {
     it("reads the colour tokens in both themes", () => {
         expect(Object.keys(light).length).toBeGreaterThan(10);
         expect(dark["--ground"]).not.toBe(light["--ground"]);
+    });
+    it("makes dark the default, not the system's setting (0222)", () => {
+        expect(Object.keys(darkBlock).length).toBeGreaterThan(5);
+        expect(css).not.toMatch(/prefers-color-scheme/);
     });
     it("uses floyda.dev's published grounds (0219)", () => {
         expect(light["--ground"]).toBe("#faf8f3");

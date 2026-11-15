@@ -186,48 +186,70 @@ test("the rail marks the place being read", async ({ page }) => {
     await expect(page.locator('nav.rail a[aria-current="location"]')).toHaveCount(1);
 });
 
-// The first page's opening band ends in a full-width rule. On a wide screen the rail starts in
-// the band and scrolls away with it, so the rule never passes through it; it comes back, in its
-// fixed place, once the reader reaches the second stop (Andy, 2026-11-15).
-test("the first page's rail leaves with the opening and returns at the second stop", async ({
-    page,
-}, info) => {
-    test.skip(info.project.name === "phone", "on a phone the rail is a strip above the opening");
+// The rules stop at the column's edges (decision 0222), so none can pass through the rail,
+// which stays in place on a wide screen while the first page scrolls.
+test("the first page's rules stay inside the column, clear of the rail", async ({ page }, info) => {
     await page.goto("/");
-    const rail = page.locator("nav.rail");
-    await expect(rail).toBeInViewport();
-    const edges = (): Promise<{ rule: number; top: number; bottom: number }> =>
-        page.evaluate(() => {
-            const band = document.querySelector("[data-rail-rides]");
-            const box = document.querySelector("nav.rail")?.getBoundingClientRect();
-            if (band === null || box === undefined) throw new Error("no band or rail");
-            return { rule: band.getBoundingClientRect().bottom, top: box.top, bottom: box.bottom };
+    const edges = await page.evaluate(() => {
+        const right = (q: string): number =>
+            document.querySelector(q)?.getBoundingClientRect().right ?? NaN;
+        const left = (q: string): number =>
+            document.querySelector(q)?.getBoundingClientRect().left ?? NaN;
+        return {
+            screen: document.documentElement.clientWidth,
+            headLeft: left("header.site-head .inner"),
+            headRight: right("header.site-head .inner"),
+            footLeft: left("footer.site-foot .inner"),
+            footRight: right("footer.site-foot .inner"),
+            column: left("main"),
+            band: right("main .opening"),
+            rail: left("nav.rail"),
+        };
+    });
+    // The top bar's and the footer's rules start where the column starts.
+    expect(edges.headLeft).toBeCloseTo(edges.column, 0);
+    expect(edges.footLeft).toBeCloseTo(edges.column, 0);
+    expect(edges.headRight).toBeCloseTo(edges.footRight, 0);
+    expect(edges.headRight).toBeLessThanOrEqual(edges.screen - 16);
+    if (info.project.name !== "phone") {
+        expect(edges.headLeft).toBeGreaterThan(16);
+        // The band's rule ends before the rail begins, and the rail stays as the page scrolls.
+        expect(edges.band).toBeLessThan(edges.rail);
+        const before = await page.locator("nav.rail").boundingBox();
+        await page.evaluate(() => {
+            window.scrollTo(0, 600);
         });
-    // At every scroll position on the way down, the rule is never inside the rail.
-    for (let y = 0; y <= 700; y += 50) {
-        await page.evaluate((to) => {
-            window.scrollTo(0, to);
-        }, y);
-        const { rule, top, bottom } = await edges();
-        expect(rule <= top || rule >= bottom, `rule ${String(rule)} at scroll ${String(y)}`).toBe(
-            true,
-        );
+        const after = await page.locator("nav.rail").boundingBox();
+        expect(after?.y).toBeLessThanOrEqual(before?.y ?? 0);
+        await expect(page.locator("nav.rail")).toBeInViewport();
     }
-    // With only the band's last few pixels left on screen, the rail has gone with it.
-    await page.evaluate(() => {
-        const band = document.querySelector("[data-rail-rides]");
-        if (band === null) throw new Error("no band");
-        window.scrollTo(0, band.getBoundingClientRect().bottom + window.scrollY - 5);
-    });
-    await expect(rail).not.toBeInViewport();
-    // At the second stop it is back, and it is whole.
-    await page.evaluate(() => {
-        const board = document.getElementById("board");
-        if (board === null) throw new Error("no board");
-        window.scrollTo(0, board.getBoundingClientRect().top + window.scrollY - 100);
-    });
-    await expect(rail).toBeInViewport();
-    await expect(rail).toHaveCSS("opacity", "1");
+});
+
+// The dark mode button (decision 0222): it switches the theme, says so to assistive technology,
+// and the choice holds on the next page.
+test("the dark mode button switches the theme and keeps the choice", async ({ page }, info) => {
+    const startsDark = info.project.name === "dark";
+    await page.goto("/");
+    const button = page.locator("button[data-theme-toggle]");
+    await expect(button).toBeVisible();
+    await expect(button).toHaveAttribute("aria-pressed", String(startsDark));
+    const ground = (): Promise<string> =>
+        page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
+    const first = await ground();
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", String(!startsDark));
+    expect(await ground()).not.toBe(first);
+    await page.goto("/methods/");
+    await expect(page.locator("button[data-theme-toggle]")).toHaveAttribute(
+        "aria-pressed",
+        String(!startsDark),
+    );
+    expect(await ground()).not.toBe(first);
+    // The chosen theme passes the same accessibility check as the system's.
+    const results = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+        .analyze();
+    expect(results.violations).toEqual([]);
 });
 
 // Every place a rail names, reached by a link, shows its sign below the phone's strip, or on

@@ -137,23 +137,5 @@ const parts = (label: string): { n: string; rest: string } => {
         a.on .n {
             color: var(--amber-text);
         }
-        /* On the first page the rail starts in the opening band and scrolls away with it,
-           then fades in here once the reader reaches the next section (scripts/rail.ts). */
-        .rail.rides {
-            position: static;
-        }
-        .rail.arrives {
-            animation: rail-in 0.3s ease-out;
-        }
-        @keyframes rail-in {
-            from {
-                opacity: 0;
-            }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            .rail.arrives {
-                animation: none;
-            }
-        }
     }
 </style>

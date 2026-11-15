@@ -40,7 +40,7 @@ const places = [
     <section id="question" class="caveat" aria-labelledby="question-heading">
         {/* The opening (decision 0219): the question as the page's largest heading, on a
             gridded band. The page's title stays for screen readers and outlines. */}
-        <div class="opening" data-rail-rides>
+        <div class="opening">
             <h1 class="vh">Ellery</h1>
             <Sign>1 · The question</Sign>
             <h2 id="question-heading">
@@ -123,8 +123,8 @@ const places = [
         margin: 0;
     }
     /* The opening band (decision 0219). Its grid is floyda.dev's hero grid: 1px lines in
-       --gridline on 24px squares. It runs to both edges of the screen behind the column, and
-       closes with the 2px rule. */
+       --gridline on 24px squares. The grid runs to both edges of the screen behind the column;
+       the rules stay inside the column, as floyda.dev's do (decision 0222). */
     #question {
         border-top: 0;
         padding-top: 0;
@@ -137,6 +137,8 @@ const places = [
         gap: 0.9rem;
         padding-block: 2.25rem 2.5rem;
         margin-bottom: 1rem;
+        /* The band closes with a rule inside the column, like every section's (0222). */
+        border-bottom: var(--section-rule);
     }
     .opening::before {
         content: "";
@@ -148,7 +150,6 @@ const places = [
             linear-gradient(var(--gridline) 1px, transparent 1px),
             linear-gradient(90deg, var(--gridline) 1px, transparent 1px);
         background-size: 24px 24px;
-        border-bottom: var(--section-rule);
     }
     /* Weight 900, as floyda.dev's headline is. */
     #question-heading {
