@@ -203,7 +203,10 @@ anywhere else it doesn't have to.
 --cli-input-json file:///dev/stdin` to avoid that — it does not work.** Reproduced directly
 against `aws-cli` 2.36, with a dummy value and no real credentials: the command fails with
 "Invalid JSON received". The AWS CLI's `file://` form reads a real file on disk; a *piped*
-`/dev/stdin` is not read the same way, so the JSON never actually reaches the command. The
+`/dev/stdin` is not read the same way **for `--cli-input-json`**, so the JSON never actually
+reaches the command. *Note, 2026-10-11 (S4 Task 14): this was found for `--cli-input-json` only.
+`aws ssm put-parameter --value file:///dev/stdin` does read a pipe (checked with aws-cli
+2.36.44), and `docs/runbooks/live-cloud-nights.md` uses it.* The
 form below keeps the same property (the key never appears as a command-line argument, and
 never touches disk) a different way — it hands the key to Python's own `boto3` library on
 `stdin`, inside a one-off `uv run` environment, and lets `boto3` make the API call directly,
@@ -285,14 +288,18 @@ aws iam list-open-id-connect-providers --profile ntsb --region eu-west-2
 - **If the list is empty**, skip to 4b — the stack creates the provider itself.
 - **If an entry's ARN ends in `oidc-provider/token.actions.githubusercontent.com`**, note its
   full ARN and pass it as context in 4b:
-  `cdk deploy --profile ntsb -c github_oidc_provider_arn=<that ARN>`.
+  `cdk deploy NtsbRecorderStack --profile ntsb -c github_oidc_provider_arn=<that ARN>`.
 
 ### 4b — Deploy
 
 ```
 cd infra   # if not already there
-cdk deploy --profile ntsb
+cdk deploy NtsbRecorderStack --profile ntsb
 ```
+
+*Note, 2026-10-12 (S5):* `infra/app.py` also holds the public site's three stacks, so always name
+`NtsbRecorderStack`; a bare `cdk deploy` now stops and asks which stack, and `--all` would deploy
+the site's stacks too (`docs/runbooks/site-deploy.md`).
 
 (Add `-c github_oidc_provider_arn=<arn>` from 4a if an existing provider was found.)
 
@@ -720,7 +727,7 @@ and CDK never deletes something it does not own, so the same import is needed ag
 ```
 aws ecr delete-repository --repository-name ntsb-recorder --force --region eu-west-2 --profile ntsb
 aws logs delete-log-group --log-group-name /ecs/ntsb-recorder --region eu-west-2 --profile ntsb
-cdk deploy --profile ntsb
+cdk deploy NtsbRecorderStack --profile ntsb
 ```
 
 **The S3 bucket is a different case, and matters much more.** It has no fixed name (CDK

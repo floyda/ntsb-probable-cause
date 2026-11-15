@@ -1,0 +1,15 @@
+---
+// A white panel with a thin edge, for a figure or a list of codes (spec §21 note of 2026-10-16):
+// it sets the figure apart from the pale page around it. The edge is decoration, not a control.
+// Its look is the global `.panel` in tokens.css, which components with their own markup share.
+interface Props {
+    /** A label for the panel when it holds a figure that has none of its own. */
+    label?: string;
+}
+
+const { label } = Astro.props;
+---
+
+<div class="panel" role={label === undefined ? undefined : "group"} aria-label={label}>
+    <slot />
+</div>

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -9,8 +10,8 @@ import pytest
 import respx
 
 from ntsb_probable_cause import sources
-from ntsb_probable_cause.docket.client import DocketClient
-from ntsb_probable_cause.errors import DocketError
+from ntsb_probable_cause.docket.client import DocketClient, cached_hashes
+from ntsb_probable_cause.errors import ConfigurationError, DocketError
 
 MKEY = 73612
 LISTING_URL = sources.docket_url(MKEY)
@@ -173,3 +174,88 @@ def test_two_documents_are_both_kept_in_the_manifest(
     assert fetch["documents"]["1"]["sha256"] == hashlib.sha256(b"document a").hexdigest()
     assert fetch["documents"]["2"]["href"] == href_b
     assert fetch["documents"]["2"]["sha256"] == hashlib.sha256(b"document b").hexdigest()
+
+
+def test_cached_hashes_read_back_what_was_recorded(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.get(LISTING_URL).mock(return_value=httpx.Response(200, text=PAGE))
+    respx_mock.get(sources.docket_document_url(HREF)).mock(
+        return_value=httpx.Response(200, content=b"%PDF-1.4 x")
+    )
+    assert cached_hashes(tmp_path, MKEY) == (None, {})
+    with _client(tmp_path, []) as client:
+        client.listing_html(MKEY)
+        client.document(MKEY, 2, HREF)
+    assert cached_hashes(tmp_path, MKEY) == (
+        hashlib.sha256(PAGE.encode()).hexdigest(),
+        {2: hashlib.sha256(b"%PDF-1.4 x").hexdigest()},
+    )
+
+
+class _Pieces(httpx.SyncByteStream):
+    """A response body that arrives in pieces, and may fail after the first (decision 0217)."""
+
+    def __init__(self, pieces: list[bytes], *, fail_after_first: bool = False) -> None:
+        self._pieces = pieces
+        self._fail = fail_after_first
+
+    def __iter__(self) -> Iterator[bytes]:
+        for n, piece in enumerate(self._pieces):
+            if self._fail and n == 1:
+                raise httpx.ReadError("connection dropped")
+            yield piece
+
+
+def test_document_file_streams_into_the_cache(tmp_path: Path, respx_mock: respx.MockRouter) -> None:
+    """Decision 0217: a document goes to disk in pieces, never whole into memory."""
+    pieces = [b"%PDF-1.4 ", b"a" * 70_000, b" tail"]
+    route = respx_mock.get(sources.docket_document_url(HREF)).mock(
+        return_value=httpx.Response(200, stream=_Pieces(pieces))
+    )
+    with _client(tmp_path, []) as client:
+        path = client.document_file(MKEY, 4, HREF)
+        assert path == tmp_path / str(MKEY) / "4.bin"
+        assert path.read_bytes() == b"".join(pieces)
+        assert client.document(MKEY, 4, HREF) == b"".join(pieces)  # a cache hit, same bytes
+    assert route.call_count == 1
+    assert not list((tmp_path / str(MKEY)).glob("*.partial"))
+    fetch = json.loads((tmp_path / str(MKEY) / "fetch.json").read_text())
+    assert fetch["documents"]["4"] == {
+        "href": HREF,
+        "sha256": hashlib.sha256(b"".join(pieces)).hexdigest(),
+        "time": fetch["documents"]["4"]["time"],
+    }
+
+
+def test_a_dropped_stream_is_retried_and_leaves_no_file(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.get(sources.docket_document_url(HREF)).mock(
+        side_effect=[
+            httpx.Response(200, stream=_Pieces([b"%PDF", b"-1.4"], fail_after_first=True)),
+            httpx.Response(200, stream=_Pieces([b"%PDF", b"-1.4"])),
+        ]
+    )
+    with _client(tmp_path, []) as client:
+        assert client.document_file(MKEY, 1, HREF).read_bytes() == b"%PDF-1.4"
+
+
+def test_a_stream_that_never_completes_leaves_nothing_behind(
+    tmp_path: Path, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.get(sources.docket_document_url(HREF)).mock(
+        side_effect=lambda _request: httpx.Response(
+            200, stream=_Pieces([b"%PDF", b"-1.4"], fail_after_first=True)
+        )
+    )
+    with _client(tmp_path, []) as client, pytest.raises(DocketError, match="last status ReadError"):
+        client.document_file(MKEY, 1, HREF)
+    folder = tmp_path / str(MKEY)
+    assert not folder.exists() or not [p for p in folder.iterdir() if p.name != "fetch.json"]
+
+
+def test_document_file_needs_a_cache() -> None:
+    """A read-and-discard client (decision 0040) writes nothing, so it has no file to give."""
+    with _client(None, []) as client, pytest.raises(ConfigurationError, match="cache"):
+        client.document_file(MKEY, 1, HREF)

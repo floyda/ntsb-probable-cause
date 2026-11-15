@@ -1,5 +1,11 @@
 # Runbook — Live shadow mornings
 
+> **2026-10-11 (S4 Task 14): this runbook is history.** The nights now run in the cloud, and the
+> Mac no longer codes cases: `make s33-morning` and `make s33-dry-run` are gone, and `ntsb-live
+> report` is the S4 report. Follow `docs/runbooks/live-cloud-nights.md`. The table of messages in
+> section 6 and the glossary still describe what S3.3 printed. The Mac's AWS key in section 9 is
+> removed by that runbook's section 11.
+
 *For S3.3. Specification: `docs/specs/2026-10-07-s3-3-live-shadow-design.md` (sections 4, 8
 and 9). Decisions: 0157 to 0166.*
 
@@ -154,10 +160,7 @@ that each quoted text is in the program.
 | `the agent's prompt version is` ... `morning runs version 1 only (decision 0161)` (**fingerprint** mismatch; the full line reads "..., not the frozen s3-v1+ge17fecdc66ec+te7811b387b31: a live morning runs version 1 only") | The text the agent would send is not the text measured on held-out. A code or package change moved it. | Stop. Do not run again. Tell Claude. The cause is a change on the branch or in `uv.lock`. |
 | `these settings are not version 1's` | A setting that changes what Ellery receives or how it is asked (the model, the reply budget, the cap, the temperature, the statistics file, the pass-reasoning switch) is not the one version 1 was measured with. The line names which. Nothing was fetched or spent. | Stop. Do not run again. Tell Claude. |
 | `the recorder has not finished a run on` | The store is not tonight's yet. | Wait. Try again after the recorder finishes (usually 03:45 UTC, at the latest about 05:31 UTC). If it is later than 06:00 UTC, tell Claude (`docs/runbooks/recorder-bridge.md`). |
-| `the day's limit of` | The day's limit (50 cases since decision 0167; 10 before) was already coded today. This is a warning, not a refusal: the exit code is 0 and no run is made. | Nothing. Run again tomorrow. |
 | `cannot resume` ... `commit_sha` ... `when the run started, and is` | An unfinished run was begun on one commit, and the tree is on another now (code was pushed first). The run cannot be resumed on different code. Nothing was spent. | Stop. Push nothing. Tell Claude. The recovery is in section 5 ("A stranded run"). |
-| `monthly guard of` | The month's spend and open reservations, plus this morning's projection, pass the all-purpose $40 monthly guard (`monthly_budget_usd`). Nothing was fetched and no run was made. | Do not run. Tell Claude. |
-| `monthly cap (decision 163)` | This month's live spend plus this morning's projection passes $5. The cases stay queued. | Do not run. Tell Claude. Only a new decision changes the cap. |
 | `would pass the line` | A spending line is reached. `paid_run.sh` prints which: S3's $50 (decision 0128) or the S3.3 line (decision 163, $10 of S3.3's own). | Do not run. Tell Claude the numbers printed. |
 | `the AWS login has expired` | The AWS sign-in ended. With the `ntsb-live` profile this is unlikely: it means `pass` is locked or the key is no longer valid. | With `ntsb-live`: unlock `pass`, check the key (section 9), then run the same command again. With an `aws login` profile: run `aws login`, then run the same command again. |
 | `AWS error (` | Another AWS problem: no credentials, a wrong profile, a missing bucket, no permission, no network. The class name in brackets says which. | Do not just log in again. Tell Claude the line. |

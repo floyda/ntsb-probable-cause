@@ -70,3 +70,7 @@ Accepted, 2026-10-09 (Andy, after S3.3's third paid morning).
   the checks that refuse a morning before any call.
 - **Closing rule**: 0157 item 5; the live runs end once the backfill has drained and a fresh
   closure has been coded, or 14 days pass with none.
+
+## Superseded in part, 2026-10-12 (appended; nothing above is edited)
+
+- On the cloud path, the daily limit of 50 cases is replaced by [0170](0170-live-runs-have-their-own-key-and-the-full-cap-rule.md) item 3: a night's size is floor(($9 - `usage_monthly`) / $0.30) cases, with no daily limit. The record stands for S3.3's mornings on the Mac.

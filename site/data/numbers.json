@@ -1,0 +1,957 @@
+{
+  "entries": {
+    "history.s1_ceiling.top1": {
+      "high": 14.2,
+      "label": "S1's one-shot ceiling, on an earlier model and stack: occurrence top-1",
+      "low": 8.1,
+      "model": "openai/gpt-5.6-luna",
+      "n": 399,
+      "recorded_in": "d2e2e32721b94547a9b87aeb8bc0a352c6b201a2",
+      "results_file": "docs/results/s1-bars.txt",
+      "run": "20260917T061527-c717ab5-heldout-400-ceiling",
+      "run_commit": "c717ab5",
+      "sample": "heldout-400",
+      "script": "apps/eval (ntsb-eval report)",
+      "unit": "percent",
+      "value": 10.8
+    },
+    "history.s24_ceiling.top1": {
+      "high": 13.9,
+      "label": "S2.4's one-shot ceiling, no docket: occurrence top-1",
+      "low": 7.9,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "recorded_in": "e6b6b35e4fd89e8e0a15f63a338c2dca5e0b7ac3",
+      "results_file": "docs/results/s24-bars.txt",
+      "run": "20260924T070202-05c5c5b-heldout-400-ceiling",
+      "run_commit": "05c5c5b",
+      "sample": "heldout-400",
+      "script": "apps/eval (ntsb-eval report)",
+      "unit": "percent",
+      "value": 10.5
+    },
+    "history.s24_fixed.top1": {
+      "high": 31.5,
+      "label": "S2.4's fixed pipeline, reading the docket, before coding tools: occurrence top-1",
+      "low": 22.1,
+      "model": "openai/gpt-6-luna",
+      "n": 336,
+      "recorded_in": "e6b6b35e4fd89e8e0a15f63a338c2dca5e0b7ac3",
+      "results_file": "docs/results/s24-bars.txt",
+      "run": "20260924T185800-7071800-heldout-400-B",
+      "run_commit": "7071800",
+      "sample": "heldout-400",
+      "script": "apps/eval (ntsb-eval report)",
+      "unit": "percent",
+      "value": 26.5
+    },
+    "ladder.baseline.top1": {
+      "high": 18.9,
+      "label": "no model: the commonest first code for the case's phase of flight and weather, learned from development cases: occurrence top-1",
+      "low": 16.6,
+      "model": "none",
+      "n": 4241,
+      "recorded_in": "d2e2e32721b94547a9b87aeb8bc0a352c6b201a2",
+      "results_file": "docs/results/s1-baseline.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "held-out (all)",
+      "script": "apps/eval (ntsb-eval baseline)",
+      "unit": "percent",
+      "value": 17.7
+    },
+    "ladder.fixed.billed": {
+      "high": null,
+      "label": "the fixed pipeline (arm B): cost billed, its three parts",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "940c770255eca9c363d451ffc67400f9bbb99ac1",
+      "results_file": "docs/results/s32-claims-heldout.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "heldout-400",
+      "script": "scripts/s32_claims.py",
+      "unit": "usd",
+      "value": 2.1347
+    },
+    "ladder.fixed.top1": {
+      "high": 37.5,
+      "label": "the fixed pipeline (arm B): occurrence top-1",
+      "low": 28.5,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "ab6e86fdd25a44f1fba1f73536014b85a3abf7af",
+      "results_file": "docs/results/s32-heldout-diagnosis.txt",
+      "run": "20261004T111937-dd64854-heldout-400-B-tools-check-luna",
+      "run_commit": "dd64854",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s32_heldout_diagnosis.py",
+      "unit": "percent",
+      "value": 33.0
+    },
+    "ladder.loop.billed": {
+      "high": null,
+      "label": "the loop, version 1: cost billed",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "940c770255eca9c363d451ffc67400f9bbb99ac1",
+      "results_file": "docs/results/s32-claims-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/s32_claims.py",
+      "unit": "usd",
+      "value": 2.061
+    },
+    "ladder.loop.top1": {
+      "high": 27.5,
+      "label": "the loop, version 1: occurrence top-1",
+      "low": 19.2,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "ab6e86fdd25a44f1fba1f73536014b85a3abf7af",
+      "results_file": "docs/results/s32-heldout-diagnosis.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s32_heldout_diagnosis.py",
+      "unit": "percent",
+      "value": 23.5
+    },
+    "ladder.no_docket.top1": {
+      "high": 18.5,
+      "label": "the loop without the docket: occurrence top-1",
+      "low": 11.5,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "940c770255eca9c363d451ffc67400f9bbb99ac1",
+      "results_file": "docs/results/s32-claims-heldout.txt",
+      "run": "20261004T184547-80c539e-heldout-400-C",
+      "run_commit": "80c539e",
+      "sample": "heldout-400",
+      "script": "scripts/s32_claims.py",
+      "unit": "percent",
+      "value": 15.0
+    },
+    "limits.cap": {
+      "high": null,
+      "label": "the cost cap per case, the same for every arm and part (decision 0144)",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "eaf8e89639123d14e4e181957925055ef04d1bca",
+      "results_file": "docs/results/s32-cap-check-dev.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "every S3.2 run",
+      "script": "scripts/s32_cap_check.py",
+      "unit": "usd",
+      "value": 0.3
+    },
+    "limits.loop.failed": {
+      "high": null,
+      "label": "the loop's cases that failed, for any reason, counted as not matching",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "940c770255eca9c363d451ffc67400f9bbb99ac1",
+      "results_file": "docs/results/s32-claims-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/s32_claims.py",
+      "unit": "count",
+      "value": 6.0
+    },
+    "limits.loop.format": {
+      "high": null,
+      "label": "the loop's cases that failed for format or tool reasons (prediction 9)",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "940c770255eca9c363d451ffc67400f9bbb99ac1",
+      "results_file": "docs/results/s32-claims-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/s32_claims.py",
+      "unit": "count",
+      "value": 4.0
+    },
+    "limits.noise_a.format": {
+      "high": null,
+      "label": "the loop's noise-floor run a: cases that failed for format or tool reasons",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 401,
+      "recorded_in": "e694635e7ad656f45856709039472339dc33efb2",
+      "results_file": "docs/results/s3-noise-floor-dev.txt",
+      "run": "20261001T201506-fd6053f-dev-400-C",
+      "run_commit": "fd6053f",
+      "sample": "dev-400",
+      "script": "scripts/s3_noise_floor.py",
+      "unit": "count",
+      "value": 5.0
+    },
+    "limits.noise_b.format": {
+      "high": null,
+      "label": "the loop's noise-floor run b: cases that failed for format or tool reasons",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 401,
+      "recorded_in": "e694635e7ad656f45856709039472339dc33efb2",
+      "results_file": "docs/results/s3-noise-floor-dev.txt",
+      "run": "20261001T201648-fd6053f-dev-400-C",
+      "run_commit": "fd6053f",
+      "sample": "dev-400",
+      "script": "scripts/s3_noise_floor.py",
+      "unit": "count",
+      "value": 8.0
+    },
+    "q3.docket_gain": {
+      "high": 19.3,
+      "label": "S2.4's fixed pipeline, before its coding tools, against S2.4's one-shot ceiling: occurrence top-1, paired",
+      "low": 9.2,
+      "model": "openai/gpt-6-luna",
+      "n": 336,
+      "recorded_in": "e6b6b35e4fd89e8e0a15f63a338c2dca5e0b7ac3",
+      "results_file": "docs/results/s24-bars.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "heldout-400",
+      "script": "apps/eval (ntsb-eval report)",
+      "unit": "points",
+      "value": 14.3
+    },
+    "q4.pages.blank": {
+      "high": null,
+      "label": "pages in dev-400's dockets: blank",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "abee56ee432e6bb4753fcb6d07dd69ee6b6747f2",
+      "results_file": "docs/results/s26-page-kinds.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "dev-400",
+      "script": "scripts/page_kinds.py",
+      "unit": "count",
+      "value": 109.0
+    },
+    "q4.pages.image_only": {
+      "high": null,
+      "label": "pages in dev-400's dockets: image only",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "abee56ee432e6bb4753fcb6d07dd69ee6b6747f2",
+      "results_file": "docs/results/s26-page-kinds.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "dev-400",
+      "script": "scripts/page_kinds.py",
+      "unit": "count",
+      "value": 3274.0
+    },
+    "q4.pages.text_and_image": {
+      "high": null,
+      "label": "pages in dev-400's dockets: text and image",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "abee56ee432e6bb4753fcb6d07dd69ee6b6747f2",
+      "results_file": "docs/results/s26-page-kinds.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "dev-400",
+      "script": "scripts/page_kinds.py",
+      "unit": "count",
+      "value": 8402.0
+    },
+    "q4.pages.text_only": {
+      "high": null,
+      "label": "pages in dev-400's dockets: text only",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "abee56ee432e6bb4753fcb6d07dd69ee6b6747f2",
+      "results_file": "docs/results/s26-page-kinds.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "dev-400",
+      "script": "scripts/page_kinds.py",
+      "unit": "count",
+      "value": 5005.0
+    },
+    "q4.pages.total": {
+      "high": null,
+      "label": "pages in dev-400's dockets: total",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "abee56ee432e6bb4753fcb6d07dd69ee6b6747f2",
+      "results_file": "docs/results/s26-page-kinds.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "dev-400",
+      "script": "scripts/page_kinds.py",
+      "unit": "count",
+      "value": 16790.0
+    },
+    "q4.v2_gain": {
+      "high": 4.8,
+      "label": "words read from page images (v2) against text layers only (v1): top-1, paired",
+      "low": -2.5,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "recorded_in": "d7435f8c8f1695f99822782b46652c62136530b3",
+      "results_file": "docs/results/s26-armB-v2-dev.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "dev-400",
+      "script": "apps/eval (ntsb-eval report)",
+      "unit": "points",
+      "value": 1.3
+    },
+    "q5.first_right": {
+      "high": null,
+      "label": "S2.6's fixed pipeline: the first guess is the NTSB's first code",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "recorded_in": "29358ae369a37a88d361d5afd2ecddee1eb49364",
+      "results_file": "docs/results/s26-occurrence-misses-dev.txt",
+      "run": "20260926T085904-d19aafa-dev-400-B",
+      "run_commit": "d19aafa",
+      "sample": "dev-400",
+      "script": "scripts/occurrence_misses.py",
+      "unit": "count",
+      "value": 88.0
+    },
+    "q5.in_sequence": {
+      "high": null,
+      "label": "S2.6's fixed pipeline: the first guess is somewhere in the NTSB's sequence",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "recorded_in": "29358ae369a37a88d361d5afd2ecddee1eb49364",
+      "results_file": "docs/results/s26-occurrence-misses-dev.txt",
+      "run": "20260926T085904-d19aafa-dev-400-B",
+      "run_commit": "d19aafa",
+      "sample": "dev-400",
+      "script": "scripts/occurrence_misses.py",
+      "unit": "count",
+      "value": 140.0
+    },
+    "q5.s3.first_right": {
+      "high": null,
+      "label": "S3's fixed pipeline: the first guess is the NTSB's first code",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "recorded_in": "71e3e65b41c339412315efb6b3442c43fa5e6f9d",
+      "results_file": "docs/results/s5-occurrence-misses-s3-dev.txt",
+      "run": "20260929T053953-674c92e-dev-400-B-tools-check-luna",
+      "run_commit": "674c92e",
+      "sample": "dev-400",
+      "script": "scripts/occurrence_misses.py",
+      "unit": "count",
+      "value": 110.0
+    },
+    "q5.s3.in_sequence": {
+      "high": null,
+      "label": "S3's fixed pipeline: the first guess is somewhere in the NTSB's sequence",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 399,
+      "recorded_in": "71e3e65b41c339412315efb6b3442c43fa5e6f9d",
+      "results_file": "docs/results/s5-occurrence-misses-s3-dev.txt",
+      "run": "20260929T053953-674c92e-dev-400-B-tools-check-luna",
+      "run_commit": "674c92e",
+      "sample": "dev-400",
+      "script": "scripts/occurrence_misses.py",
+      "unit": "count",
+      "value": 148.0
+    },
+    "q6.one.cases": {
+      "high": null,
+      "label": "the chosen sentence: how many cases it was written for",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "374eabbbc9bc1e04a99fe5ccaefe62e36300fa6b",
+      "results_file": "docs/results/s5-one-sentence-dev.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "development pool",
+      "script": "scripts/exploratory/s5_one_sentence.py",
+      "unit": "count",
+      "value": 33.0
+    },
+    "q6.one.distinct": {
+      "high": null,
+      "label": "the chosen sentence's cases: how many different first codes they received",
+      "low": null,
+      "model": "none",
+      "n": null,
+      "recorded_in": "374eabbbc9bc1e04a99fe5ccaefe62e36300fa6b",
+      "results_file": "docs/results/s5-one-sentence-dev.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "development pool",
+      "script": "scripts/exploratory/s5_one_sentence.py",
+      "unit": "count",
+      "value": 18.0
+    },
+    "q6.twins": {
+      "high": 39.9,
+      "label": "identical NTSB cause sentences that share the first code",
+      "low": 35.2,
+      "model": "none",
+      "n": 1650,
+      "recorded_in": "0ed259027ec8ad130ab91a4524527326ab10f611",
+      "results_file": "docs/results/s3-coding-consistency-dev.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "development pool",
+      "script": "scripts/exploratory/s3_coding_consistency.py",
+      "unit": "percent",
+      "value": 37.5
+    },
+    "q7.loop_vs_answer": {
+      "high": 0.0,
+      "label": "the loop against the fixed pipeline's answer alone: occurrence top-1, paired",
+      "low": -8.5,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "ab6e86fdd25a44f1fba1f73536014b85a3abf7af",
+      "results_file": "docs/results/s32-heldout-diagnosis.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s32_heldout_diagnosis.py",
+      "unit": "points",
+      "value": -4.2
+    },
+    "q7.loop_vs_fixed": {
+      "high": -5.2,
+      "label": "the loop against the fixed pipeline: occurrence top-1, paired",
+      "low": -14.0,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "ab6e86fdd25a44f1fba1f73536014b85a3abf7af",
+      "results_file": "docs/results/s32-heldout-diagnosis.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s32_heldout_diagnosis.py",
+      "unit": "points",
+      "value": -9.5
+    },
+    "q7.no_docket_loss": {
+      "high": -3.8,
+      "label": "the loop without the docket against the loop: occurrence top-1, paired",
+      "low": -13.0,
+      "model": "openai/gpt-6-luna",
+      "n": 400,
+      "recorded_in": "940c770255eca9c363d451ffc67400f9bbb99ac1",
+      "results_file": "docs/results/s32-claims-heldout.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "heldout-400",
+      "script": "scripts/s32_claims.py",
+      "unit": "points",
+      "value": -8.5
+    },
+    "q7.noise_band": {
+      "high": 1.6,
+      "label": "the loop run twice, identically: occurrence top-1, paired",
+      "low": -5.9,
+      "model": "openai/gpt-6-luna",
+      "n": 387,
+      "recorded_in": "e694635e7ad656f45856709039472339dc33efb2",
+      "results_file": "docs/results/s3-noise-floor-dev.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "dev-400",
+      "script": "scripts/s3_noise_floor.py",
+      "unit": "points",
+      "value": -2.1
+    },
+    "q7.path.after": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: the same after reading",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 82.0
+    },
+    "q7.path.answer": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: the same at the answer",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 94.0
+    },
+    "q7.path.before": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: the same before reading",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 43.0
+    },
+    "q7.path.cases": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: the cases counted",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 394.0
+    },
+    "q7.path.coding.broken": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, became different",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 8.0
+    },
+    "q7.path.coding.fixed": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, became the same",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 20.0
+    },
+    "q7.path.coding.stayed_right": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, stayed the same",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 74.0
+    },
+    "q7.path.coding.stayed_wrong": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: after reading -> the answer, stayed different",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 292.0
+    },
+    "q7.path.no_belief_after": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: cases with no belief after a read choice",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 25.0
+    },
+    "q7.path.reading.broken": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, became different",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 8.0
+    },
+    "q7.path.reading.fixed": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, became the same",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 47.0
+    },
+    "q7.path.reading.stayed_right": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, stayed the same",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 35.0
+    },
+    "q7.path.reading.stayed_wrong": {
+      "high": null,
+      "label": "the loop's beliefs against the NTSB's first code: before reading -> after reading, stayed different",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": null,
+      "recorded_in": "2c70cf52ba20da607a9d020ed9b94395ec240d18",
+      "results_file": "docs/results/s5-belief-path-heldout.txt",
+      "run": "20261004T140804-e0dc881-heldout-400-C",
+      "run_commit": "e0dc881",
+      "sample": "heldout-400",
+      "script": "scripts/exploratory/s5_belief_path.py",
+      "unit": "count",
+      "value": 304.0
+    },
+    "q7.read_all": {
+      "high": null,
+      "label": "cases where the loop read every document on offer, of those with documents on offer",
+      "low": null,
+      "model": "openai/gpt-6-luna",
+      "n": 375,
+      "recorded_in": "940c770255eca9c363d451ffc67400f9bbb99ac1",
+      "results_file": "docs/results/s32-claims-heldout.txt",
+      "run": null,
+      "run_commit": null,
+      "sample": "heldout-400",
+      "script": "scripts/s32_claims.py",
+      "unit": "count",
+      "value": 245.0
+    }
+  },
+  "format": "site-numbers/3",
+  "lists": {
+    "q5.pairs": [
+      {
+        "agent": "Aerodynamic stall/spin",
+        "count": 33,
+        "ntsb": "Loss of control in flight"
+      },
+      {
+        "agent": "Runway excursion",
+        "count": 19,
+        "ntsb": "Loss of control on ground"
+      },
+      {
+        "agent": "Loss of engine power (partial)",
+        "count": 12,
+        "ntsb": "Loss of engine power (total)"
+      },
+      {
+        "agent": "Collision with terr/obj (non-CFIT)",
+        "count": 9,
+        "ntsb": "Loss of control in flight"
+      },
+      {
+        "agent": "Collision with terr/obj (non-CFIT)",
+        "count": 7,
+        "ntsb": "Low altitude operations"
+      },
+      {
+        "agent": "Control flight into terr/obj",
+        "count": 7,
+        "ntsb": "Loss of control in flight"
+      }
+    ],
+    "q5.s3.pairs": [
+      {
+        "agent": "Loss of control in flight",
+        "count": 14,
+        "ntsb": "Aerodynamic stall/spin"
+      },
+      {
+        "agent": "Aerodynamic stall/spin",
+        "count": 11,
+        "ntsb": "Loss of control in flight"
+      },
+      {
+        "agent": "Loss of control in flight",
+        "count": 8,
+        "ntsb": "Control flight into terr/obj"
+      },
+      {
+        "agent": "Loss of engine power (partial)",
+        "count": 7,
+        "ntsb": "Loss of engine power (total)"
+      },
+      {
+        "agent": "Loss of control on ground",
+        "count": 6,
+        "ntsb": "Nose over/nose down"
+      },
+      {
+        "agent": "Loss of engine power (total)",
+        "count": 6,
+        "ntsb": "Fuel starvation"
+      },
+      {
+        "agent": "Control flight into terr/obj",
+        "count": 6,
+        "ntsb": "Loss of control in flight"
+      },
+      {
+        "agent": "Loss of control in flight",
+        "count": 6,
+        "ntsb": "Loss of engine power (total)"
+      },
+      {
+        "agent": "Loss of engine power (total)",
+        "count": 6,
+        "ntsb": "Loss of engine power (partial)"
+      }
+    ],
+    "q6.one.codes": [
+      {
+        "code": "350342",
+        "count": 4,
+        "label": "Initial Climb / Loss of engine power (partial)"
+      },
+      {
+        "code": "402341",
+        "count": 4,
+        "label": "Enroute-Cruise / Loss of engine power (total)"
+      },
+      {
+        "code": "350341",
+        "count": 3,
+        "label": "Initial Climb / Loss of engine power (total)"
+      },
+      {
+        "code": "402342",
+        "count": 3,
+        "label": "Enroute-Cruise / Loss of engine power (partial)"
+      },
+      {
+        "code": "506341",
+        "count": 3,
+        "label": "Approach-VFR Pattern Downwind / Loss of engine power (total)"
+      },
+      {
+        "code": "300341",
+        "count": 2,
+        "label": "Takeoff / Loss of engine power (total)"
+      },
+      {
+        "code": "400341",
+        "count": 2,
+        "label": "Enroute / Loss of engine power (total)"
+      },
+      {
+        "code": "600470",
+        "count": 2,
+        "label": "Emergency Descent / Collision with terr/obj (non-CFIT)"
+      },
+      {
+        "code": "300342",
+        "count": 1,
+        "label": "Takeoff / Loss of engine power (partial)"
+      },
+      {
+        "code": "450342",
+        "count": 1,
+        "label": "Maneuvering / Loss of engine power (partial)"
+      },
+      {
+        "code": "500341",
+        "count": 1,
+        "label": "Approach / Loss of engine power (total)"
+      },
+      {
+        "code": "505341",
+        "count": 1,
+        "label": "Approach-VFR Pattern Crosswind / Loss of engine power (total)"
+      },
+      {
+        "code": "507341",
+        "count": 1,
+        "label": "Approach-VFR Pattern Base / Loss of engine power (total)"
+      },
+      {
+        "code": "507342",
+        "count": 1,
+        "label": "Approach-VFR Pattern Base / Loss of engine power (partial)"
+      },
+      {
+        "code": "509341",
+        "count": 1,
+        "label": "Approach-VFR Go-Around / Loss of engine power (total)"
+      },
+      {
+        "code": "551095",
+        "count": 1,
+        "label": "Landing-Flare/Touchdown / Landing gear not configured"
+      },
+      {
+        "code": "600341",
+        "count": 1,
+        "label": "Emergency Descent / Loss of engine power (total)"
+      },
+      {
+        "code": "990120",
+        "count": 1,
+        "label": "Unknown / Control flight into terr/obj"
+      }
+    ],
+    "s32.predictions": [
+      {
+        "colon": ":",
+        "number": 1,
+        "outcome": "not met",
+        "result": "top-1: the loop matches but does not beat arm B (outcome worse; interval [-14.0, -5.2])",
+        "scope": "held-out",
+        "text": "the loop matches but does not beat arm B \u2014 the interval's bottom is above \u22126 points and the interval is not wholly above zero. (Andy's stated expectation.)",
+        "title": "Top-1"
+      },
+      {
+        "colon": ":",
+        "number": 2,
+        "outcome": "not met",
+        "result": "cost: the loop's bill is more than 10% below arm B's (loop 2.0610 USD, arm B 2.1347 USD, band equal)",
+        "scope": "held-out",
+        "text": "the loop's billed cost is more than 10% below arm B's.",
+        "title": "Cost"
+      },
+      {
+        "colon": ":",
+        "number": 3,
+        "outcome": "met",
+        "result": "top-3: the loop is below arm B, the interval wholly below zero (top of the interval -11.2 points)",
+        "scope": "held-out",
+        "text": "the loop is below arm B, the interval wholly below zero.",
+        "title": "Top-3"
+      },
+      {
+        "colon": ":",
+        "number": 4,
+        "outcome": "not met",
+        "result": "findings: recall@10 is level, the interval including zero ([-6.5, -1.4])",
+        "scope": "held-out, recall@10 flagged",
+        "text": "level, the interval including zero.",
+        "title": "Findings"
+      },
+      {
+        "colon": ":",
+        "number": 5,
+        "outcome": "not met",
+        "result": "without the docket the loop loses at least 10.0 points of top-1 (without - with -8.5 points)",
+        "scope": "held-out",
+        "text": "the loop loses at least 10 points of top-1 \u2014 the paired difference, without minus with, is \u221210.0 points or lower.",
+        "title": "Without the docket"
+      },
+      {
+        "colon": ":",
+        "number": 6,
+        "outcome": "not met",
+        "result": "the loop without its coding tools is worse on top-1 than each noise-floor run, each interval wholly below zero (ablation minus noise run; noise run a: -0.3 points [-4.3, +3.8], n=399; noise run b: -1.8 points [-6.0, +2.3], n=399)",
+        "scope": "dev-400",
+        "text": "the loop is worse on top-1 than each noise-floor run, each interval wholly below zero.",
+        "title": "Without coding tools"
+      },
+      {
+        "colon": ":",
+        "number": 7,
+        "outcome": "met",
+        "result": "result 1: reads every offered document on more than half (245 of 375 (65.3%)) and uses arm B's exact order on fewer than 5% (0 of 400 (0.0%))",
+        "scope": "held-out",
+        "text": "the loop reads every document on offer on more than half of the cases with documents on offer, and uses arm B's exact tool order on fewer than 5% of the cases counted.",
+        "title": "Result 1"
+      },
+      {
+        "colon": "",
+        "number": 8,
+        "outcome": "met",
+        "result": "the three-group test passes (yes) and the abstain cut-off fires on fewer than 5% of scored cases (0 of 394) (the abstain half is met by construction: the curve's lowest value is 0.171, above the 0.164 cut-off; registration disclosure)",
+        "scope": "held-out",
+        "text": "passes the three-group test, and the abstain threshold fires on fewer than 5% of the loop's scored cases. See the disclosure on the abstain half below.",
+        "title": "Calibration"
+      },
+      {
+        "colon": ":",
+        "number": 9,
+        "outcome": "met",
+        "result": "format: at most 8 cases fail for format or tool reasons in the loop run (4 of 400)",
+        "scope": "held-out loop run",
+        "text": "at most 8 of the 400 cases fail for format or tool reasons.",
+        "title": "Format"
+      }
+    ]
+  },
+  "texts": {
+    "q6.one.sentence": "A loss of engine power for undetermined reasons.",
+    "s32.not_predicted": "Not predicted: the level of top-1.",
+    "s32.registered_in": "f0e78b7eafabc978003928054d3416fb97467f2d",
+    "s32.registered_on": "2026-10-04"
+  }
+}

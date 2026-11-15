@@ -1,0 +1,68 @@
+---
+// Question 5's table (spec §7.4): the commonest misses, the NTSB's first event against the fixed
+// pipeline's, from one list in the numbers file. Pairs tied at the cut-off are all shown.
+import { list } from "../lib/numbers";
+
+interface Props {
+    /** The list's key in the numbers file. */
+    listKey: string;
+    /** A unique id for the caption. */
+    id: string;
+    caption: string;
+}
+
+const { listKey, id, caption } = Astro.props;
+const pairs = list(listKey);
+---
+
+<div class="frame" tabindex="0" role="region" aria-labelledby={id}>
+    <table class="pairs">
+        <caption id={id}>{caption}</caption>
+        <thead>
+            <tr>
+                <th scope="col">Cases</th>
+                <th scope="col">The NTSB put first</th>
+                <th scope="col">The fixed pipeline put first</th>
+            </tr>
+        </thead>
+        <tbody>
+            {pairs.map((p) => (
+                <tr>
+                    <td>{p["count"]}</td>
+                    <td>{p["ntsb"]}</td>
+                    <td>{p["agent"]}</td>
+                </tr>
+            ))}
+        </tbody>
+    </table>
+</div>
+
+<style>
+    .frame {
+        overflow-x: auto;
+    }
+    .frame:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+    .pairs {
+        border-collapse: collapse;
+        font-size: 0.93rem;
+        width: 100%;
+    }
+    caption {
+        text-align: left;
+        color: var(--ink-muted);
+        padding-bottom: 0.25rem;
+    }
+    th,
+    td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.3rem 0.6rem 0.3rem 0;
+        border-bottom: 1px solid var(--rule);
+    }
+    td:first-child {
+        font-variant-numeric: tabular-nums;
+    }
+</style>

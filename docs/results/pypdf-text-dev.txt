@@ -1,0 +1,26 @@
+# pypdf 6.19.0 against 6.21.4 on dev-400's dockets -- counts only
+# scripts/exploratory/pypdf_text_check.py (decision 0218); exploratory (0059), free,
+# offline: the docket cache as CachedDocketReader reads it, then split_record
+
+cases: 401; documents: 3790
+
+## documents, by what the new version's text is
+  class                                          documents  cases
+  identical text                                      2045    340
+  same characters, spaces and line breaks differ       561    271
+  characters differ                                      2      2
+  read only by the new version                           3      3
+  read only by the old version                           0      0
+  not read by either version                          1179    307
+  listed by one version only                             0      0
+  (a case counts once in each class it holds a document of)
+  'same characters': with every space and line break removed, the texts are identical
+
+## documents, by what the classifier decides
+  status or kind changed: 4
+  readable pages changed (a page of 50 characters or more is readable): 3
+
+## cases, through split_record with every readable document attached
+  ok -> ok: 399
+  refused -> refused: 2
+  of 399 cases split under both: case marks changed 0; narrative share changed 0; docket text sent changed 270

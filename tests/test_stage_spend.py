@@ -12,7 +12,7 @@ S3 = ss.STAGES["s3"]
 
 
 def test_the_stage_table_holds_s27_as_it_was_and_s3_as_decision_0128_fixes_it() -> None:
-    assert set(ss.STAGES) == {"s27", "s3", "s33"}
+    assert set(ss.STAGES) == {"s27", "s3", "s33", "s4"}
     assert ss.STAGES["s27"] == ss.Stage(
         "S2.7", base="971ee40", first="94f5d42", line_usd=25.0, prefix="s27-"
     )
@@ -124,7 +124,7 @@ def test_main_takes_a_stage_and_uses_that_stages_line(
 
 def test_main_refuses_an_unknown_stage() -> None:
     with pytest.raises(SystemExit):
-        ss.main(["--stage", "s4"])
+        ss.main(["--stage", "s5"])
 
 
 def test_main_says_none_found_when_no_branch_holds_the_first_commit(
@@ -226,3 +226,18 @@ def test_s33_is_s3s_branches_against_the_line_left_after_s31_and_s32() -> None:
     text, over = ss.report(ss.STAGES["s33"], runs=11.46, spend=0.0, estimate=10.01)
     assert over
     assert "refused: $21.47 would pass the line (decision 163)" in text
+
+
+def test_s4s_line_is_decision_0170s_ten_dollars_on_s4_branches() -> None:
+    assert ss.STAGES["s4"] == ss.Stage(
+        "S4",
+        base="ebb16cb",
+        first="4f952cd",
+        line_usd=10.0,
+        prefix="s4-",
+        line_rule="decision 0170 item 6",
+        count_rule="decisions 0128 item 2, 0135",
+    )
+    text, over = ss.report(ss.STAGES["s4"], runs=0.0, spend=0.0, estimate=10.01)
+    assert over
+    assert text.splitlines()[-1] == "refused: $10.01 would pass the line (decision 0170 item 6)"

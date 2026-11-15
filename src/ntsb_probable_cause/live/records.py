@@ -7,18 +7,22 @@ size and SHA-256 so a copy can be verified.
 import hashlib
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import date, datetime
 from pathlib import Path
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, TypeAdapter
 
+from ntsb_probable_cause.docket.listing import ListingEntry
 from ntsb_probable_cause.docket.manifest import Status
 
-CLOSURE_FORMAT: Final = "live-closure/1"
+CLOSURE_FORMAT: Final = "live-closure/2"
+CLOSURE_FORMAT_V1: Final = "live-closure/1"
 BACKFILL_FORMAT: Final = "live-backfill/1"
 MANIFEST_FORMAT: Final = "live-manifest/1"
+DOCKETS_FORMAT: Final = "live-dockets/1"
+DOCKETS_FILE: Final = "dockets.json"
 CLOSURES_FILE: Final = "closures.jsonl"
 BACKFILL_FILE: Final = "backfill.json"
 INPUTS_FILE: Final = "inputs.jsonl"
@@ -55,12 +59,15 @@ class DocumentLine(BaseModel, frozen=True):
     title: str
     status: Status  # the docket reader's five
     ellery: Literal["read", "skipped"] | None  # None when not on offer
+    sha256: str | None = None  # of the file as received; None when none was cached (decision 0176)
+    # Page count from the docket manifest. Added to version 2 as optional: no version 2 record had
+    # been written to the bucket when it was added (S4 Task 11b), so none lacks it unreadably.
+    pages: int | None = None
 
 
-class ClosureRecord(BaseModel, frozen=True):
-    """What one coded closed case leaves behind (counts and provenance, no document text)."""
+class _ClosureCommon(BaseModel, frozen=True):
+    """The fields version 1 and version 2 of the closure record share."""
 
-    format: Literal["live-closure/1"] = CLOSURE_FORMAT
     case_id: str
     mkey: int
     closed_on: date
@@ -87,6 +94,97 @@ class ClosureRecord(BaseModel, frozen=True):
     top3: bool | None
     abstained: bool | None
     cost_usd: float
+
+
+class ClosureRecordV1(_ClosureCommon, frozen=True):
+    """Closure record version 1, written by S3.3's runs; read-only, for the S3.3 report."""
+
+    format: Literal["live-closure/1"] = CLOSURE_FORMAT_V1
+
+
+class ClosureRecord(_ClosureCommon, frozen=True):
+    """What one coded closed case leaves behind (counts and provenance, no document text).
+
+    Version 2 (decision 0176) adds the hashes that let anyone holding the NTSB's files show they
+    are the ones the case was coded from. Only version 2 is written; a version 1 line fails here.
+    """
+
+    format: Literal["live-closure/2"] = CLOSURE_FORMAT
+    event_date: date
+    listing_sha256: str | None
+    # One per model call, in call_index order; None where the reply row carried no hash (a row
+    # written before decision 0176), so the length always equals the number of calls.
+    request_sha256s: tuple[str | None, ...]
+    replied_models: tuple[str, ...]  # distinct, sorted
+    providers: tuple[str, ...]  # distinct, sorted
+
+
+AnyClosureRecord = Annotated[ClosureRecord | ClosureRecordV1, Field(discriminator="format")]
+_ANY_CLOSURE: Final[TypeAdapter[ClosureRecord | ClosureRecordV1]] = TypeAdapter(AnyClosureRecord)
+
+
+def read_closure_records(path: Path) -> list[ClosureRecord | ClosureRecordV1]:
+    """Every line of a ``closures.jsonl``, version 1 (S3.3's runs) or version 2 (S4's)."""
+    return [_ANY_CLOSURE.validate_json(line) for line in path.read_text().splitlines() if line]
+
+
+class DocketHashes(BaseModel, frozen=True):
+    """One case's docket as the run first fetched it: hashes and indices only, never a title.
+
+    ``listing_sha256`` and ``documents`` (listing index to SHA-256) are what the docket client's
+    ``fetch.json`` recorded, of the bytes as received (decision 0176); ``listing_sha256`` is kept
+    for the record only. ``entries_sha256`` is :func:`entries_sha256` of the parsed listing, and
+    ``offered`` the listing indices the run's first read choice offers
+    (``docket.filter.arm_b_documents``).
+    """
+
+    case_id: str
+    mkey: int
+    listing_sha256: str | None
+    entries_sha256: str
+    documents: dict[int, str]
+    offered: tuple[int, ...]
+
+    def resume_view(self) -> tuple[object, ...]:
+        """What a resume compares: everything but the raw listing page's hash.
+
+        The page can carry bytes that change from one fetch to the next and say nothing about
+        the documents; the parsed entries and each document's hash are what the case was shown
+        (final review, wave A, follow-up).
+        """
+        return (
+            self.case_id,
+            self.mkey,
+            self.entries_sha256,
+            tuple(sorted(self.documents.items())),
+            self.offered,
+        )
+
+
+def entries_sha256(entries: Sequence[ListingEntry]) -> str:
+    """SHA-256 of a listing's entries in canonical form: ``[index, title, href]`` by index.
+
+    The form is compact JSON, so the hash depends on what ``docket.listing.parse_listing`` read
+    and on nothing else in the page.
+    """
+    rows = sorted([e.index, e.title, e.href] for e in entries)
+    canonical = json.dumps(rows, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+class DocketsFile(BaseModel, frozen=True):
+    """``dockets.json``: each case's docket hashes, written before the run's first request.
+
+    The closure records take their hashes from here, never from a cache fetched again on a
+    resume, and a resume compares a fresh fetch with it (final review, wave A, item A2).
+    """
+
+    format: Literal["live-dockets/1"] = DOCKETS_FORMAT
+    cases: tuple[DocketHashes, ...]
+
+    def by_case(self) -> dict[str, DocketHashes]:
+        """The cases keyed by case id."""
+        return {c.case_id: c for c in self.cases}
 
 
 class Backfill(BaseModel, frozen=True):

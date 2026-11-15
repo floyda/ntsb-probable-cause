@@ -1,30 +1,33 @@
 # NTSB probable-cause agent
 
+[![Ellery: can an agent read an accident docket and code the cause as the investigator did, and does it need to be an agent to do so?](site/public/cards/site.png)](https://ellery.demo.floyda.dev)
+
 An agent that determines the **probable cause** of a US general-aviation accident from the
 evidence investigators gathered, scored against the verdict the National Transportation
-Safety Board later publishes.
+Safety Board publishes.
 
-> **TL;DR** — The NTSB publishes a determined cause for every aviation accident it
+**It is live.** The agent runs as **Ellery, version 1**. Each night it codes every case the NTSB
+closed the day before, and the public site shows its answer beside the NTSB's:
+**<https://ellery.demo.floyda.dev>**.
+
+> **TL;DR**: The NTSB publishes a determined cause for every aviation accident it
 > investigates, coded into a fixed taxonomy. That gives a hard judgement task with free,
-> authoritative ground truth: **nobody here labels anything**, so the evaluation cannot
+> authoritative ground truth. **Nobody here labels anything**, so the evaluation cannot
 > become an argument with itself.
 >
-> The agent reads the evidence for a case, writes its own account of what that evidence
-> shows, and returns a cause, chosen from the NTSB's own codes so scoring is exact match
-> with no judge in the loop. The structured case record is thin, so it goes and fetches the
-> investigation's public document folder — which is the one place a measurement showed an
-> agent earns its keep, rather than the one place it looked impressive.
+> The agent reads the evidence for a case and returns a cause, chosen from the NTSB's own
+> codes, so scoring is exact match with no judge in the loop. The structured case record is
+> thin, so the agent also reads the investigation's public document folder, the docket.
 >
-> It will run on **open** investigations, publishing timestamped predictions that the NTSB
-> scores months later by publishing its own verdict. Predictions are append-only and hashed,
-> so "it predicted this on day 3" is checkable by a stranger rather than something they have
-> to take on trust.
+> **The agent loop was measured against a simpler fixed method, and it lost.** On 400
+> held-out accidents, the fixed method's first code matched the NTSB's 33.0% of the time and
+> the loop's 23.5%, at an equal bill. The registered verdict was written before the run: "On
+> held-out cases, the loop was not shown to improve on the fixed pipeline: it was worse." The
+> loop runs on the site anyway, because it is the version being improved, and every later
+> version is measured against that fixed method. The site says this on its first screen.
 >
-> **Status: S0 (foundation) built; no agent yet.** The repository has strict tooling, data
-> ingestion, the evidence/synthesis/verdict split with its layered leakage guard, and a model
-> seam — see "Commands" below to run it. The agent loop, the docket tool and the evaluation
-> harness are not built yet. The architecture, the build order, and the decisions behind both
-> are also here. The measurement work that justifies building at all is complete and frozen at
+> **Status: S0 to S5 are built and released.** S5, the public site, launched on 2026-11-03.
+> The measurement work that justified building at all is complete and frozen at
 > [floyda/ntsb-spike](https://github.com/floyda/ntsb-spike).
 
 ---
@@ -39,164 +42,192 @@ public record containing both prose and a coded layer:
 | **Factual narrative** | What investigators found: the flight, the wreckage, the weather, the pilot's records |
 | **Analysis** | The investigator's reasoning from those facts toward a conclusion |
 | **Probable cause** | The determination, one or two sentences |
-| **Occurrence code** | The category for *what happened*, from a taxonomy of about 58 |
-| **Finding codes** | The categories for *why* — the contributing factors |
+| **Occurrence codes** | The categories for *what happened*, in order, from a taxonomy of about 58 |
+| **Finding codes** | The categories for *why*: the contributing factors |
 | **Docket** | A public folder of supporting documents: wreckage examinations, records of conversation, the pilot's own accident form, photographs |
 
-All of it is a work of the US federal government and therefore public domain — no licence
-friction, and the docket needs no login.
+All of it is a work of the US federal government and therefore public domain. There is no
+licence friction, and the docket needs no login.
 
-- [NTSB Enterprise API developer portal](https://developer.ntsb.gov/) — `https://api.ntsb.gov/public`, the interface this project is built against
-- [CAROL](https://data.ntsb.gov/carol-main-public/basic-search) — the public search tool
-- [Bulk downloads](https://data.ntsb.gov/avdata) — **retiring 5 April 2027**, which is why this is built on the API rather than the file
-- [An example docket](https://data.ntsb.gov/Docket?ProjectID=104739) — one investigation's documents
+- [NTSB Enterprise API developer portal](https://developer.ntsb.gov/): `https://api.ntsb.gov/public`, the interface this project is built against
+- [CAROL](https://data.ntsb.gov/carol-main-public/basic-search): the public search tool
+- [Bulk downloads](https://data.ntsb.gov/avdata): **retiring 5 April 2027**, which is why this is built on the API rather than the file
+- [An example docket](https://data.ntsb.gov/Docket?ProjectID=104739): one investigation's documents
 
-**What the agent does, and does not, do.** An investigation has two halves: field
-investigators gather evidence — wreckage examinations, witness statements, maintenance
-records, weather — and then an analyst reads that evidence and writes the verdict. **The
-agent only does the second half.** It never sees the wreckage; it sees what the
-investigators wrote down. That keeps the claim honest and matches what the data can
-actually support.
+**What the agent does, and does not, do.** An investigation has two halves. Field
+investigators gather evidence: wreckage examinations, witness statements, maintenance
+records, weather. Then an analyst reads that evidence and writes the verdict. **The agent
+only does the second half.** It never sees the wreckage; it sees what the investigators
+wrote down. That keeps the claim honest and matches what the data can support.
 
 **The split that makes the evaluation honest.** Each record is split three ways. The
 structured observations and the docket's evidence documents are *evidence* the agent may
 read. The factual narrative and the analysis are *synthesis*: the investigator's write-up,
 produced at the end of the investigation and directed toward the cause they reached. The
 probable cause and the codes are the *verdict*. Synthesis and verdict are never passed to a
-model except to score it. A live case has no factual narrative yet, so writing one is part
-of the agent's job, not an input to it. That boundary is enforced in one function with a
-layered guard and tests — not by convention, because convention is what fails silently.
+model except to score it. That boundary is enforced in one function,
+`records/split.py:split_record()`, with a layered guard and tests, including a mutation test
+that proves the boundary test can fail (decisions 0013, 0016). It is not left to convention,
+because convention is what fails silently. The same split and guard run in evaluation and on
+every live case.
 
 ## Why this dataset, for a demonstration
 
 The usual problem with a portfolio project is that it cannot be checked: the system is
 asserted to work and the reader takes your word. This dataset removes that.
 
-- **A federal agency wrote the labels.** No self-labelling, so no risk that the evaluation
-  measures agreement with its own author.
+- **A federal agency wrote the labels.** There is no self-labelling, so no risk that the
+  evaluation measures agreement with its own author.
 - **Part of the scoring needs no judge.** The answer is a code from a fixed list, so it is
-  exact match — no model, no rubric. That matters because model judges are unreliable in
-  ways the spike measured directly: one agreed with a human on only 62.5% of the same
-  answers, and its errors were one-sided.
+  exact match: no model, no rubric. That matters because model judges are unreliable in ways
+  the spike measured directly: one agreed with a human on only 62.5% of the same answers, and
+  its errors were one-sided.
 - **Every result traces to a public URL.** A reader who doubts an output can open the same
   record and disagree specifically.
-- **It supports live prediction with an external oracle.** Investigations run for months —
-  a median of 140 days — so the agent can commit to an answer long before anyone knows if
-  it is right.
-- **The volume is right**: roughly 1,000–1,400 closed general-aviation cases a year. Enough
-  to sample properly, cheap enough to process exhaustively.
+- **New cases keep arriving.** Roughly 1,000 to 1,400 general-aviation cases close each year,
+  so the live board is a steady supply of cases newer than anything the agent was developed on.
 
 The honest caveat, measured rather than glossed: these accidents are repetitive, so a
 trivial "guess the commonest cause" strategy does better than you would like. That baseline
-is reported next to every result.
+is reported next to every result, and on held-out cases it beats a single model call.
 
 ## Why an agent, and not a single model call
 
-That question has a measured answer rather than an opinion, which was the point of running
-a spike before building anything.
+The spike asked that question before anything was built. With the factual narrative as
+evidence, one model call was excellent when the narrative existed and nearly useless when it
+did not. In those failures the missing information was almost always in the NTSB's public
+docket. Of the 17 misses examined by hand, none were cases where the model misread evidence
+it had been given. So the agent exists to read the docket.
 
-| | |
-|---|---|
-| Conditional modal baseline | **16.2%** top-1 on the occurrence code |
-| One model call, no tools | **57%** top-1 |
-| ...on cases *with* a written factual narrative | **88%** |
-| ...on cases *without* one | **12%** |
-| Share of 2020–23 cases with no narrative | about **half** |
-
-A single call is already excellent when the case record contains a written factual
-narrative, and nearly useless when it does not. In those failures the missing information
-was almost always sitting in the NTSB's public docket of supporting documents: of the 17
-misses examined by hand, none were cases where the model misread evidence it had been
-given.
-
-So the agent exists to go and read the docket. Nothing beyond that is justified by
-measurement, and nothing beyond that is being built.
-
-**One change since the spike.** Those figures treated the factual narrative as evidence. The
-build does not: the narrative is the investigator's summary, written once the cause is known,
-and a live case never has one. Withholding it means every case depends on the docket rather
-than about half, which strengthens the argument above — and it means the 57% and 88% figures
-are history, not bars. The nearest precedent for what the agent faces is the 12%. Similar-case retrieval, regulation
-lookup and airframe history were all considered and dropped, because the labelled failures
-never asked for them.
-
+The build then withheld the factual narrative from every case (decision 0013): it is the
+investigator's summary, written once the cause is known, and a new case never has one. That
+made the spike's figures history, not bars, and made every case depend on the docket.
 Full numbers, method and the script behind each figure:
-[floyda/ntsb-spike](https://github.com/floyda/ntsb-spike) — start with
+[floyda/ntsb-spike](https://github.com/floyda/ntsb-spike). Start with
 [the spike report](https://github.com/floyda/ntsb-spike/blob/main/docs/spike-report.md),
 then [the build brief](https://github.com/floyda/ntsb-spike/blob/main/docs/build-brief.md).
 
-## What the agent has to beat
+## What was measured
 
-Stated in advance, so the result can be checked rather than narrated. The exact figures
-are set in build stage S1, before the agent exists, because the spike's bars were written
-against the narrative split that no longer applies. What they will require, in kind:
+Every figure here is on the fixed held-out sample `heldout-400` (events 2020 to 2023), on
+GPT-6 Luna, from a committed results file. Each figure is occurrence top-1: the share of cases
+where the first occurrence code matched the NTSB's.
 
-- Held-out top-1 above a **one-shot ceiling re-measured on this stack**: code-constrained
-  output, no factual narrative, the same 40 cases first.
-- An **ablation** with the docket tool removed must show a real loss. If it does not, the
-  tool is not doing what is claimed.
-- **Abstention stays sensible**: it should fall as the docket supplies evidence, but hold
-  where only physical evidence could decide the case.
-- Average cost per case under a **cap enforced in code** rather than watched. The spike's
-  £0.05 line is re-measured, because every case now reads the docket.
+| method | top-1 | source |
+|---|---|---|
+| No model: the commonest cause for the case's facts (all 4,241 held-out cases) | 17.7% | `docs/results/s1-bars.txt` |
+| One model call, no docket (the "ceiling") | 10.5% [7.9%, 13.9%] | `docs/results/s24-bars.txt` |
+| Arm A: start facts only | 5.0% [3.0%, 7.2%] | `docs/results/s32-claims-heldout.txt` |
+| **Arm B, the fixed pipeline**: read every document, call every coding tool in a fixed order, answer, check the order | **33.0% [28.5%, 37.5%]** | `docs/results/s32-claims-heldout.txt` |
+| **Arm C, the loop** (Ellery, version 1): chooses what to read and which coding tools to call | **23.5% [19.2%, 27.5%]** | `docs/results/s32-claims-heldout.txt` |
+| The loop, with the docket removed | 15.0% [11.5%, 18.5%] | `docs/results/s32-claims-heldout.txt` |
 
-## How it will be checkable in public
+What this says:
 
-A live board runs the agent on investigations that are still open and records each
-prediction with a timestamp and a fingerprint of the evidence it was made from. When the
-NTSB publishes its verdict — a median of 140 days later — that standing prediction is
-scored automatically. Predictions are append-only and committed as a hashed ledger, so
-"it predicted this on day 3" is something a stranger can verify rather than something they
-have to believe.
+- **The docket carries the case.** Without it the loop loses 8.5 points [−13.0, −3.8] and falls
+  below the no-model baseline.
+- **Choosing what to read did not help.** Paired on the same 400 cases, the loop is 9.5 points
+  [−14.0, −5.2] behind the fixed pipeline. Their billed costs were equal: $2.0610 against
+  $2.1347 for the 400 cases. The claim was registered before the run
+  (`docs/rounds/s3-registration.md`), and the result is published as it came out.
+- **The fixed pipeline is the bar for every later version.** `heldout-400` has been used and
+  cannot test a later version (decision 0153). The next version is measured on a sealed
+  development sample and on the live board.
 
-**Live numbers will be worse than the held-out numbers, and that is said here first.**
-Simple cases close quickly, so cases still open are disproportionately the hard ones. In
-the first six months the board will have a handful of resolutions, which is an anecdote,
-not a statistic. The held-out numbers carry the weight; the board demonstrates that the
-system runs unattended and can be proved wrong.
+A single model call scores below the no-model baseline. This is also published as it stands:
+it is why the bar is the baseline, not the ceiling. Every docket-reading result above read
+pypdf 6.19.0's text; decision 0218 records what changed when pypdf moved on.
+
+How each was measured, with intervals, failures and costs: the "Eval bars" section of
+[`CLAUDE.md`](CLAUDE.md), and the results files it names.
+
+## How it is checkable in public
+
+**The agent codes each case at closure.** The original plan was to lock predictions on open
+cases and wait for the verdict. The recorder (S2.5) watched open cases nightly and found that
+dockets almost always arrive on the night a case closes, and without the docket the agent does
+no better than guessing. So the live run is made from the docket as published at closure, with the
+verdict withheld by the same split and guard as in evaluation (decision 0154). The cases are
+still newer than anything the agent was developed on, and every run records its commit.
+
+**Each night**, at 06:00 UTC, a scheduled AWS Fargate task:
+
+1. codes every newly closed case once, as Ellery version 1, pinned by its prompt fingerprint
+   and model name (decisions 0168, 0169), under a per-case cap and a monthly limit on its own
+   key (0170);
+2. scores it against the NTSB's codes, or later when the codes arrive (0174);
+3. writes each run folder to a private bucket that the task never deletes from (0172);
+4. builds the export `board/1` for the site (0173).
+
+A GitHub job then appends the SHA-256 of every new run and night manifest to `ledger.jsonl` on
+the public, protected
+[`ledger` branch](https://github.com/floyda/ntsb-probable-cause/tree/ledger) (0178). A
+rewritten run would no longer match its published hash. When the export finishes, the site
+rebuilds itself.
+
+**Live numbers and held-out numbers are never shown together** (decision 0021). Live cases are
+few, and they enter any report as counts only (0024). The held-out numbers carry the weight; the
+board shows that the system runs unattended and can be proved wrong, case by case.
 
 ## Architecture in one paragraph
 
-One library with thin entrypoints over it, so the agent that is evaluated and the agent
-that is deployed are the same code with the same commit identifier. Every case goes through a tool loop with a step budget and a hard cost
-cap. Scheduled work runs as a single container task in
-its own AWS account, writing to a single-writer store. The public site is a pure function
-of that store — generated files, no server, no request-time database — so hosting cost does
-not move with traffic.
+One library, `ntsb_probable_cause`, with thin entrypoints over it, so the agent that is
+evaluated and the agent that is deployed are the same code with the same commit identifier.
+Every model call goes through OpenRouter, for evaluation and live runs alike (decision 0009).
+Every case goes through a tool loop with a step budget and a hard cost cap. Two scheduled
+container tasks run in their own AWS account: the recorder at 03:00 UTC and the live night at
+06:00 UTC. The public site is a pure function of the night's export: generated files, no server,
+no request-time database. It is built with Astro and served by CloudFront on a flat-rate plan, so
+hosting cost does not move with traffic.
 
 ## Build order
 
-| stage | what it delivers |
-|---|---|
-| S0 | repository foundation, ingestion, the evidence / synthesis / verdict split and its leakage guard, CI |
-| S1 | code-constrained output, judge-free scoring, evaluation harness, the re-measured ceiling |
-| S2 | docket client, PDF classification and text extraction |
-| S2.5 | the recorder — polls open dockets and timestamps when each document first appears |
-| S3 | the agent loop, and the headline evaluation |
-| S4 | predictions store, resolution watcher, hashed ledger |
-| S5 | deployment and the public board |
+| stage | what it delivered | status |
+|---|---|---|
+| S0 | repository foundation, ingestion, the evidence / synthesis / verdict split and its leakage guard, CI | done |
+| S1 | code-constrained output, judge-free scoring, the evaluation harness, the re-measured bars | done |
+| S2 | docket client, PDF classification and text extraction, arm B | done |
+| S2.4 | the model switch to GPT-6 Luna | done |
+| S2.5 | the recorder: polls open cases and dockets nightly and timestamps what appears | done |
+| S2.6 | the widened docket: transcription of words in page images, now off by default | done |
+| S2.7 | coding guidance and the ordering check | done |
+| S3 | the agent loop (S3.1), its registered held-out claims (S3.2), a live shadow (S3.3) | done |
+| S4 | live nights in the cloud, scoring at closure, the board export, the public ledger | done |
+| S5 | the public site at `ellery.demo.floyda.dev` | done, launched 2026-11-03 |
 
-S2.5 is deliberately out of dependency order. The timing of evidence arrival cannot be
-reconstructed afterwards — the API deletes preliminary text when a case closes, and docket
-listings carry no per-document dates — so it has to be recorded prospectively or not at
-all. It needs the docket client and a table, not the agent.
+**What comes next** is a second version of the agent, with a precedent tool that it questions
+(decision 0140; design note
+[`docs/specs/2026-10-03-s3-precedent-tool-design.md`](docs/specs/2026-10-03-s3-precedent-tool-design.md),
+a Draft). It is measured on the sealed sample `dev-seal-s3-400` and on the live board (0141,
+0153). It replaces version 1 on the board when it beats version 1 in a registered comparison.
+The fixed pipeline stays the bar for calling the loop warranted.
 
-Detail: [`docs/specs/2026-09-12-architecture-and-roadmap.md`](docs/specs/2026-09-12-architecture-and-roadmap.md).
+Detail: [`docs/specs/2026-09-12-architecture-and-roadmap.md`](docs/specs/2026-09-12-architecture-and-roadmap.md),
+and each stage's specification under [`docs/specs/`](docs/specs/), whose As-built section
+records what was delivered.
 
 ## Repository layout
 
 ```
-src/ntsb_probable_cause/   the library: settings, data ingestion, field roles, the
-                            evidence/synthesis/verdict split and its leakage guard, model seam
-apps/                       thin entrypoints over the library (e.g. apps/ingest)
-scripts/                    one-off and maintenance scripts (fixtures, the corpus scan,
-                            documentation checks) — not part of the library
+src/ntsb_probable_cause/   the library
+  records/                  field roles, the evidence/synthesis/verdict split, its guard, case marks
+  docket/                   docket client, listing, classifier, text extraction, transcription
+  scoring/                  code tables, the evaluation harness, claims, calibration, guidance
+  agent/                    the loop (arm C), its tools, its texts and arm B's tool post-pass
+  model/                    the model seam: OpenRouter transport, tool text
+  recorder/, store/         the nightly recorder and its SQLite store
+  live/                     live nights: closure runs, later scores, the board export, the ledger
+apps/                       thin entrypoints: ntsb-ingest, ntsb-eval, ntsb-record, ntsb-live
+infra/                      AWS CDK stacks: recorder, live nights, the site
+site/                       the public site (Astro, strict TypeScript, pnpm)
+scripts/                    measurement and maintenance scripts, catalogued in docs/scripts.md
 tests/                      unit tests and fixtures
-docs/specs/                 architecture and build order
-docs/decisions/             numbered decision records — context, choice, reasoning, alternatives
-docs/plans/                 implementation plans for the stage currently in progress
+docs/specs/                 architecture, build order and each stage's specification
+docs/decisions/             numbered decision records: context, choice, reasoning, what it rules out
+docs/rounds/                registrations written before a measured run
 docs/results/               committed output of scripts that report a number
 docs/runbooks/              operational procedures
+docs/schemas/               the board/1 JSON Schema
 ```
 
 Every significant decision is written down with what it rules out, including the ones that
@@ -205,195 +236,84 @@ turned out to be wrong. See [`docs/decisions/`](docs/decisions/).
 ## Commands
 
 Requires [`uv`](https://docs.astral.sh/uv/). `uv sync` installs the project and its dev
-dependencies.
+dependencies. The site also needs Node (the version in `site/.node-version`) and pnpm 11.28.4.
 
 ```bash
-make check   # lint, type-check (mypy --strict) and test — what CI runs
-make lint    # ruff format --check, ruff check, import-linter, deptry, vulture
-make type    # mypy
-make test    # pytest
-make ingest  # fetch event months into data/raw (uv run ntsb-ingest fetch <first> <last>)
-make build   # build data/processed/cases.parquet from the raw store
-make scan    # scripts/corpus_scan.py — guard statistics over the whole processed corpus
-make probe   # scripts/openrouter_probe.py — the S1 fixture-recording probe (spec §7.1)
-make bars    # baseline + ceiling/A runs on heldout-40/heldout-400 + the S1 bars report (spec §6.5)
-make docket-scan       # scripts/docket_scan.py — dev-400 docket shape; cached and resumable (S2)
-make scan-docket       # scripts/corpus_scan.py --docket — the tripwire's sentence-length threshold, from the docket-scan cache (S2)
-make armb               # arm B (the docket tool) on dev-400, the stage's headline result (S2)
-make s2-bars            # arm B on heldout-400 — run ONCE; appends to docs/results/heldout-ledger.md (S2)
-make docket-shape-open  # scripts/docket_shape_open.py — open-split docket shape; numbers only, nothing cached (S2, 0024/0040)
-make s24-probe        # the S2.4 shape probe: one dev case on GPT-6 Luna, standard then batch
-make s24-gate         # the S2.4 format gate: ceiling on dev-400 with GPT-6 Luna (about $0.22)
-make s24-bars-ceiling # the ceiling on heldout-400 with GPT-6 Luna -- ONCE; commit its ledger row before s24-bars-b
-make s24-bars-b       # arm B on heldout-400 with GPT-6 Luna -- ONCE, after s24-bars-ceiling's row is committed
-make ongoing-probe      # scripts/ongoing_docket_probe.py — fixes the recorder's no-docket outcome, numbers only (S2.5 §10.1)
-make record             # uv run ntsb-record run — one nightly pass (S2.5)
-make change-feed-probe  # scripts/change_feed_probe.py — the change feed's shape, one-shot (S2.5 §5.3, 0065)
-make recorder-report    # scripts/recorder_report.py — the recorder's counts-only report, from NTSB_STORE (S2.5 §10.2)
-make page-kinds               # scripts/page_kinds.py — dev-400 page kinds, counts only; free (S2.6)
-make analysis-handcheck       # scripts/analysis_handcheck.py sheet — private marking page for analysis sentences; free (S2.6)
-make s26-reply-budget         # arm B on dev-400 at the old 2,000-token reply budget (S2.6, 0084)
-make s26-reply-budget-roomy   # the same at 16,000 tokens, to size the reply budget (S2.6, 0084)
-make s26-inventory-probe      # draws the 330-page inventory sample and labels one page (S2.6)
-make s26-inventory            # labels the 330 pages (about $0.20) and writes the 60-page check (S2.6)
-make s26-transcriber-keys     # the transcriber test's answer keys (S2.6)
-make s26-transcriber-probe    # one invented page per candidate transcriber; records fixtures (S2.6)
-make s26-transcriber-run      # every candidate on every key page, one retry, the marking pages (S2.6)
-make s26-transcriber-resolution MODEL=<id>  # the chosen transcriber at 200 dpi (S2.6)
-make s26-transcriber-recheck  # the second pass's marking pages; free (S2.6, 0086)
-make s26-transcribe-dev-dry PER_PAGE=<usd>  # counts and prices dev-400's image pages; free (S2.6)
-make s26-transcribe-dev PER_PAGE=<usd>      # reads dev-400's image pages once into the cache; paid (S2.6)
-make s26-dev-runs PER_CASE=<usd>            # arm B at evidence version v1, then v2, on dev-400 (S2.6)
+make check        # lint, mypy --strict, pytest and the site's checks: what CI runs
+make lint         # ruff format --check, ruff check, import-linter, deptry, vulture
+make type         # mypy
+make test         # pytest
+make site-check   # the site: lint, format, astro check, types, build, Vitest, axe in a browser
+make site-numbers # the site's numbers file, from committed results; pytest fails while it is stale
+make ingest       # fetch event months into data/raw (uv run ntsb-ingest fetch <first> <last>)
+make build        # build data/processed/cases.parquet from the raw store
+make record       # one recorder pass (uv run ntsb-record run)
 ```
 
-`ntsb-eval` (spec §6.5) is the evaluation harness, installed by `uv sync`; arm `B` and
-`release` were added in S2, `transcribe` and the evidence version in S2.6:
+Each stage's own targets (`s24-*`, `s26-*`, `s27-*`, `s3-*`, `s32-*`, `s33-*`, `s4-*`) are in
+the `Makefile`, each with a comment. Every paid target checks its stage's spend line first; the
+held-out targets ran once and are closed.
+
+`ntsb-eval` is the evaluation harness:
 
 ```bash
-ntsb-eval baseline  [--sample heldout-400]                 # spec §6.3
-ntsb-eval run       --arm ceiling|A|B --sample heldout-40|heldout-400|dev-400
-                     [--evidence-version v1|v2]            # v2: arm B only, after transcribe (0076, 0091)
+ntsb-eval baseline   [--sample heldout-400]
+ntsb-eval run        --arm ceiling|A|B|C --sample <sample> [--evidence-version v1|v2]
+                     [--guidance NAME ...] [--without suggest_codes|coding] [--round N]
                      [--exclude ROLE ...] [--include case_number] [--limit N]
                      [--model ID] [--price-variant batch|standard] [--max-output-tokens 8000]
-                     [--cap-usd 0.05] [--budget-usd 40] [--expected-cost-per-case-usd USD]
+                     [--cap-usd USD] [--budget-usd USD] [--expected-cost-per-case-usd USD]
                      [--sync] [--resume RUN_ID]
+ntsb-eval tools      <run id>                       # arm B's fixed coding-tool post-pass
+ntsb-eval check      <run id> --way rule|luna|jev|jev2 [--stats s27|s3]   # the ordering check
 ntsb-eval report     <run id>|--latest ARM SAMPLE [--against <run id>|--against-latest ARM SAMPLE]
-                     [--versions-compared]                 # allow a labelled cross-version comparison (0076)
-                     # prints failures by reason; labels cross-model comparisons
-ntsb-eval judge      <run id> [--validated]                 # spec §8; dev-400 until validated
-ntsb-eval threshold  <run id>                                # spec §9
-ntsb-eval release    <run id>                                # clear a dead run's budget reservation (0045)
-ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd USD
-                     [--workers 8] [--retry-failed] [--dry-run]   # read image pages once (0081); held-out refused (0090)
+ntsb-eval judge      <run id> [--validated]
+ntsb-eval threshold  <run id>
+ntsb-eval release    <run id>                       # clear a dead run's budget reservation
+ntsb-eval transcribe --sample dev-400 --expected-cost-per-page-usd USD [--dry-run]
 ```
 
-`--evidence-version v3` is accepted by the parser and refused by every run: pictures alongside
-the text are not built (decision 0090).
+Every subcommand accepts `--out PATH` to also write the printed text to a file. The sealed and
+live samples are refused until their rules allow them. `ntsb-live run|report|export|verify-ledger`
+runs and reports the live nights; read
+[`docs/runbooks/live-cloud-nights.md`](docs/runbooks/live-cloud-nights.md) first. The site's
+deployment is [`docs/runbooks/site-deploy.md`](docs/runbooks/site-deploy.md).
 
-`--arm B` reads the docket; every tool is called in a fixed order and the run answers once.
-`--expected-cost-per-case-usd` is required, not optional, for any large `--arm B` run: without
-it the budget guard projects the run at the per-case cap rather than the real cost, and
-refuses it against the monthly budget before a single model call.
+Every script in `scripts/`, what kind it is and what it produced:
+[`docs/scripts.md`](docs/scripts.md).
 
-Every subcommand accepts `--out PATH` to also write the printed text to a file.
-
-### Everything in `scripts/`
-
-Run any of them with `uv run python -m scripts.<name>`. **Every script's module docstring opens
-with a `Status` block** saying which of three kinds it is and what it produced; read that before
-reading the file. The three kinds are *live tool* (rerun when its input changes), *one-shot,
-complete* (it produced a committed file and its job is done — kept because this project
-publishes no number without the script behind it), and *deprecated* (the mechanism it measured
-no longer exists, and the script is usually the evidence that removed it).
-
-| script | kind | what it produced |
-|---|---|---|
-| `check_docs` | live check | nothing; fails CI when the docs disagree (0017) |
-| `check_fixtures_redacted` | live check | nothing; runs in CI and pre-commit (0015, 0046, 0049, 0058) |
-| `make_fixture` | live tool | the redacted record fixtures (0015) |
-| `make_docket_fixture` | live tool | the docket fixture pool and the title hand-check sheet (0037) |
-| `build_code_tables` | live tool | the scoring code tables, `docs/results/s1-code-tables.txt` |
-| `build_title_vocab` | live tool | `docket/vocab/title_words.txt` (0046, 0058) |
-| `openrouter_probe` | live tool | the recorded OpenRouter response fixtures |
-| `corpus_scan` | live tool | `s0-corpus-scan.txt`; `--docket` → `s2-threshold.txt` |
-| `docket_scan` | live tool | `s2-shape-dev.txt`, and the dev-400 docket cache five other scripts read |
-| `docket_shape_open` | one-shot | `s2-shape-open.txt` (0024, 0040) |
-| `docket_leak_scan` | one-shot | `s2-docket-leak.txt` — the evidence for 0050 |
-| `name_coverage` | one-shot | `s2-name-coverage.txt` — the evidence for 0046, which is live |
-| `narrative_coverage` | one-shot | the two `s2-narrative-coverage` files; **rerun if the guard changes** |
-| `reconcile_spike` | one-shot | `s0-reconciliation.txt` |
-| `copy_eval_ids` | one-shot | the evaluation ID fixtures (0015) |
-| `draw_samples` | one-shot | the fixed `heldout-400` / `dev-400` ID lists — **do not redraw** (0026) |
-| `handcheck_page` | one-shot | the private marking page behind the committed hand-check sheet (0049) |
-| `doctype_scan` | **deprecated** | `s2-doctype.txt`; the photograph exclusion it measured was removed by 0052 |
-| `score_handcheck` | **deprecated** | `s2-handcheck.txt`; all three mechanisms it grades were removed by 0051, 0052 and 0056 |
-| `change_feed_probe` | one-shot | `tests/fixtures/api/change_feed_shape.json` and `s25-change-feed.txt` (spec S2.5 §5.3, 0065) |
-| `recorder_report` | live tool | `s25-recorder-report.txt` from `NTSB_STORE` — counts only (spec S2.5 §10.2) |
-| `ongoing_docket_probe` | one-shot | `s25-ongoing-dockets.txt` — fixed the recorder's `no-docket` outcome (spec §10.1); `outcome_for_error` and the "not released" check it used have since moved into the library (0059) |
-| `page_kinds` | live tool | `s26-page-kinds.txt`, and the private page frame the inventory and transcriber test sample from (spec S2.6 §6.2) |
-| `analysis_handcheck` | one-shot | `s26-analysis-handcheck.txt` — the evidence for 0077 |
-| `marking_page` | live helper | the private marking pages every S2.6 hand-check renders through |
-| `page_inventory` | one-shot | `s26-inventory.txt` — what image-bearing pages show (spec S2.6 §6) |
-| `transcriber_test` | one-shot | `s26-transcriber-test.txt` and `s26-transcriber-test-pass2.txt` (0080, 0086, 0087); `estimate` prints the stage's spend |
-| `reply_budget` | one-shot | `s26-reply-budget-dev.txt` — the evidence for 0084 |
-| `occurrence_misses` | live tool | `s26-occurrence-misses-dev.txt` — counts only, development arm B runs only |
-| `s3_probe` | one-shot | `s3-probe-dev.txt` — the S3 learning probe (`select`, `run`, `report`, `trails`); not a result, sets no bar |
-| `s3_shape_probe` | one-shot | `s3-shape-probe.txt` and the `tests/fixtures/openrouter/s3/` pairs — the native-tool shape probe on an invented case (spec S3.1 §5.5), with checks 7 and 8 for arm B's fixed turn and a later trigger's opening; paid (cents, reserves $0.08), run on or after 1 October 2026 |
-| `s3_noise_floor` | live measurement | `s3-noise-floor-dev.txt` — the agent loop's noise floor, format gate and third-run rule from two or three identical arm C runs on `dev-400` (spec S3 §10.2 to §10.4, 0130); counts only, free |
-| `_s3_runs` | live helper | nothing; the shared loader of finished `dev-400` arm C runs (the refusals made before a case is read, the run read whole, and `write_result`, which refuses a dirty tree under `docs/results/`) behind `s3_noise_floor` and the dev-only `s32_*` readings below |
-| `s32_cap_check` | live measurement | `s32-cap-check-dev.txt` — cases of the noise-floor runs whose coding the $0.15 cap cut short (an `answer` call after fewer than 6 coding calls); its last line decides whether the $0.30 cap stands (spec S3.2 §5, 144); counts only, free |
-| `s32_noise` | live measurement | `s32-noise-dev.txt` — the noise-floor pair under the claim's rule (guard refusals removed from both, other failures wrong), top-1, top-3 and recall@10, overall and fatal / non-fatal, beside the cases both runs answered (spec S3.2 §7.3); counts only, free |
-| `s32_calibration` | live measurement | `s32-calibration-dev.txt` and `scoring/tables/calibration_s3.json` — the logistic confidence curve fitted on both noise-floor runs and frozen before held-out, with the curve at five stated values, the four bands and the answers below the abstain cut-off (spec S3.2 §8.2); refuses to replace the curve unless `--refit`; counts only, free |
-| `s32_behaviour` | live measurement | `s32-behaviour-dev.txt` — result 1 (reads every offered document, coding tools in arm B's order; by fatal and non-fatal and by documents offered) and result 4's measure (stated effects that name an event or category) from the noise-floor trails (spec S3.2 §9.1, §9.4); its `read_counts` and `effects_naming_codes` read the held-out run later; counts only, free |
-| `s32_coding_ablation` | live measurement | `s32-coding-ablation-dev.txt` — the loop without its coding tools on `dev-400`, paired against each noise-floor run (top-1, top-3, recall@10; overall and fatal / non-fatal; beside the cases both answered), its format gate, and prediction 6 (spec S3.2 §11, §12); counts only, free |
-| `s32_claims` | live measurement | `s32-claims-heldout.txt` — the held-out verdict (loop against arm B's final run on top-1, billed cost and band, warranted, the headline), top-3 and recall@10, where the saving comes from, the four results, the abstain reading, the no-docket ablation and arm A, the nine predictions and the reading (spec S3.2 §6 to §12); the only script that reads held-out runs, through its own loader and only after the registration is committed; counts only, free |
-| `s3_case_groups` | live tool | `s3-case-groups-dev.txt` — `dev-400` sorted into always right, always wrong and flipping on occurrence top-1 across finished arm C and arm B runs, a failed case counted wrong (0136), by arm and by fatal and non-fatal, with a cross-count; counts only, free. The case lists go under `NTSB_RUNS_DIR`, never committed (S3.1 Task 15) |
-| `s3_trail_pages` | live tool | nothing committed: a private page (HTML, a Markdown copy, and `cases.json` naming the cases shown and how they were chosen) under `NTSB_RUNS_DIR/s3-trail-pages/`, a few arm C trails from one case group of `s3_case_groups` (drawn with a seed, or spread over the NTSB's first events; optionally only the cases of one `miss_kinds` pattern, and leaving out the cases of earlier pages), each case opening with its differences at a glance (the defining event, how close the loop came at each checkpoint, the NTSB's sequence and flagged findings against the answer), then each call in order with the coding tools' text rebuilt, beside the NTSB's verdict; every occurrence code and finding compared is marked match, wrong place or partial, or no match, in colour and in words; free, reads the docket cache only (S3.1 Task 15) |
-| `miss_kinds` | live helper | nothing; the pure classifier behind `exploratory/s3_miss_kinds` and the trail pages' differences at a glance: one kind per case for how the answer's first code misses the NTSB's defining event, and patterns (stall/spin against loss of control, a generic consequence, the NTSB's cause undetermined, abstained) (S3.1 Task 15) |
-| `exploratory/s3_miss_kinds` | exploratory | `s3-miss-kinds-dev.txt` — `make s3-miss-kinds`: per arm C run, over one case group of `s3_case_groups` (default "always wrong"), each kind and pattern of `miss_kinds`, split fatal and non-fatal, and the NTSB's first events behind the generic-consequence pattern; counts only, free; sets no bar and tunes nothing (S3.1 Task 15) |
-| `exploratory/s3_precedent_probe` | exploratory | `s3-precedent-probe-dev.txt` — `make s3-precedent-probe`: whether earlier closed cases of the S3 statistics pool, found by BM25 from the loop's own words (its final probable cause, and separately its evidence narrative), hold the NTSB's first occurrence code (found@5, nearest@1, majority@5, event-only@5), against the pool's commonest first codes, over the arm C groups of `s3_case_groups` and every case of two arm C runs; the earlier-cases pool is the headline, the whole pool beside it; applies the rule committed before it existed and prints the outcome first; counts only, free, no model call; sets no bar and tunes nothing (S3.1 Task 15) |
-| `exploratory/s3_precedent_pages` | exploratory | nothing committed: `make s3-precedent-pages`, a private page (HTML and `cases.json` naming the cases shown) under `NTSB_RUNS_DIR/s3-precedent-pages/`, the sample the probe's "in between" rule asks to read: arm C cases where the five nearest earlier cases hold the NTSB's first code, where they do not, and right answers the nearest case points away from, each beside the NTSB's verdict, the loop's first three codes and its probable cause (the query), the five nearest with their scores, texts (shared words in bold) and marked codes, and the phase-aware control; built from the probe's own search; free, no model call; no number on it is cited (S3.1 Task 15) |
-| `exploratory/s3_coding_consistency` | exploratory | `s3-coding-consistency-dev.txt` — `make s3-coding-consistency`: how far the NTSB's own probable-cause sentence settles its first occurrence code; cases of the S3 statistics pool whose sentences are identical word for word (exact twins) or in their words less stop words (loose twins), over all years and within 2009–2014 and 2015–2019, compared on their first code, its event and its phase (leave-one-out and pairwise agreement with Wilson intervals, group sizes, the ten first-code pairs that most often disagree); prints the expectation committed before it existed; counts and code labels only, free, no model call; the 25 largest groups, with their texts, go to a private folder under `NTSB_RUNS_DIR`, never committed; decides nothing (S3.1 Task 15) |
-| `exploratory/s3_finding_consistency` | exploratory | `s3-finding-consistency-dev.txt` — `make s3-finding-consistency`: how far the NTSB's own probable-cause sentence settles the findings it flagged as cause; on the coding-consistency probe's exact and loose twin groups (all years, 2009–2014, 2015–2019), the commonest flagged-finding set among the other members of a case's group is scored against the case's own flagged set at 10, 8 and 6 digits (mean precision and recall with bootstrap intervals, equal-whole and the share holding the commonest flagged value at each digit count, with Wilson intervals), beside a control that ignores twins, with the ten flagged findings that most often differ within a group; prints the expectation committed before it existed and the occurrence probe's figure read from its results file at run time (refused if missing); counts, means and code labels only, free, no model call; decides nothing (S3.1 Task 15) |
-| `exploratory/s3_finding_precedent` | exploratory | `s3-finding-precedent-dev.txt` — `make s3-finding-precedent`: whether the findings flagged as cause in the five earlier cases of the S3 statistics pool nearest to the loop's own cause sentence (BM25, only cases strictly earlier than the judged case, the precedent probe's headline search; the whole pool, every pool case except those on the judged case's event date, read again beside it as a labelled second reading) would beat the findings the loop chose; for each of two arm C runs on the cases scored, not abstained and with a flagged finding, three predictors (the commonest flagged set among the five, the nearest case's set, the findings in two or more of the five) are scored at 10, 8 and 6 digits (mean precision and recall, bootstrap intervals) beside the loop's stored scores and as paired differences, for the final answer's probable cause and its evidence narrative, overall and for fatal and non-fatal cases; applies the rule committed before it existed and prints its word first, then the same rule read on the whole pool as a second reading (no expectation, the committed outcome stands); counts and means only, free, no model call; sets no bar and tunes nothing (S3.1 Task 15) |
-| `exploratory/s3_finding_misses` | exploratory | `s3-finding-misses-dev.txt` — `make s3-finding-misses`: where the loop's final findings lose the findings the NTSB flagged as cause; for each of two arm C runs, over the cases scored, not abstained and with a flagged finding, each flagged finding classed by how far the loop's findings reach it (exact, item right with the modifier wrong, category right with the item wrong, category missed; `finding_depth`'s levels) overall, by section and for fatal and non-fatal cases (Wilson intervals), beside the S3 statistics pool's habits (each category's commonest item and each item's commonest modifier, and how strong they are) and, for the item and modifier misses, whether the NTSB's choice and the loop's is the pool's commonest, the ten commonest (NTSB, loop) pairs and the ten categories (items) with the most misses, and the loop's findings that reach no flagged finding even at 6 digits; applies the next-step rule committed before it existed on run a and prints its line first; counts, shares and code labels only, free, no model call; sets no bar and tunes nothing (S3.1 Task 15) |
-| `exploratory/s32_heldout_diagnosis` | exploratory | `s32-heldout-diagnosis.txt` — `make s32-heldout-diagnosis`: where the loop lost to arm B on `heldout-400`, in the six breakdowns decision 0153 fixed before any was read (arm B by stage; the gap by fatal and by documents offered; reading, and H0 against the answer; what coding did to the first code, with fixes and breaks; failures by kind, and the gap without the loop's failed cases; wins and losses); reads S3.2's six held-out runs through `s32_claims`'s loader, only once 0153 and the registration are committed; counts only, free, no model call; decides nothing and claims nothing |
-
-`scripts/recorder_bridge.sh` is not a Python module (run by `launchd`, not `uv run python
--m`), but carries the same `Status` block convention (0059): live tool, wraps `uv run
-ntsb-record run` on Andy's Mac at 03:00 local time — see `docs/runbooks/recorder-bridge.md`.
-
-`scripts/exploratory/` holds per-stage design arithmetic. Nothing there is a result:
-`s3_miss_kinds` writes `docs/results/s3-miss-kinds-dev.txt`, design material for a tuning
-round, which sets no bar; `s3_precedent_probe` writes `docs/results/s3-precedent-probe-dev.txt`,
-whether a precedent tool is worth designing, which sets no bar either;
-`s3_coding_consistency` writes `docs/results/s3-coding-consistency-dev.txt`, how far the NTSB's
-own cause sentence settles its first code, which decides nothing;
-`s3_finding_consistency` writes `docs/results/s3-finding-consistency-dev.txt`, the same
-question for the findings flagged as cause, which decides nothing either;
-`s3_finding_precedent` writes `docs/results/s3-finding-precedent-dev.txt`, whether the findings of
-the nearest earlier cases beat the loop's own, read again on the whole pool less the judged case's
-date as a labelled second reading (decision 0138), which sets no bar;
-`s3_finding_misses` writes `docs/results/s3-finding-misses-dev.txt`, where the loop's findings are
-lost and whether the NTSB's item and modifier choices follow the pool's habits, which sets no bar
-either;
-`s32_heldout_diagnosis` writes `docs/results/s32-heldout-diagnosis.txt`, where the loop lost to
-the fixed pipeline on held-out (decision 0153), which decides nothing and claims nothing.
-
-One committed result has no script: `docs/results/s2-filter-compare.txt` was produced by
-`scripts/filter_compare.py`, added at commit `74c22b9` and removed at `3856a04` when decision
-0052 made arm B attach every readable document and 0054 retired the comparison. The file is
-cited by decisions 0043 and 0052; the script is recoverable from git history.
+### Settings
 
 Settings are read from the environment (`NTSB_` prefix, decision 0012), or a local `.env`
-file:
+file. Nothing under the data folders is committed.
 
-- `NTSB_API_KEY` — the NTSB Enterprise API key. Required for `make ingest`; never printed or
+- `NTSB_API_KEY`: the NTSB Enterprise API key. Required for `make ingest`; never printed or
   committed.
-- `NTSB_DATA_DIR` — where raw and processed data live (default `data`). Nothing under it is
-  committed.
-- `OPENROUTER_API_KEY` — the OpenRouter key `ntsb-eval run`/`judge` call the model through
-  (decision 0009).
-- `NTSB_RUNS_DIR` — where evaluation runs are written (default `data/runs`); never committed.
-- `NTSB_MONTHLY_BUDGET_USD` — the monthly spend cap a run refuses to exceed (default 40 during
-  development, decision 0083); transcription and inventory spend count against it (0081).
-- `NTSB_EXPECTED_COST_PER_CASE_USD` — measured cost per case a run projects against the
-  budget from, once `make probe` has one; falls back to the cost cap when unset.
-- `NTSB_DOCKET_DIR` — where fetched docket documents are cached (default `<NTSB_DATA_DIR>/docket`,
-  so it moves with `NTSB_DATA_DIR` unless set explicitly). Nothing under it is committed.
-- `NTSB_DOCKET_SECONDS_PER_REQUEST` — the minimum time between requests to `data.ntsb.gov`
+- `OPENROUTER_API_KEY`: the OpenRouter key every model call goes through (decision 0009).
+- `TYPESAFE_API_KEY`: Jev, for the S2.7 ordering check on development runs only (0097).
+- `NTSB_DATA_DIR`: where raw and processed data live (default `data`). A git worktree needs it
+  pointed at the main checkout's `data/` (0057).
+- `NTSB_RUNS_DIR`: where evaluation runs are written (default `data/runs`).
+- `NTSB_MONTHLY_BUDGET_USD`: the monthly spend cap a run refuses to exceed (default 40,
+  decision 0083); transcription and inventory spend count against it (0081).
+- `NTSB_EXPECTED_COST_PER_CASE_USD`: the measured cost per case a run projects against the
+  budget; falls back to the cost cap when unset.
+- `NTSB_DOCKET_DIR`, `NTSB_TRANSCRIPTION_DIR`, `NTSB_LIVE_DOCKET_DIR`: the caches of docket
+  documents, page transcriptions and live cases' documents (defaults under `NTSB_DATA_DIR`).
+- `NTSB_DOCKET_SECONDS_PER_REQUEST`: the minimum time between requests to `data.ntsb.gov`
   (default 2.0 seconds), enforced in code as a floor above zero.
-- `NTSB_TRANSCRIPTION_DIR` — where per-page transcriptions are cached (default
-  `<NTSB_DATA_DIR>/transcriptions`, so it moves with `NTSB_DATA_DIR` unless set explicitly).
-  Nothing under it is committed.
+- `NTSB_STORE`: the recorder's SQLite store, a local path or an `s3://` URL.
+- `NTSB_LIVE_BUCKET`, `NTSB_LIVE_ALERT_TOPIC_ARN`: the live bucket and alert topic. Set inside
+  the cloud task and by `scripts/live_env.sh`, unset elsewhere.
+- `NTSB_COMMIT_SHA`: set only inside container images, which have no `.git`.
 
 ## A note on tone
 
-These are fatal accidents. The writing here is clinical, no victim names appear anywhere in
-this repository or in any output it produces, and nothing is presented as a game or a
-score to beat.
+These are fatal accidents. The writing here and on the site is clinical. No victim names
+appear anywhere in this repository or in any output it produces, and every built page is checked
+to show no aircraft registration. Nothing is presented as a game or a score to beat.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). NTSB investigation data is a work of the US federal
+MIT; see [LICENSE](LICENSE). NTSB investigation data is a work of the US federal
 government and is in the public domain.

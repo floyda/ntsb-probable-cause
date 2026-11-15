@@ -77,3 +77,7 @@ Accepted, 2026-10-07 (Andy, S3.3 design session; specification approved 2026-10-
 ## Amended, 2026-10-09 (appended; nothing above is edited)
 
 - Item 2's limit, and Why 3's bound of $3 on a day, are amended by [0167](0167-the-live-shadows-daily-limit-is-raised-to-50.md): at most 50 cases a UTC day for the rest of S3.3. The queue, its order, one run per case, the backfill list and the closing rule stand.
+
+## Amended, 2026-10-12 (appended; nothing above is edited)
+
+- Item 3's last rule, "a case that fails before it is seen (the API, the docket site or the store unreachable) returns to the queue" without limit, is amended by [0175](0175-fetch-failures-are-counted-and-every-message-has-a-runbook-row.md) for the cloud board. A failed fetch counts against a case only on a night when other cases fetched; after 3 counted failures an alert is sent, and after 7 the case is "not coded: unreachable", final. A night when every fetch failed is an outage and counts against no case. Items 1, 2 (as amended by 0167), 4 and 5, and the rest of item 3 (one run per case; a case seen is never tried again), stand.

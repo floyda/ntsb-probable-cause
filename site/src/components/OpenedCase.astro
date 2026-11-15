@@ -1,0 +1,269 @@
+---
+// One case: the agent's coding beside the NTSB's (spec §5), in plain type, from the export alone.
+import { methodsLink } from "../lib/methods";
+import type { CaseFile, Code, MarkedCode } from "../lib/board-case-types";
+import { findingRows } from "../lib/findings";
+import FindingLine from "./FindingLine.astro";
+import FindingsList from "./FindingsList.astro";
+import {
+    caseReportUrl,
+    commitUrl,
+    differenceSentence,
+    docketUrl,
+    factsLine,
+    ntsbMissing,
+    withheldLine,
+} from "../lib/words";
+
+interface Props {
+    kase: CaseFile;
+}
+
+const { kase } = Astro.props;
+const answer = kase.answer;
+const verdict = kase.verdict;
+const comparison = kase.comparison;
+const notCoded = kase.grade === "not_coded";
+const abstained = kase.grade === "abstained";
+const docket = docketUrl(kase.mkey);
+const report = caseReportUrl(kase.mkey);
+const withheld = withheldLine(kase);
+
+const MARK_WORDS: Record<MarkedCode["mark"], string> = {
+    same_place: "same place",
+    other_place: "another place",
+    not_in_other: "not in the other list",
+};
+
+const agentCauseHeading = abstained ? "The agent's reason for not answering" : "The agent's cause";
+const agentCause = notCoded ? "Not coded." : (answer?.cause ?? "No answer.");
+const ntsbCause = verdict?.cause ?? ntsbMissing(kase.grade);
+// What the agent's side says when it has no codes to show. An abstained case shows none: its
+// leaning codes, marked against the NTSB's, would read as a graded answer beside the board's
+// "No answer" (review, 2026-10-13).
+const agentEmpty = notCoded
+    ? "Not coded."
+    : abstained
+      ? "No answer: the agent abstained."
+      : "No answer.";
+
+// Marks against the other list exist only where both sides answered.
+const graded = comparison !== null && !abstained;
+const agentCodes: readonly MarkedCode[] = graded ? comparison.agent_occurrence : [];
+const ntsbCodes: readonly MarkedCode[] = graded ? comparison.ntsb_occurrence : [];
+const agentPlain: readonly Code[] = graded || abstained ? [] : (answer?.occurrence ?? []);
+const ntsbPlain: readonly Code[] = graded ? [] : (verdict?.occurrence ?? []);
+
+// Findings: one list of rows where both answered (lib/findings.ts); otherwise each side's own.
+const findingList =
+    comparison !== null && graded
+        ? findingRows(
+              comparison.findings_both,
+              comparison.findings_ntsb_only,
+              comparison.findings_agent_only,
+          )
+        : null;
+const findingGroups: { heading: string; codes: readonly Code[]; empty: string }[] = [
+    {
+        heading: "The agent's findings",
+        codes: abstained ? [] : (answer?.findings ?? []),
+        empty: agentEmpty,
+    },
+    {
+        heading: "The NTSB's findings",
+        codes: verdict?.findings ?? [],
+        empty: verdict === null ? ntsbMissing(kase.grade) : "None.",
+    },
+];
+const commit = kase.withheld?.commit ?? null;
+---
+
+<article class="opened" id="opened" data-case={kase.case_number}>
+    <ul class="facts">
+        {factsLine(kase).map((item) => (
+            <li>{item}</li>
+        ))}
+    </ul>
+
+    <p class="difference">{differenceSentence(kase)}</p>
+
+    <div class="pair">
+        <section>
+            <h3 class="part">{agentCauseHeading}</h3>
+            <p>{agentCause}</p>
+        </section>
+        <section>
+            <h3 class="part">The NTSB's cause</h3>
+            <p>{ntsbCause}</p>
+        </section>
+    </div>
+
+    <h3 class="part">
+        What happened <span class="term">· NTSB occurrence codes</span>
+    </h3>
+    <div class="pair">
+        <section>
+            <h4 class="sub">The agent's order</h4>
+            {agentCodes.length > 0 ? (
+                <ol>
+                    {agentCodes.map((c) => (
+                        <li>
+                            {c.label} <span class="placed">· {MARK_WORDS[c.mark]}</span>
+                        </li>
+                    ))}
+                </ol>
+            ) : agentPlain.length > 0 ? (
+                <ol>
+                    {agentPlain.map((c) => (
+                        <li>{c.label}</li>
+                    ))}
+                </ol>
+            ) : (
+                <p>{agentEmpty}</p>
+            )}
+        </section>
+        <section>
+            <h4 class="sub">The NTSB's order</h4>
+            {ntsbCodes.length > 0 ? (
+                <ol>
+                    {ntsbCodes.map((c) => (
+                        <li>
+                            {c.label} <span class="placed">· {MARK_WORDS[c.mark]}</span>
+                        </li>
+                    ))}
+                </ol>
+            ) : ntsbPlain.length > 0 ? (
+                <ol>
+                    {ntsbPlain.map((c) => (
+                        <li>{c.label}</li>
+                    ))}
+                </ol>
+            ) : (
+                <p>{ntsbMissing(kase.grade)}</p>
+            )}
+        </section>
+    </div>
+
+    <h3 class="part">
+        Why it happened <span class="term">· NTSB findings</span>
+    </h3>
+    {findingList !== null ? (
+        <FindingsList rows={findingList} />
+    ) : (
+        <div class="pair">
+            {findingGroups.map((group) => (
+                <section>
+                    <h4 class="sub">{group.heading}</h4>
+                    {group.codes.length > 0 ? (
+                        <ul class="lines">
+                            {group.codes.map((c) => (
+                                <li>
+                                    <FindingLine label={c.label} />
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p>{group.empty}</p>
+                    )}
+                </section>
+            ))}
+        </div>
+    )}
+
+    {withheld !== null && (
+        <p class="withheld">
+            {withheld}
+            {commit !== null && (
+                <>
+                    {" "}
+                    <a href={commitUrl(commit)}>Code version {commit}</a>.
+                </>
+            )}{" "}
+            <a href={methodsLink("withheld")}>How the verdict is withheld</a>.
+        </p>
+    )}
+    {kase.trail !== null && (
+        <p class="trail-link">
+            How Ellery reached this: <a href={`/case/${kase.case_number}/trail/`}>its trail</a>,
+            what it believed, read and spent.
+        </p>
+    )}
+    <p class="sources">
+        {docket !== null && report !== null && (
+            <>
+                Sources: <a href={report}>the NTSB's final report</a> (PDF) ·{" "}
+                <a href={docket}>the case's evidence files</a>
+                <span class="term"> · the docket</span> ·{" "}
+            </>
+        )}
+        <a href={methodsLink("grades")}>
+            {docket !== null && report !== null ? "how" : "How"} this case was graded
+        </a>
+    </p>
+</article>
+
+<style>
+    .opened {
+        display: grid;
+        gap: 1rem;
+    }
+    .facts {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem 0.75rem;
+        color: var(--ink-muted);
+    }
+    .difference {
+        font-size: 1.15rem;
+        margin: 0;
+    }
+    .pair,
+    .triple {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    }
+    /* Each coding and each list of codes on a white panel (tokens.css's .panel look). */
+    .pair > section,
+    .triple > section {
+        min-width: 0;
+        padding: 0.9rem;
+        border: 1px solid var(--panel-edge);
+        border-radius: 4px;
+        background: var(--paper);
+    }
+    .part,
+    .sub {
+        margin: 0;
+        text-wrap: balance;
+    }
+    .part {
+        font-size: var(--step-1);
+    }
+    .sub {
+        font-size: 1rem;
+        color: var(--ink-muted);
+    }
+    p,
+    ol,
+    ul {
+        margin: 0.25rem 0 0;
+    }
+    .term,
+    .placed {
+        color: var(--ink-muted);
+        font-size: 0.9em;
+        font-weight: 400;
+    }
+    .withheld,
+    .sources {
+        color: var(--ink-muted);
+        font-size: 0.95rem;
+    }
+    a {
+        color: inherit;
+    }
+</style>

@@ -78,9 +78,8 @@ from ntsb_probable_cause.docket.attach import owner_operator_values
 from ntsb_probable_cause.docket.listing import parse_listing
 from ntsb_probable_cause.docket.title_vocab import (
     VENDORED_DICTIONARY_PATH,
-    capitalised_words,
-    is_ordinary_word,
     known_title_words,
+    title_looks_like_a_name,
 )
 from ntsb_probable_cause.errors import DocketError
 from ntsb_probable_cause.settings import Settings
@@ -186,19 +185,6 @@ def docket_fixture_problems(root: Path = DOCKET_FIXTURES) -> list[str]:
 
 
 _TAG = re.compile(r"<[^>]+>")
-
-
-def title_looks_like_a_name(title: str, known: frozenset[str]) -> bool:
-    """True if ``title`` carries a capitalised word (3+ letters) absent from ``known``.
-
-    Replaces an earlier heuristic that matched ``of|by|with|from|signed`` followed by Title
-    Case words -- measured on real data, every one of its 16 flags across six drawn listings
-    and 5 of 60 hand-check rows was a false positive (ordinary NTSB title grammar). ``known``
-    is normally ``ntsb_probable_cause.docket.title_vocab.known_title_words()``'s combined
-    committed vocabulary and system dictionary -- passed in rather than recomputed per title,
-    so a whole check run reads the dictionary once, not once per title.
-    """
-    return any(not is_ordinary_word(word, known) for word in capitalised_words(title))
 
 
 def _visible_text(html_text: str) -> str:
@@ -346,8 +332,8 @@ def docket_fixture_name_problems(
             "committed vocabulary alone (see title_vocab.known_title_words). MOST BLOCKING "
             "FINDINGS BELOW WILL BE FALSE POSITIVES: measured on the committed fixtures, "
             "this mode reports 158 blocking findings where the word list is present. "
-            "The vendored list tests/fixtures/words.txt should be committed; if missing, "
-            "the build is incomplete (decision 0070).",
+            "The vendored list docket/vocab/words.txt (package data) should be committed; if "
+            "missing, the build is incomplete (decision 0070).",
             file=sys.stderr,
         )
     problems: list[Finding] = []

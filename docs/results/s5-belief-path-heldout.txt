@@ -1,0 +1,15 @@
+S5 question 7: the loop's beliefs against the NTSB's first code, held-out (scripts/exploratory/s5_belief_path.py; decision 0186)
+Exploratory (decision 0059): it decides nothing and claims nothing. Counts only: no case number, no case or model text. Right means the belief's first occurrence code is the NTSB's first code.
+the loop: 20261004T140804-e0dc881-heldout-400-C
+cases: the 394 the loop answered; left out, no belief before reading: 0
+cases with no belief after a read choice (after reading is before reading): 25
+
+right, of 394:
+- before reading: 43
+- after reading: 82
+- the answer: 94
+
+before reading -> after reading: stayed right 35, fixed 47, broken 8, stayed wrong 304
+after reading -> the answer: stayed right 74, fixed 20, broken 8, stayed wrong 292
+
+checked against docs/results/s32-heldout-diagnosis.txt: before reading and the answer right, the cases, and after reading -> the answer's fixes and breaks (a change of first code): equal

@@ -324,3 +324,30 @@ def test_stage_spent_counts_the_billed_total_for_s3s_runs(tmp_path: Path) -> Non
     counted, spend = stage_spent(runs, _STAGE)
     assert counted == pytest.approx(BILLED + COMPUTED)
     assert spend == 0.0
+
+
+def _kind_row(kind: str, cost: float, when: datetime) -> SpendRecord:
+    return SpendRecord(
+        job_id=f"job-{kind}",
+        kind=kind,
+        model="m",
+        started=when,
+        calls=1,
+        cost_usd=cost,
+        commit_sha="abc1234",
+        dirty=False,
+    )
+
+
+def test_learning_spend_is_not_counted_by_the_monthly_guard(tmp_path: Path) -> None:
+    now = datetime(2026, 10, 14, tzinfo=UTC)
+    write_spend(tmp_path, _kind_row("learning", 3.0, now))
+    write_spend(tmp_path, _kind_row("coding-test", 0.5, now))
+    assert month_spent(tmp_path, now=now) == pytest.approx(0.5)
+
+
+def test_learning_spend_is_not_a_stage_spend_row(tmp_path: Path) -> None:
+    now = datetime(2026, 10, 14, tzinfo=UTC)
+    write_spend(tmp_path, _kind_row("learning", 3.0, now))
+    write_spend(tmp_path, _kind_row("coding-test", 0.5, now))
+    assert stage_spent(tmp_path, frozenset({"abc1234" + "0" * 33})) == (0.0, 0.5)
