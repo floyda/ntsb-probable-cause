@@ -30,3 +30,11 @@ trustPolicyExclude:
 auditConfig:
   ignoreGhsas:
     - GHSA-g3hv-75wg-m249
+# Version overrides, each one reviewed and approved by Andy (by merging the PR that adds it).
+# @emnapi/runtime 1.11.3 (2026-11-15): @napi-rs/wasm-runtime accepts "^1.7.1 || ^2.0.0-alpha.4"
+# as a peer, and from @astrojs/check 0.9.12 pnpm resolves it to 2.0.0-beta.2, beside
+# @emnapi/core 1.11.3. The two do not match, and @astrojs/check fails as it loads
+# ("this.bridge.setLastError is not a function"), so `astro check` reports it as missing.
+# 1.11.3 is the latest stable release. Remove this override once @emnapi 2.0 is stable.
+overrides:
+  "@emnapi/runtime": 1.11.3
