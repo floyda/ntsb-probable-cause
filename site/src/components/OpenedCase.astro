@@ -213,8 +213,13 @@ const commit = kase.withheld?.commit ?? null;
         margin: 0;
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem 0.75rem;
+        gap: 0.25rem 1rem;
         color: var(--ink-muted);
+        /* A case's details in floyda.dev's label face, in capitals (0219). */
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        letter-spacing: var(--mono-track);
+        text-transform: uppercase;
     }
     .difference {
         font-size: 1.15rem;

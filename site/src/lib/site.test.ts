@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTHOR_URL, checkPlaces, PAGES } from "./site";
+import { AUTHOR_HOME, AUTHOR_URL, checkPlaces, COPYRIGHT, PAGES } from "./site";
 
 describe("the top bar's pages (S5 step 6a, Task 2)", () => {
     it("names each page once, by an address ending in a slash", () => {
@@ -12,6 +12,12 @@ describe("the top bar's pages (S5 step 6a, Task 2)", () => {
     });
     it("links the author's line to an https address", () => {
         expect(AUTHOR_URL).toMatch(/^https:\/\//);
+    });
+    it("links the top bar's author name to floyda.dev's first page (decision 0221)", () => {
+        expect(AUTHOR_HOME).toBe("https://floyda.dev");
+    });
+    it("names the author in the copyright line (decision 0219)", () => {
+        expect(COPYRIGHT).toBe("© 2026 Andy Floyd");
     });
 });
 

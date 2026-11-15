@@ -38,9 +38,16 @@ const places = [
 <Base title="Ellery" description={SITE_LINE} current="home" places={places}>
     {/* Stop 1 (spec §2, §3.1): the question, two sentences on the task, then the caveat. */}
     <section id="question" class="caveat" aria-labelledby="question-heading">
-        <h1>Ellery</h1>
-        <Sign>1 · The question</Sign>
-        <h2 id="question-heading">{SITE_QUESTION}</h2>
+        {/* The opening (decision 0219): the question as the page's largest heading, on a
+            gridded band. The page's title stays for screen readers and outlines. */}
+        <div class="opening" data-rail-rides>
+            <h1 class="vh">Ellery</h1>
+            <Sign>1 · The question</Sign>
+            <h2 id="question-heading">
+                {SITE_QUESTION.slice(0, -1)}
+                <span class="stop">{SITE_QUESTION.slice(-1)}</span>
+            </h2>
+        </div>
         <p>
             When the NTSB closes a US aviation accident case, it publishes a probable cause and
             codes what happened and why, from fixed lists. Ellery reads the evidence the
@@ -109,14 +116,59 @@ const places = [
         display: grid;
         gap: 0.75rem;
         padding-block: var(--space-section);
-        border-top: 1px solid var(--rule);
+        border-top: var(--section-rule);
     }
     h2,
     h3 {
         margin: 0;
     }
+    /* The opening band (decision 0219). Its grid is floyda.dev's hero grid: 1px lines in
+       --gridline on 24px squares. It runs to both edges of the screen behind the column, and
+       closes with the 2px rule. */
+    #question {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .opening {
+        position: relative;
+        isolation: isolate;
+        display: grid;
+        justify-items: start;
+        gap: 0.9rem;
+        padding-block: 2.25rem 2.5rem;
+        margin-bottom: 1rem;
+    }
+    .opening::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        inset-block: 0;
+        inset-inline: -100vw;
+        background-image:
+            linear-gradient(var(--gridline) 1px, transparent 1px),
+            linear-gradient(90deg, var(--gridline) 1px, transparent 1px);
+        background-size: 24px 24px;
+        border-bottom: var(--section-rule);
+    }
+    /* Weight 900, as floyda.dev's headline is. */
     #question-heading {
+        max-width: 22ch;
+        font-size: clamp(1.9rem, 1.2rem + 3.4vw, 3.1rem);
+        font-weight: 900;
+        line-height: 1.02;
+        letter-spacing: -0.03em;
         text-wrap: balance;
+    }
+    /* The question's final mark, in amber; a deeper gold on the light ground (tokens.css). */
+    .stop {
+        color: var(--amber-text);
+    }
+    /* From 1000px the band starts under the top bar: it takes back the page's top padding. */
+    @media (min-width: 1000px) {
+        .opening {
+            margin-top: -1.5rem;
+            padding-top: 3.25rem;
+        }
     }
     p {
         margin-block: 0;

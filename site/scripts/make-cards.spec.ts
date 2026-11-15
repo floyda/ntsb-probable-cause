@@ -25,7 +25,8 @@ function escape(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// The board's dark panel (tokens.css), with ELLERY in the dot face as in the top bar. The site
+// The board's dark panel (tokens.css), with ELLERY in the dot face. The cards keep the board's
+// look, which decision 0219 did not change, so they were not redrawn (decision 0221). The site
 // card's question is long, so it is set in the reading face; a question card's is shorter and
 // larger, with its answer beneath (Andy, 2026-11-01).
 function html(c: Card): string {
