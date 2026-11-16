@@ -74,6 +74,9 @@ const imageUrl = new URL(`/${CARD_DIR}/${shared.name}.png?v=${cardVersion(shared
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content={shared.alt} />
         <meta name="twitter:card" content="summary_large_image" />
+        {/* The reader's chosen theme, set before the page is drawn so it never flashes the
+            other one. A file of its own, never inline, for the Content-Security-Policy. */}
+        <script is:inline src="/theme.js"></script>
     </head>
     <body>
         <SiteHeader current={current} />

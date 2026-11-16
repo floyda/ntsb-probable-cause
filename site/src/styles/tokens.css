@@ -3,7 +3,7 @@
    "floyda.dev" is copied from that site's published tokens (its site/src/styles/tokens.css, read
    from https://floyda.dev on 2026-11-15); every other value is Ellery's own. */
 :root {
-    color-scheme: light dark;
+    color-scheme: light;
     /* floyda.dev: --ink. */
     --ink: #1a1a18;
     /* floyda.dev: --muted. */
@@ -49,20 +49,22 @@
     --space-section: 2.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        /* floyda.dev's dark tokens: --ink, --muted, --bg, --gridline, --wordmark. */
-        --ink: #e7eaee;
-        --ink-muted: #8a919b;
-        --ground: #0e1116;
-        --gridline: #1a1f27;
-        --amber-text: #f2c94c;
-        --paper: #141922;
-        --panel-edge: #2a313c;
-        --rule: #333b47;
-        --bar: #5f6b78;
-        --bar-dim: #2c3238;
-    }
+/* Dark is the site's own default (Andy, 2026-11-15; decision 0222): it does not follow the
+   system's setting. Light applies only when the reader chose it with the top bar's button
+   (public/theme.js), which sets data-theme="light". */
+:root:not([data-theme="light"]) {
+    /* floyda.dev's dark tokens: --ink, --muted, --bg, --gridline, --wordmark. */
+    --ink: #e7eaee;
+    --ink-muted: #8a919b;
+    --ground: #0e1116;
+    --gridline: #1a1f27;
+    --amber-text: #f2c94c;
+    --paper: #141922;
+    --panel-edge: #2a313c;
+    --rule: #333b47;
+    --bar: #5f6b78;
+    --bar-dim: #2c3238;
+    color-scheme: dark;
 }
 
 html {

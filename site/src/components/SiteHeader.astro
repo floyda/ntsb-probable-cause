@@ -2,7 +2,8 @@
 // The top bar on every page (spec §21 note, 2026-10-16; decision 0219): a skip link for keyboard
 // users, then the author's name, linking to his profile site, then ELLERY, the way to the first
 // page, then the site's separate pages. The current page is marked by aria-current, the ink
-// colour and an underline, so never by colour alone.
+// colour and an underline, so never by colour alone. Last comes the dark mode button, as on
+// floyda.dev (decision 0222).
 import { AUTHOR_HOME, PAGES, type PageId } from "../lib/site";
 
 interface Props {
@@ -38,6 +39,19 @@ const here = (id: PageId): "page" | undefined => (id === current ? "page" : unde
                         </a>
                     </li>
                 ))}
+                {/* Shown only when public/theme.js has run; it also sets aria-pressed. Dark is
+                    the default, so it is pressed until the reader chooses light. The mark
+                    beside the words is hollow for light and filled for dark. */}
+                <li class="theme">
+                    <button
+                        type="button"
+                        class="theme-toggle"
+                        data-theme-toggle
+                        aria-pressed="false"
+                    >
+                        Dark mode
+                    </button>
+                </li>
             </ul>
         </nav>
     </div>
@@ -57,16 +71,19 @@ const here = (id: PageId): "page" | undefined => (id === current ? "page" : unde
     .skip:focus {
         top: 0.5rem;
     }
-    /* On the page's own ground, over a 2px rule (0219), as floyda.dev's top bar is. */
+    /* On the page's own ground, over a 2px rule (0219). The rule stops at the column's edges,
+       as floyda.dev's does (decision 0222). */
     .site-head {
-        border-bottom: var(--section-rule);
-    }
-    .inner {
         /* The same box as .page (tokens.css), so the bar's ends line up with the column's. */
         box-sizing: border-box;
+        width: 100%;
         max-width: 72rem;
         margin-inline: auto;
-        padding: 0.6rem 1rem;
+        padding-inline: 1rem;
+    }
+    .inner {
+        padding-block: 0.6rem;
+        border-bottom: var(--section-rule);
         display: flex;
         flex-wrap: wrap;
         align-items: center;
@@ -131,7 +148,41 @@ const here = (id: PageId): "page" | undefined => (id === current ? "page" : unde
         color: var(--ink);
         border-bottom-color: var(--ink);
     }
-    a:focus-visible {
+    ul {
+        align-items: center;
+    }
+    /* floyda.dev's button: a thin edge, and a round mark that fills when dark is on. */
+    .theme-toggle {
+        font: inherit;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        padding: 0.15rem 0.5rem;
+        border: 1px solid var(--ink-muted);
+        border-radius: 4px;
+        background: none;
+        color: var(--ink);
+        cursor: pointer;
+    }
+    .theme-toggle::after {
+        content: "";
+        display: inline-block;
+        width: 0.6em;
+        height: 0.6em;
+        margin-left: 0.5em;
+        border: 1.5px solid currentColor;
+        border-radius: 50%;
+        vertical-align: 0.02em;
+    }
+    .theme-toggle[aria-pressed="true"]::after {
+        background: var(--sign);
+        border-color: var(--sign);
+    }
+    /* Without the script the button could do nothing, so it is not shown. */
+    :global(html:not([data-js])) .theme {
+        display: none;
+    }
+    a:focus-visible,
+    button:focus-visible {
         outline: 2px solid var(--ink);
         outline-offset: 2px;
     }
