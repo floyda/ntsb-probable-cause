@@ -339,6 +339,16 @@ class NtsbSiteStack(Stack):
             cfn_project.add_property_override(
                 "Source.Auth", {"Type": "CODECONNECTIONS", "Resource": github_connection_arn}
             )
+            # Approval for pull requests from forks only (0223). Unset, AWS asks for it on every
+            # pull request and posts a failed check to each of Dependabot's, though the filter
+            # above never builds one. The roles are AWS's default, written out.
+            cfn_project.add_property_override(
+                "Triggers.PullRequestBuildPolicy",
+                {
+                    "RequiresCommentApproval": "FORK_PULL_REQUESTS",
+                    "ApproverRoles": ["GITHUB_ADMIN", "GITHUB_MAINTAIN", "GITHUB_WRITE"],
+                },
+            )
             # Its own policy, which names no part of the project, so the project can wait for
             # it: CodeBuild checks the role may use the connection as the project is created,
             # and the role's default policy names the project, so it comes after (third
