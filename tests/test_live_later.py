@@ -17,6 +17,7 @@ from ntsb_probable_cause.live.later import (
     _EXCLUSIONS,
     AWAIT_ALERT_NIGHTS,
     Awaiting,
+    LaterScore,
     awaiting,
     overdue,
     score_later,
@@ -201,6 +202,7 @@ def test_a_later_score_equals_the_score_at_coding_and_hashes_the_record() -> Non
     assert later.finding_precision_10 == expected.finding_precision_10
     assert later.verdict_occurrence == verdict.occurrence_codes
     assert later.verdict_findings_in_cause == verdict.finding_codes_in_cause
+    assert later.verdict_finding_descriptions == verdict.finding_descriptions
     assert later.ntsb_cause == verdict.probable_cause
     assert later.scored_on == TODAY
     changed = copy.deepcopy(raw)
@@ -208,6 +210,14 @@ def test_a_later_score_equals_the_score_at_coding_and_hashes_the_record() -> Non
     other = score_later(changed, case, TODAY)
     assert other is not None
     assert other.record_sha256 != later.record_sha256
+
+
+def test_a_later_score_written_before_0223_reads_with_no_descriptions() -> None:
+    later = score_later(_raw_with_codes(), _case(), TODAY)
+    assert later is not None
+    row = later.model_dump(mode="json")
+    del row["verdict_finding_descriptions"]
+    assert LaterScore.model_validate(row).verdict_finding_descriptions == ()
 
 
 def test_overdue_counts_seven_nights_not_six() -> None:

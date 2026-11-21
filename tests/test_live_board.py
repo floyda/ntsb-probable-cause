@@ -37,7 +37,7 @@ from ntsb_probable_cause.live.export import (
     NotOfferedReason,
 )
 from ntsb_probable_cause.live.later import LaterScore
-from ntsb_probable_cause.live.names import NAME_MARKER
+from ntsb_probable_cause.live.names import NAME_MARKER, case_names
 from ntsb_probable_cause.live.queue import backfill_digest, build_queue
 from ntsb_probable_cause.live.records import (
     CLOSURES_FILE,
@@ -49,6 +49,7 @@ from ntsb_probable_cause.live.records import (
 )
 from ntsb_probable_cause.live.state import Closed, NightState
 from ntsb_probable_cause.records.split import split_record
+from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import FindingGuess, Hypothesis, OccurrenceGuess
 from ntsb_probable_cause.scoring.records import CaseResult, write_jsonl
 from ntsb_probable_cause.store import Closure, Store
@@ -1171,3 +1172,76 @@ def test_a_missing_word_list_refuses_the_export(
     with pytest.raises(ConfigurationError, match="word list"):
         _build(tmp_path)
     assert not (out / "index.json").exists()
+
+
+# Decision 0223: findings the code tables cannot label, with the NTSB's own descriptions, as a
+# development record carries them (modifier 27 and item 01011100 are not in the tables, 0105).
+_UNTABLED: tuple[dict[str, Any], ...] = (
+    {
+        "findingCode": "0102000027",
+        "findingNumber": 91,
+        "findingDescription": (
+            "Aircraft-Aircraft systems-(general)-(general)-Not installed/available - F"
+        ),
+    },
+    {
+        "findingCode": "0101110014",
+        "findingNumber": 92,
+        "findingDescription": (
+            "Aircraft-Aircraft handling/service-Placards and markings-(general)-"
+            "Not serviced/maintained - C"
+        ),
+    },
+    {"findingCode": "0101110027", "findingNumber": 93},
+)
+_UNTABLED_LABELS = {
+    "0102000027": "Aircraft — Aircraft systems — (general) — (general) - Not installed/available",
+    "0101110014": (
+        "Aircraft-Aircraft handling/service-Placards and markings-(general)-Not serviced/maintained"
+    ),
+    "0101110027": "0101110027",
+}
+
+
+def _with_untabled(raw: dict[str, Any]) -> dict[str, Any]:
+    raw["aircrafts"][0]["findings"] += copy.deepcopy(list(_UNTABLED))
+    return raw
+
+
+def test_a_finding_the_tables_cannot_label_takes_the_ntsbs_words(tmp_path: Path) -> None:
+    tables = load_tables()
+    assert "27" not in tables.modifiers
+    assert "01011100" not in tables.items
+    raw = _with_untabled(_raw("XXX26XX001", date(2026, 8, 1)))
+    record = _record("XXX26XX001", date(2026, 10, 9))
+    out = _build(tmp_path, _one_run(tmp_path, [(record, raw, _hypothesis(STALL))]))
+    verdict = _case(out, "XXX26XX001").verdict
+    assert verdict is not None
+    labels = {c.code: c.label for c in verdict.findings}
+    assert {code: labels[code] for code in _UNTABLED_LABELS} == _UNTABLED_LABELS
+    # The tables' label wins wherever the tables have one.
+    for c in verdict.findings:
+        if c.code not in _UNTABLED_LABELS:
+            assert c.label == f"{tables.items[c.code[:8]]} - {tables.modifiers[c.code[8:]]}"
+
+
+def test_a_later_score_takes_its_own_descriptions_or_the_records() -> None:
+    raw = _with_untabled(_raw("XXX26XX001", date(2026, 8, 1)))
+    names = case_names(raw)
+    tables = load_tables()
+    at_coding = board._record_verdict(raw, coded=True)
+    old_row = _later("XXX26XX001", raw=raw, top1=True)  # written before 0223: no descriptions
+    assert old_row.verdict_finding_descriptions == ()
+    filled = board._verdict(at_coding, old_row, names, tables)
+    assert filled is not None
+    assert {c.code: c.label for c in filled.findings}["0102000027"] == (
+        _UNTABLED_LABELS["0102000027"]
+    )
+    new_row = old_row.model_copy(
+        update={"verdict_finding_descriptions": split_record(raw)[2].finding_descriptions}
+    )
+    alone = board._verdict(None, new_row, names, tables)
+    assert alone is not None
+    assert {c.code: c.label for c in alone.findings}["0101110014"] == (
+        _UNTABLED_LABELS["0101110014"]
+    )

@@ -319,6 +319,19 @@ def finding_codes(raw: Raw) -> tuple[str, ...]:
     return tuple(code for f in findings if isinstance(code := f.get("findingCode"), str))
 
 
+def finding_descriptions(raw: Raw) -> tuple[str | None, ...]:
+    """Verdict: each finding's NTSB description, aligned with ``finding_codes`` (decision 0223).
+
+    Read only to label, on the public board, a code the code tables cannot; never scored.
+    """
+    findings = sorted(_dicts(resolve_path(raw, "aircrafts[0].findings")), key=_finding_number)
+    return tuple(
+        text if isinstance(text := f.get("findingDescription"), str) and text.strip() else None
+        for f in findings
+        if isinstance(f.get("findingCode"), str)
+    )
+
+
 def finding_codes_in_cause(raw: Raw) -> tuple[str, ...]:
     """Verdict: the finding codes the NTSB flagged as in the probable cause, by finding number."""
     findings = sorted(_dicts(resolve_path(raw, "aircrafts[0].findings")), key=_finding_number)

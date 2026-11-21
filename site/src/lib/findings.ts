@@ -1,7 +1,8 @@
 // The opened case's findings as rows (S5 step 6a, Andy, 2026-10-19). A finding's label is built
-// from the code tables as "area — … — item - detail" (S4's live/board.py). The rows lead with
-// the item and its detail, and set a finding only the NTSB named beside one only the agent
-// named when they share an item or an area, so a near miss shows as one. Written from the
+// from the code tables as "area — … — item - detail" (S4's live/board.py), or, where the tables
+// cannot, from the NTSB's own description, which may hold no " — " or " - " (0223). The rows
+// lead with the item and its detail, and set a finding only the NTSB named beside one only the
+// agent named when they share an item or an area, so a near miss shows as one. Written from the
 // labels alone; no model writes any of it.
 import type { Code } from "./board-case-types";
 

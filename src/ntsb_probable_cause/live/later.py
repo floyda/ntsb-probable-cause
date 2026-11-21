@@ -52,6 +52,9 @@ class LaterScore(BaseModel, frozen=True):
     abstained: bool
     finding_precision_10: float | None
     finding_recall_10: float | None
+    # The NTSB's words for each finding, aligned with verdict_findings; absent from rows written
+    # before decision 0223, which read as empty. Only the board reads them, as a label.
+    verdict_finding_descriptions: tuple[str | None, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,7 @@ def score_later(raw: Mapping[str, object], case: Awaiting, today: date) -> Later
         verdict_occurrence=verdict.occurrence_codes,
         verdict_findings=verdict.finding_codes,
         verdict_findings_in_cause=verdict.finding_codes_in_cause,
+        verdict_finding_descriptions=verdict.finding_descriptions,
         ntsb_cause=verdict.probable_cause,
         top1=scores.occurrence_top1,
         top3=scores.occurrence_top3,
