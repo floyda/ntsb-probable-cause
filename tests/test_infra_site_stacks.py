@@ -282,6 +282,19 @@ def test_merge_to_the_branch_starts_a_build(stacks: dict[str, Template]) -> None
     assert not re.search(head, "refs/heads/old-s5-public-site")
 
 
+def test_only_a_fork_pull_request_waits_for_approval(stacks: dict[str, Template]) -> None:
+    # Decision 0223: unset, the policy asks for approval on every pull request and posts a
+    # failed "AWS CodeBuild" check to each of Dependabot's, though none is ever built. Forks
+    # stay behind approval: the repository is public, and a pull request runs no build only
+    # while the filter above holds.
+    project = next(iter(stacks["site"].find_resources("AWS::CodeBuild::Project").values()))
+    policy = project["Properties"]["Triggers"]["PullRequestBuildPolicy"]
+    assert policy == {
+        "RequiresCommentApproval": "FORK_PULL_REQUESTS",
+        "ApproverRoles": ["GITHUB_ADMIN", "GITHUB_MAINTAIN", "GITHUB_WRITE"],
+    }
+
+
 def test_build_reads_github_through_the_named_connection(stacks: dict[str, Template]) -> None:
     # First deploy, 2026-10-13: "Access token not found in CodeBuild project for server type
     # github" -- the account's default credential was not used, so the project names its own.
