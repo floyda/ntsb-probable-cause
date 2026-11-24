@@ -320,7 +320,7 @@ def finding_codes(raw: Raw) -> tuple[str, ...]:
 
 
 def finding_descriptions(raw: Raw) -> tuple[str | None, ...]:
-    """Verdict: each finding's NTSB description, aligned with ``finding_codes`` (decision 0223).
+    """Verdict: each finding's NTSB description, aligned with ``finding_codes`` (decision 0224).
 
     Read only to label, on the public board, a code the code tables cannot; never scored.
     """

@@ -1,4 +1,4 @@
-# 0223. The board labels a finding the tables cannot with the NTSB's own words
+# 0224. The board labels a finding the tables cannot with the NTSB's own words
 
 Amends [0173](0173-the-board-export-format-board-1.md) (how a label in `board/1` is made) and
 narrows [0105](0105-codes-missing-from-the-dictionary-join-the-tables.md) item 5 for display only.

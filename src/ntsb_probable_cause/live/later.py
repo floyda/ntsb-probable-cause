@@ -53,7 +53,7 @@ class LaterScore(BaseModel, frozen=True):
     finding_precision_10: float | None
     finding_recall_10: float | None
     # The NTSB's words for each finding, aligned with verdict_findings; absent from rows written
-    # before decision 0223, which read as empty. Only the board reads them, as a label.
+    # before decision 0224, which read as empty. Only the board reads them, as a label.
     verdict_finding_descriptions: tuple[str | None, ...] = ()
 
 

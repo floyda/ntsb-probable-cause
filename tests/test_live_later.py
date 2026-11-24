@@ -212,7 +212,7 @@ def test_a_later_score_equals_the_score_at_coding_and_hashes_the_record() -> Non
     assert other.record_sha256 != later.record_sha256
 
 
-def test_a_later_score_written_before_0223_reads_with_no_descriptions() -> None:
+def test_a_later_score_written_before_0224_reads_with_no_descriptions() -> None:
     later = score_later(_raw_with_codes(), _case(), TODAY)
     assert later is not None
     row = later.model_dump(mode="json")

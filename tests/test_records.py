@@ -80,7 +80,7 @@ def test_verdict_carries_flagged_findings(record_fixtures: list[dict[str, object
 
 
 def test_verdict_refuses_descriptions_that_do_not_align() -> None:
-    # Decision 0223: one description per finding code, or none at all.
+    # Decision 0224: one description per finding code, or none at all.
     codes = {"probable_cause": None, "occurrence_codes": (), "finding_codes_in_cause": ()}
     assert Verdict(**codes, finding_codes=("0102000027",)).finding_descriptions == ()
     with pytest.raises(pydantic.ValidationError, match="align"):

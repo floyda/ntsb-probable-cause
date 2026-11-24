@@ -109,7 +109,7 @@ CASES_DIR: Final = "cases"
 STATE_PATH: Final = Path("nights") / "state.json"
 _EXCLUSIONS: Final = live_spec(1.0).exclusions
 _ENGINE_CHECKPOINT: Final = "checkpoint:"
-# A finding description ends with the NTSB's cause or factor letter: "...-Pilot - C" (0223).
+# A finding description ends with the NTSB's cause or factor letter: "...-Pilot - C" (0224).
 _CAUSE_LETTER: Final = re.compile(r" - [A-Z]$")
 _BELIEF_KINDS: Final = ("h0", "h1", "h2", "answer")
 _SCAN_ONLY: Final = "unreadable: scan"
@@ -210,7 +210,7 @@ def _ntsb_words(description: str | None) -> str | None:
 
 
 def _finding_code(code: str, tables: CodeTables, description: str | None = None) -> Code:
-    """The code with its label from the tables; the NTSB's words where they cannot (0223).
+    """The code with its label from the tables; the NTSB's words where they cannot (0224).
 
     An item the tables know with a modifier they lack takes the description's last part as its
     detail; any other gap takes the whole description, which is never split further, because
@@ -259,7 +259,7 @@ _Codes = tuple[tuple[str, ...], tuple[str, ...], str | None, Mapping[str, str]]
 
 
 def _descriptions(codes: Sequence[str], texts: Sequence[str | None]) -> dict[str, str]:
-    """Each code's first description; empty when none was read (decision 0223)."""
+    """Each code's first description; empty when none was read (decision 0224)."""
     out: dict[str, str] = {}
     for code, text in zip(codes, texts, strict=False):
         if text is not None:
@@ -297,7 +297,7 @@ def _verdict(
     names: CaseNames,
     tables: CodeTables,
 ) -> Verdict | None:
-    # A later score written before decision 0223 holds no descriptions: the record's fill in.
+    # A later score written before decision 0224 holds no descriptions: the record's fill in.
     described = {} if record_verdict is None else dict(record_verdict[3])
     if later is not None:
         occurrence, findings, cause = (

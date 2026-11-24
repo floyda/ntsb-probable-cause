@@ -1174,7 +1174,7 @@ def test_a_missing_word_list_refuses_the_export(
     assert not (out / "index.json").exists()
 
 
-# Decision 0223: findings the code tables cannot label, with the NTSB's own descriptions, as a
+# Decision 0224: findings the code tables cannot label, with the NTSB's own descriptions, as a
 # development record carries them (modifier 27 and item 01011100 are not in the tables, 0105).
 _UNTABLED: tuple[dict[str, Any], ...] = (
     {
@@ -1230,7 +1230,7 @@ def test_a_later_score_takes_its_own_descriptions_or_the_records() -> None:
     names = case_names(raw)
     tables = load_tables()
     at_coding = board._record_verdict(raw, coded=True)
-    old_row = _later("XXX26XX001", raw=raw, top1=True)  # written before 0223: no descriptions
+    old_row = _later("XXX26XX001", raw=raw, top1=True)  # written before 0224: no descriptions
     assert old_row.verdict_finding_descriptions == ()
     filled = board._verdict(at_coding, old_row, names, tables)
     assert filled is not None

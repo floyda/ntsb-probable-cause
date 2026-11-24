@@ -183,7 +183,7 @@ def test_verdict_codes_are_ordered() -> None:
 
 
 def test_finding_descriptions_align_with_finding_codes() -> None:
-    # Decision 0223: the NTSB's words, in finding-number order; a finding with no code is skipped
+    # Decision 0224: the NTSB's words, in finding-number order; a finding with no code is skipped
     # as finding_codes skips it, and a blank description reads as None.
     findings = [
         {"findingCode": "0102000027", "findingNumber": 2, "findingDescription": " "},

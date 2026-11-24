@@ -13,7 +13,7 @@ class Verdict(BaseModel):
     finding_codes: tuple[str, ...]
     finding_codes_in_cause: tuple[str, ...]
     # The NTSB's own words for each finding, aligned with finding_codes; empty when not read.
-    # Only the board reads them, to label a code the tables cannot (decision 0223).
+    # Only the board reads them, to label a code the tables cannot (decision 0224).
     finding_descriptions: tuple[str | None, ...] = ()
 
     @model_validator(mode="after")

@@ -224,7 +224,7 @@
 "fields.py:eventCode" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent"
 "fields.py:aircrafts[0].findings" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent"
 "fields.py:findingCode" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent"
-"fields.py:findingDescription" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent (the board's label fallback, decision 0223)"
+"fields.py:findingDescription" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent (the board's label fallback, decision 0224)"
 "fields.py:inProbableCause" = "a path or key of a withheld subtree (narrative or verdict) read to be dropped; never sent"
 "model/client.py:" = "the empty text layer of an image document; a version 1 request holds no image"
 "scoring/prompt.py:\n" = "guidance bookkeeping: an error text, a hash input, a label, a path, or the empty block of a run with no guidance (a version 1 run always has guidance); never sent"
