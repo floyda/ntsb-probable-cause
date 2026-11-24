@@ -51,6 +51,7 @@ def split_record(
         occurrence_codes=fields.occurrence_codes(raw),
         finding_codes=fields.finding_codes(raw),
         finding_codes_in_cause=fields.finding_codes_in_cause(raw),
+        finding_descriptions=fields.finding_descriptions(raw),
     )
     withheld = {**synthesis.texts(), VerdictRole.PROBABLE_CAUSE: verdict.probable_cause}
     role_values = {role.value: value for role, value in evidence.role_values().items()}

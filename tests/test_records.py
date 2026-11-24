@@ -10,6 +10,7 @@ from ntsb_probable_cause.errors import LeakageError
 from ntsb_probable_cause.fields import WITHHELD_ROLE_NAMES, EvidenceRole
 from ntsb_probable_cause.records.evidence import BOOKKEEPING_FIELDS, Evidence
 from ntsb_probable_cause.records.split import split_record
+from ntsb_probable_cause.records.verdict import Verdict
 from ntsb_probable_cause.scoring.codes import load_tables
 from ntsb_probable_cause.scoring.hypothesis import parse_hypothesis
 from ntsb_probable_cause.scoring.records import RunRecord, StepRecord
@@ -40,6 +41,7 @@ def test_split_matches_field_extractors_on_every_fixture(
         assert verdict.probable_cause == fields.probable_cause(raw)
         assert verdict.occurrence_codes == fields.occurrence_codes(raw)
         assert verdict.finding_codes == fields.finding_codes(raw)
+        assert verdict.finding_descriptions == fields.finding_descriptions(raw)
 
 
 def test_every_fixture_has_withheld_content_to_protect(
@@ -75,6 +77,14 @@ def test_verdict_carries_flagged_findings(record_fixtures: list[dict[str, object
         ordered = sorted(findings, key=lambda f: cast("int", f.get("findingNumber") or 0))
         flagged = [f["findingCode"] for f in ordered if f.get("inProbableCause")]
         assert list(verdict.finding_codes_in_cause) == flagged
+
+
+def test_verdict_refuses_descriptions_that_do_not_align() -> None:
+    # Decision 0224: one description per finding code, or none at all.
+    codes = {"probable_cause": None, "occurrence_codes": (), "finding_codes_in_cause": ()}
+    assert Verdict(**codes, finding_codes=("0102000027",)).finding_descriptions == ()
+    with pytest.raises(pydantic.ValidationError, match="align"):
+        Verdict(**codes, finding_codes=("0102000027",), finding_descriptions=("a", "b"))
 
 
 def test_tripwire_fires_when_a_record_carries_withheld_text_in_evidence(

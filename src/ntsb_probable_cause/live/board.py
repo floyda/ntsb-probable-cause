@@ -40,6 +40,7 @@ cost left over is added to the last belief, so the trail's total is the sum of e
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
 from collections import Counter, defaultdict
@@ -108,6 +109,8 @@ CASES_DIR: Final = "cases"
 STATE_PATH: Final = Path("nights") / "state.json"
 _EXCLUSIONS: Final = live_spec(1.0).exclusions
 _ENGINE_CHECKPOINT: Final = "checkpoint:"
+# A finding description ends with the NTSB's cause or factor letter: "...-Pilot - C" (0224).
+_CAUSE_LETTER: Final = re.compile(r" - [A-Z]$")
 _BELIEF_KINDS: Final = ("h0", "h1", "h2", "answer")
 _SCAN_ONLY: Final = "unreadable: scan"
 _READABLE: Final = "read"  # the docket reader's status for a document it could turn into text
@@ -198,10 +201,33 @@ def _occurrence_code(code: str, tables: CodeTables) -> Code:
     return Code(code=code, label=label)
 
 
-def _finding_code(code: str, tables: CodeTables) -> Code:
+def _ntsb_words(description: str | None) -> str | None:
+    """The NTSB's description without its cause or factor letter (" - C", " - F")."""
+    if description is None:
+        return None
+    words = _CAUSE_LETTER.sub("", description.strip())
+    return words or None
+
+
+def _finding_code(code: str, tables: CodeTables, description: str | None = None) -> Code:
+    """The code with its label from the tables; the NTSB's words where they cannot (0224).
+
+    An item the tables know with a modifier they lack takes the description's last part as its
+    detail; any other gap takes the whole description, which is never split further, because
+    the NTSB joins its levels with bare hyphens that some names also hold ("Low-alt flying").
+    The bare code is the label only when neither source has one.
+    """
     item = tables.items.get(code[:8])
     modifier = tables.modifiers.get(code[8:])
-    label = f"{item} - {modifier}" if item is not None and modifier is not None else code
+    words = _ntsb_words(description)
+    if item is not None and modifier is not None:
+        label = f"{item} - {modifier}"
+    elif words is None:
+        label = code
+    elif item is not None:
+        label = f"{item} - {words.rsplit('-', 1)[-1].strip()}"
+    else:
+        label = words
     return Code(code=code, label=label)
 
 
@@ -228,7 +254,17 @@ def _aircraft(raw: Mapping[str, object] | None) -> Aircraft:
     )
 
 
-_Codes = tuple[tuple[str, ...], tuple[str, ...], str | None]
+# Occurrence codes, finding codes, the cause, and the NTSB's description of each finding code.
+_Codes = tuple[tuple[str, ...], tuple[str, ...], str | None, Mapping[str, str]]
+
+
+def _descriptions(codes: Sequence[str], texts: Sequence[str | None]) -> dict[str, str]:
+    """Each code's first description; empty when none was read (decision 0224)."""
+    out: dict[str, str] = {}
+    for code, text in zip(codes, texts, strict=False):
+        if text is not None:
+            out.setdefault(code, text)
+    return out
 
 
 def _record_verdict(raw: Mapping[str, object], *, coded: bool) -> _Codes | None:
@@ -247,7 +283,12 @@ def _record_verdict(raw: Mapping[str, object], *, coded: bool) -> _Codes | None:
         return None
     if not verdict.occurrence_codes:
         return None
-    return verdict.occurrence_codes, verdict.finding_codes, verdict.probable_cause
+    return (
+        verdict.occurrence_codes,
+        verdict.finding_codes,
+        verdict.probable_cause,
+        _descriptions(verdict.finding_codes, verdict.finding_descriptions),
+    )
 
 
 def _verdict(
@@ -256,19 +297,22 @@ def _verdict(
     names: CaseNames,
     tables: CodeTables,
 ) -> Verdict | None:
+    # A later score written before decision 0224 holds no descriptions: the record's fill in.
+    described = {} if record_verdict is None else dict(record_verdict[3])
     if later is not None:
         occurrence, findings, cause = (
             later.verdict_occurrence,
             later.verdict_findings,
             later.ntsb_cause,
         )
+        described |= _descriptions(later.verdict_findings, later.verdict_finding_descriptions)
     elif record_verdict is not None:
-        occurrence, findings, cause = record_verdict
+        occurrence, findings, cause, _ = record_verdict
     else:
         return None
     return Verdict(
         occurrence=tuple(_occurrence_code(c, tables) for c in occurrence),
-        findings=tuple(_finding_code(c, tables) for c in findings),
+        findings=tuple(_finding_code(c, tables, described.get(c)) for c in findings),
         cause=None if cause is None else board_text(cause, names),
     )
 

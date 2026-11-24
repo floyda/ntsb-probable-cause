@@ -14,6 +14,7 @@ from ntsb_probable_cause.fields import (
     check_path_exceptions,
     factual_narrative,
     finding_codes,
+    finding_descriptions,
     occurrence_codes,
     probable_cause,
 )
@@ -179,6 +180,20 @@ def test_phase_of_flight_falls_back_to_first_by_sequence() -> None:
 def test_verdict_codes_are_ordered() -> None:
     assert occurrence_codes(RAW) == ("300230", "300300", "400100")
     assert finding_codes(RAW) == ("0106202020", "0203000046")
+
+
+def test_finding_descriptions_align_with_finding_codes() -> None:
+    # Decision 0224: the NTSB's words, in finding-number order; a finding with no code is skipped
+    # as finding_codes skips it, and a blank description reads as None.
+    findings = [
+        {"findingCode": "0102000027", "findingNumber": 2, "findingDescription": " "},
+        {"findingNumber": 3, "findingDescription": "no code"},
+        {"findingCode": "0106202020", "findingNumber": 1, "findingDescription": "A-B - C"},
+    ]
+    raw = {"aircrafts": [{"findings": findings}]}
+    assert finding_codes(raw) == ("0106202020", "0102000027")
+    assert finding_descriptions(raw) == ("A-B - C", None)
+    assert finding_descriptions({}) == ()
 
 
 def test_extractors_tolerate_empty_record() -> None:
