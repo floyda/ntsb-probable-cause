@@ -627,7 +627,9 @@ describe.skipIf(!built)("why it happened (S5 step 6a, Andy, 2026-10-19)", () => 
             for (const f of all) {
                 const parts = findingParts(f.label);
                 expect(text).toContain(parts.item);
-                expect(text).toContain(parts.detail ?? "missing");
+                // A code the tables cannot label is exported as the bare code, with no detail
+                // (S4's live/board.py); the NTSB used modifier 27 on a case closed 2026-11-20.
+                if (parts.detail !== null) expect(text).toContain(parts.detail);
             }
             const rows = findingRows(c.findings_both, c.findings_ntsb_only, c.findings_agent_only);
             if (rows.some((r) => r.kind === "close")) expect(text).toMatch(/Close: the same/);
